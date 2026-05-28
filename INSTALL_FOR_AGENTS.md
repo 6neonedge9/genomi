@@ -363,13 +363,16 @@ In the snippets below, substitute `<GENOMI_HOME>` with the resolved absolute
 path. Examples assume `~/.genomi`, expanded to `/Users/<you>/.genomi` (macOS) or
 `/home/<you>/.genomi` (Linux).
 
-Most hosts treat newly-added `.mcp.json` entries as opt-in: writing the
-server entry registers it, and a second step (an approval list, a `mcp
-enable` command, or an interactive prompt at restart) actually launches it.
-Both steps are on you. After writing the entry below, run the host's enable
-step, then ask the user to restart the host so the server is spawned.
+After writing the entry below, ask the user to restart the host so the
+server is spawned. Some hosts also require a per-host approval step
+(project-scoped configs in particular) — check the host's docs and run it
+if needed.
 
-**Claude Code** — write `~/.claude/.mcp.json`:
+**Claude Code** — write `~/.claude.json` (this is the user-level config;
+**not** `~/.claude/.mcp.json`, which Claude Code doesn't read). It already
+exists as a large JSON file owned by Claude Code; read it, add or update
+the top-level `mcpServers.genomi` key, and write it back without touching
+unrelated keys:
 
 ```json
 {
@@ -382,18 +385,15 @@ step, then ask the user to restart the host so the server is spawned.
 }
 ```
 
-Then add `"genomi"` to the `enabledMcpjsonServers` array in
-`~/.claude/settings.json` (create the array if it isn't there):
-
-```json
-{
-  "enabledMcpjsonServers": ["genomi"]
-}
-```
+User-level `mcpServers` in `~/.claude.json` launches at session start with
+no separate enable step. (The `enabledMcpjsonServers` array in
+`~/.claude/settings.json` is a separate gate that only applies to
+project-scoped `.mcp.json` files in the working directory — not to this
+user-level entry.)
 
 **Gemini CLI** — write `~/.gemini/settings.json` using the same
-`mcpServers` schema as Claude Code. Check `gemini --help` or the release's
-docs for that host's enable step.
+`mcpServers` schema. Check `gemini --help` for any enable step in the
+running release.
 
 **Codex CLI** — `~/.codex/config.toml`. The key is `[mcp_servers.<name>]`:
 
