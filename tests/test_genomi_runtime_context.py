@@ -679,6 +679,33 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertEqual(job["status"], "failed")
         self.assertEqual(job["error"]["code"], "background_job_signal")
 
+    def test_forked_pool_child_signal_does_not_falsely_fail_the_job(self) -> None:
+        # The handler is inherited by an operation's multiprocessing Pool
+        # workers; when that Pool tears down (SIGTERM to workers, even on
+        # success) a forked child must die quietly, not stamp the shared job
+        # file failed while the real worker is still merging.
+        from genomi.runtime import job_worker
+
+        job_path = self._write_running_job("signal-child")
+        registered: dict[int, object] = {}
+        with (
+            mock.patch("genomi.runtime.job_worker.signal.signal", side_effect=lambda sig, fn: registered.__setitem__(sig, fn)),
+            mock.patch("genomi.runtime.job_worker.os.getpid", return_value=11111),
+        ):
+            job_worker._install_termination_handlers(job_path, threading.Event())
+
+        handler = registered[job_worker.signal.SIGTERM]
+        sigterm = int(job_worker.signal.SIGTERM)
+        with (
+            mock.patch("genomi.runtime.job_worker.os.getpid", return_value=22222),  # a forked child
+            mock.patch("genomi.runtime.job_worker.os._exit") as exit_mock,
+        ):
+            handler(sigterm, None)  # type: ignore[operator]
+
+        exit_mock.assert_called_once_with(128 + sigterm)
+        # Job left untouched — still running, not falsely failed.
+        self.assertEqual(background_jobs._read_job_file(job_path)["status"], "running")
+
     def test_mcp_parse_default_disclosure_hides_artifact_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf = Path(tmp) / "sample.vcf"

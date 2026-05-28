@@ -86,16 +86,28 @@ def _heartbeat_loop(job_path: Path, stop: threading.Event) -> None:
 
 
 def _install_termination_handlers(job_path: Path, stop: threading.Event) -> None:
+    # The handler is inherited across fork(), so an operation's own
+    # multiprocessing Pool workers carry it too. When that Pool finishes and
+    # tears down its workers — by sending them SIGTERM, even on success — each
+    # forked child would otherwise run this handler and falsely stamp the
+    # shared job file as failed while the real worker is still merging results.
+    # Only the process that installed the handler (the job worker itself) may
+    # record failure; a signalled child just dies quietly.
+    owner_pid = os.getpid()
+
     def _handle(signum: int, _frame: Any) -> None:
-        stop.set()
-        _write_failure(
-            job_path,
-            {
-                "code": "background_job_signal",
-                "message": f"The background worker received signal {signum} and stopped before completing.",
-            },
-        )
-        os._exit(1)
+        if os.getpid() != owner_pid:
+            os._exit(128 + signum)
+        else:
+            stop.set()
+            _write_failure(
+                job_path,
+                {
+                    "code": "background_job_signal",
+                    "message": f"The background worker received signal {signum} and stopped before completing.",
+                },
+            )
+            os._exit(1)
 
     for name in _TERMINATION_SIGNALS:
         sig = getattr(signal, name, None)
