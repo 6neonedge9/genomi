@@ -90,7 +90,9 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
         index = self._set_active()
         runtime_context.approve_agi_access()
         reader = agi_access.open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="testing", params={})
-        self.assertEqual(reader.active_genome_index_path, index)
+        # Compare resolved paths: the stored run path is symlink-resolved, and
+        # GENOMI_HOME lives under /tmp (a /private/tmp symlink on macOS).
+        self.assertEqual(reader.active_genome_index_path.resolve(), index.resolve())
         self.assertEqual(reader.genome_build, "GRCh38")
 
     def test_no_active_and_not_optional_raises_missing_context(self) -> None:
@@ -114,7 +116,10 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
         reader = agi_access.open_agi(
             need=ActiveGenomeIndexNeed.REFERENCE, action="testing", params={"source": str(vcf)}
         )
-        self.assertEqual(reader.active_genome_index_path, default_active_genome_index_path(str(vcf)))
+        self.assertEqual(
+            reader.active_genome_index_path.resolve(),
+            default_active_genome_index_path(str(vcf)).resolve(),
+        )
 
     def test_reference_pending_for_call_tracks_active_index(self) -> None:
         vcf = self.genomi_home / "tp.vcf"
