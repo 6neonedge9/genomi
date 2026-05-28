@@ -37,8 +37,8 @@ at scales never seen before. Your genome is exactly that kind of task. And
 for the first time, we have the tools to actually read it at the scale it
 lives at.
 
-Genomi is a local genomics harness for AI agents — Claude Code, Codex,
-OpenClaw, Hermes, and any MCP-capable host. It gives the agent a private
+Genomi is a an open source AI agent runtime that turns your AI agent into a personal DNA expert. 
+Works with Claude Code, Codex, OpenClaw, Hermes, and any MCP-capable host. It gives the agent a private
 workspace: your variants in a local Active Genome Index, public genetics evidence ready to
 query, memory of what you explored, and report tools that turn DNA questions
 into evidence-backed answers. Your genome stays on your machine. The agent
