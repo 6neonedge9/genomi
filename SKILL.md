@@ -155,6 +155,23 @@ text, zip, or `.csv.gz`) into a queryable Active Genome Index.
 - If it returns `status="in_progress"` with a `job_id`, poll
   `genomi.check_background_job`; don't substitute a capped parse or raw scan
   unless the user explicitly asks for a fallback.
+- **gVCFs parse in two phases.** A gVCF is ~96% reference blocks, so the parse
+  returns as soon as **every variant** is stored and indexed — the result
+  reports `variants_ready` (not yet `completed`) and the whole interpretation
+  surface (rsID, gene, region, exact-allele lookup, ClinVar, PRS, …) is already
+  correct. The reference-block tail is appended by a detached background job
+  (`active_genome_index.build_reference_pass`) whose `job_id` is surfaced in the
+  result's `next_actions`. Until that job reports `completed`, only "is this
+  locus confirmed reference vs not-callable" coverage answers are provisional —
+  every readiness/coverage result carries `reference_pending` to say so. Plain
+  VCFs, small files, and capped (`max_records`) parses stay single-phase. Other
+  sources (consumer arrays, BAM/FASTQ) have no reference tail to defer.
+- **After a parse, offer to name the profile.** When the user did not pass
+  `user_nickname`, the result includes an `ask_user` next action: ask them for a
+  profile nickname and whether to set it as the machine default, then record it
+  by re-running with `user_nickname` (+ `set_default_user=true`) or via the
+  invoke-only `active_genome_index.assign_user_genome` / `set_default_user`
+  tools — exactly the offer `INSTALL_FOR_AGENTS.md` Step 8 makes.
 
 The parse/digitize/user-management **workflow** (selecting users, approving
 access, assigning a genome to a profile, lifecycle reparse) lives in

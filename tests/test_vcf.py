@@ -10,9 +10,11 @@ from pathlib import Path
 
 from genomi.active_genome_index.export import export_variants
 from genomi.active_genome_index.active_genome_index import (
+    append_reference_pass,
     connect_existing,
     coverage_query,
     create_active_genome_index,
+    ensure_active_genome_index_complete,
     failure_summary,
     active_genome_index_readiness,
     active_genome_index_summary,
@@ -441,6 +443,84 @@ class IndexTests(unittest.TestCase):
         self.assertEqual(parallel["stats"]["reference_records"], serial["stats"]["reference_records"])
         # Coalesced reference runs cover the same positions regardless of path.
         self.assertEqual(parallel_coverage["covered_fraction"], serial_coverage["covered_fraction"])
+
+    def test_two_phase_gvcf_build_is_variants_ready_then_completed(self) -> None:
+        # A gVCF can be built variants-first: Phase A stores every variant and
+        # marks the index variants_ready (queryable now); Phase B appends the
+        # reference-block tail and flips it to completed. The variants_ready
+        # index must match the variant rows of a single-phase build, and the
+        # completed two-phase index must be byte-for-byte equivalent in counts.
+        def _write_gvcf(path: Path) -> None:
+            with path.open("w", encoding="utf-8") as handle:
+                handle.write("##fileformat=VCFv4.2\n")
+                handle.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n')
+                handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n")
+                for pos in range(1, 6001):
+                    if pos % 500 == 0:
+                        handle.write(f"1\t{pos}\trs{pos}\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:42:99\n")
+                    else:
+                        handle.write(f"1\t{pos}\t.\tA\t<NON_REF>\t.\tPASS\tEND={pos}\tGT:DP:GQ\t0/0:35:50\n")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            full_vcf = Path(tmp) / "full.vcf"
+            two_vcf = Path(tmp) / "two.vcf"
+            full_index = Path(tmp) / "full.sqlite"
+            two_index = Path(tmp) / "two.sqlite"
+            _write_gvcf(full_vcf)
+            _write_gvcf(two_vcf)
+
+            full = create_active_genome_index(full_vcf, full_index, parallel_workers=4)
+            phase_a = create_active_genome_index(two_vcf, two_index, parallel_workers=4, defer_reference=True)
+
+            # Phase A: variants_ready, parallelism fired, and stats already final
+            # (every record was counted even though reference rows aren't stored).
+            self.assertEqual(phase_a["status"], "variants_ready")
+            self.assertTrue(phase_a["reference_pending"])
+            self.assertGreater(phase_a["parallel_workers"], 1)
+            self.assertEqual(phase_a["stats"], full["stats"])
+
+            readiness_a = active_genome_index_readiness(two_index)
+            self.assertEqual(readiness_a["status"], "variants_ready")
+            self.assertFalse(readiness_a["complete"])
+            self.assertTrue(readiness_a["variants_ready"])
+            self.assertTrue(readiness_a["reference_pending"])
+            # The relaxed gate must let variant reads through at variants_ready.
+            ensure_active_genome_index_complete(two_index)
+
+            # Variant lookups are correct now; reference coverage is provisional
+            # (empty) and flagged so the host knows to wait, not conclude "no".
+            self.assertEqual(len(query_rsid(two_vcf, "rs500", two_index)), 1)
+            cov_a = coverage_query(two_vcf, "1", 1, 499, two_index)
+            self.assertEqual(cov_a["covered_fraction"], 0.0)
+            self.assertTrue(cov_a["reference_pending"])
+
+            # Phase B: append the reference tail, flip to completed.
+            phase_b = append_reference_pass(two_index)
+            self.assertEqual(phase_b["status"], "completed")
+            readiness_b = active_genome_index_readiness(two_index)
+            self.assertEqual(readiness_b["status"], "completed")
+            self.assertTrue(readiness_b["complete"])
+
+            # Completed two-phase coverage now matches the single-phase build,
+            # segment-for-segment, across the whole region and carries no pending
+            # flag. (Raw stored row counts can differ by coalescing granularity /
+            # shard-seam count — the semantic invariant is coverage + stats, the
+            # same equivalence test_parallel_and_serial_agree relies on.)
+            cov_b = coverage_query(two_vcf, "1", 1, 6000, two_index)
+            cov_full = coverage_query(full_vcf, "1", 1, 6000, full_index)
+            self.assertEqual(cov_b["covered_fraction"], cov_full["covered_fraction"])
+            self.assertEqual(cov_b["covered_bases"], cov_full["covered_bases"])
+            self.assertEqual(cov_b["segments"], cov_full["segments"])
+            self.assertNotIn("reference_pending", cov_b)
+            # The completed two-phase index reports the same stats as single-phase.
+            self.assertEqual(
+                active_genome_index_summary(two_index)["stats"],
+                active_genome_index_summary(full_index)["stats"],
+            )
+
+            # Idempotent: re-running Phase B on a completed index is a no-op.
+            again = append_reference_pass(two_index)
+            self.assertEqual(again["status"], "completed")
 
     def test_header_reconstructable_from_index_after_source_removed(self) -> None:
         # Parse self-sufficiency: the source VCF header is persisted into the

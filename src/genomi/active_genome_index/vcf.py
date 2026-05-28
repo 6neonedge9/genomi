@@ -631,3 +631,20 @@ def _optional_int(value: str | None) -> int | None:
 
 def _is_symbolic_non_ref_alt(value: str) -> bool:
     return value.strip().upper() in {"<NON_REF>", "<*>"}
+
+
+def alt_is_reference_only(alt: str) -> bool:
+    """True when the ALT column carries no real alternate allele.
+
+    An ALT of ``""``/``"."`` or only symbolic non-ref tokens (``<NON_REF>``,
+    ``<*>``) means the record is a reference/gVCF block — ``is_variant`` is
+    False for it regardless of genotype (a real allele can never be referenced
+    by GT because none exists). The two-phase variant pass uses this as a cheap
+    pre-filter to skip the expensive full parse + row build on the ~96% of a
+    gVCF that is reference blocks; only real-ALT lines (which *might* be a
+    hom-ref call) are fully parsed and classified by ``VcfRecord.is_variant``.
+    """
+    alt = alt.strip()
+    if alt in ("", "."):
+        return True
+    return all(_is_symbolic_non_ref_alt(token) for token in alt.split(","))

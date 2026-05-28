@@ -16,6 +16,29 @@ def _path(params: JsonObject, key: str) -> Path:
     return Path(str(value))
 
 
+def _stamp_reference_pending(result: JsonObject, resolved: JsonObject) -> JsonObject:
+    """Mark a reference-dependent read provisional while a two-phase gVCF parse
+    is still appending its reference-block tail. Without this, a host agent
+    could read a transient empty/zero-coverage answer as final instead of
+    waiting for the active_genome_index.build_reference_pass job to complete.
+
+    A no-op unless the resolved Active Genome Index is variants_ready, so a
+    fully complete index (or a non-AGI read) is untouched."""
+    if not isinstance(result, dict):
+        return result
+    agi_path = resolved.get("active_genome_index_path")
+    if not agi_path:
+        return result
+    from ...active_genome_index._agi_readiness import REFERENCE_PENDING_NOTE, reference_pending
+
+    try:
+        if reference_pending(agi_path):
+            return {**result, "reference_pending": True, "reference_pending_note": REFERENCE_PENDING_NOTE}
+    except Exception:
+        return result
+    return result
+
+
 def _optional_path(params: JsonObject, key: str) -> Path | None:
     value = params.get(key)
     if value is None or value == "":

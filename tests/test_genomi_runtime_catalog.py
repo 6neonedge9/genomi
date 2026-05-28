@@ -234,6 +234,7 @@ class GenomiRuntimeCatalogTests(GenomiRuntimeTestCase):
             namespace_names,
             {
                 "active_genome_index.summarize",
+                "active_genome_index.build_reference_pass",
                 "active_genome_index.classify_callset_qc",
                 "active_genome_index.classify_genotype_support",
                 "active_genome_index.classify_region_callability",

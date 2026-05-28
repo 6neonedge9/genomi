@@ -31,6 +31,15 @@ SCHEMA_VERSION = 4
 
 ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS = "in_progress"
 
+# Intermediate state for the two-phase gVCF build: every variant record is
+# parsed, stored and indexed (so the entire interpretation surface — rsID,
+# gene, region, exact-allele lookup — is correct), while the reference-block
+# tail (~96% of a gVCF, the slow part) is still being appended by a detached
+# continuation. A variants_ready index is queryable now; the only answers it
+# cannot give yet are "is this locus confirmed reference vs not-callable",
+# which the resolver already degrades gracefully (see _agi_readiness).
+ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY = "variants_ready"
+
 ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED = "completed"
 
 REQUIRED_QUERY_OBJECTS = {
@@ -302,9 +311,26 @@ def read_header_from_active_genome_index(connection: sqlite3.Connection) -> VcfH
     columns = chrom_line.split("\t") if chrom_line else []
     return VcfHeader(meta=meta, columns=columns)
 
+def _mark_active_genome_index_variants_ready(connection: sqlite3.Connection) -> None:
+    """Phase A done: variants stored + indexed, reference tail still pending.
+
+    Leaves active_genome_index_complete False on purpose — readiness keys
+    `complete` on that marker, so a variants_ready index reports the distinct
+    intermediate status while still serving variant queries.
+    """
+    _upsert_metadata(connection, "active_genome_index_build_status", ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY)
+    _upsert_metadata(connection, "active_genome_index_complete", False)
+    _upsert_metadata(connection, "variants_complete", True)
+    _upsert_metadata(connection, "reference_complete", False)
+    _upsert_metadata(connection, "variants_ready_at", utc_now())
+
 def _mark_active_genome_index_build_completed(connection: sqlite3.Connection) -> None:
     _upsert_metadata(connection, "active_genome_index_build_status", ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED)
     _upsert_metadata(connection, "active_genome_index_complete", True)
+    # A single-phase build never set these; stamp them so every completed
+    # index is self-consistent (variants + reference both present).
+    _upsert_metadata(connection, "variants_complete", True)
+    _upsert_metadata(connection, "reference_complete", True)
     _upsert_metadata(connection, "active_genome_index_completed_at", utc_now())
 
 def _upsert_metadata(connection: sqlite3.Connection, key: str, value: Any) -> None:

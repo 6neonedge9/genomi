@@ -8,15 +8,36 @@ from .coerce import (
     _bool,
     _float,
     _int,
+    _optional_int,
     _optional_path,
     _path,
     _require_agi_access,
     _require_personal_artifact_context,
     _remember_result,
+    _stamp_reference_pending,
     _str,
     _with_context,
 )
 from .errors import JsonObject, OperationError
+
+
+def _agi_build_reference_pass(params: JsonObject) -> JsonObject:
+    """Phase B of a two-phase gVCF parse: append the reference-block tail to a
+    variants_ready Active Genome Index and flip it to completed.
+
+    This is an internal continuation launched as a detached background job by
+    parse_source — not a user-facing capability. It needs only the index path;
+    the canonical source is resolved from the index's own metadata.
+    """
+    from ...active_genome_index.active_genome_index import append_reference_pass
+
+    agi_path = _optional_path(params, "active_genome_index_path")
+    if agi_path is None:
+        raise OperationError(
+            "invalid_params",
+            "active_genome_index.build_reference_pass requires active_genome_index_path",
+        )
+    return append_reference_pass(agi_path, parallel_workers=_optional_int(params, "parallel_workers"))
 
 
 def _vcf_init(params: JsonObject) -> JsonObject:
@@ -52,7 +73,7 @@ def _vcf_qc(params: JsonObject) -> JsonObject:
         "Provide a genome source or select an Active Genome Index before running QC.",
         "reading Active Genome Index artifacts",
     )
-    return static_annotation.run_static_sample_qc(
+    result = static_annotation.run_static_sample_qc(
         _path(resolved, "vcf"),
         evidence_db=_optional_path(resolved, "db"),
         active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
@@ -60,6 +81,9 @@ def _vcf_qc(params: JsonObject) -> JsonObject:
         genome_build=_str(resolved, "genome_build", "auto"),
         scan_records=_int(resolved, "scan_records", 1000),
     )
+    # Callset QC keys "has reference blocks" / absence-allowed off reference
+    # rows, so its classification is provisional until Phase B lands them.
+    return _stamp_reference_pending(result, resolved)
 
 
 def _vcf_genotype_support(params: JsonObject) -> JsonObject:
@@ -71,7 +95,7 @@ def _vcf_genotype_support(params: JsonObject) -> JsonObject:
         "Provide a genome source or select an Active Genome Index before checking genotype support.",
         "reading Active Genome Index artifacts",
     )
-    return static_annotation.run_static_genotype_support(
+    result = static_annotation.run_static_genotype_support(
         _path(resolved, "vcf"),
         _str(resolved, "chrom"),
         _int(resolved, "pos"),
@@ -85,6 +109,8 @@ def _vcf_genotype_support(params: JsonObject) -> JsonObject:
         min_depth=_int(resolved, "min_depth", 10),
         min_genotype_quality=_int(resolved, "min_gq", 20),
     )
+    # Hom-ref / reference-block classification depends on the reference tail.
+    return _stamp_reference_pending(result, resolved)
 
 
 def _vcf_callability(params: JsonObject) -> JsonObject:
@@ -96,7 +122,7 @@ def _vcf_callability(params: JsonObject) -> JsonObject:
         "Provide a genome source or select an Active Genome Index before checking callability.",
         "reading Active Genome Index artifacts",
     )
-    return static_annotation.run_static_callability(
+    result = static_annotation.run_static_callability(
         _path(resolved, "vcf"),
         _str(resolved, "region"),
         evidence_db=_optional_path(resolved, "db"),
@@ -107,6 +133,9 @@ def _vcf_callability(params: JsonObject) -> JsonObject:
         min_covered_fraction=_float(resolved, "min_covered_fraction", 0.95),
         limit=_int(resolved, "limit", 5000),
     )
+    # Callability is entirely reference-coverage driven; flag it provisional
+    # while Phase B is still appending reference blocks.
+    return _stamp_reference_pending(result, resolved)
 
 
 def _variant_lookup(params: JsonObject) -> JsonObject:

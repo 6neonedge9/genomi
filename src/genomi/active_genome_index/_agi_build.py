@@ -13,7 +13,7 @@ import json
 import os
 import sqlite3
 from ._agi_readiness import ActiveGenomeIndexSchemaTooNew, _active_genome_index_readiness_from_connection
-from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_active_genome_index_path
+from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _mark_active_genome_index_variants_ready, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_active_genome_index_path
 from ..runtime.sqlite_support import enable_wal
 
 
@@ -28,6 +28,7 @@ def create_active_genome_index(
     progress_every: int | None = None,
     progress: Callable[[int, int], None] | None = None,
     reuse_existing: bool = True,
+    defer_reference: bool = False,
 ) -> dict[str, Any]:
     vcf_path = Path(vcf_path)
     active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
@@ -115,6 +116,7 @@ def create_active_genome_index(
                 commit_every=commit_every,
                 workers=workers,
                 max_records=max_records,
+                defer_reference=defer_reference,
             )
         active_genome_index_path.unlink(missing_ok=True)
         connection = connect(active_genome_index_path)
@@ -223,22 +225,30 @@ def _create_active_genome_index_parallel(
     commit_every: int,
     workers: int,
     max_records: int | None,
+    defer_reference: bool = False,
 ) -> dict[str, Any]:
+    # `mode` drives which rows each shard stores:
+    # - include_reference=False  → "variants" forever (a complete variant-only
+    #   index; there is no reference tail to defer).
+    # - defer_reference          → "variants" now (Phase A → variants_ready),
+    #   reference appended later by append_reference_pass (Phase B).
+    # - otherwise                → "all" (single-phase complete build).
+    # Phase A still counts every record, so stats are final after this pass —
+    # Phase B only fills in the stored reference rows.
+    if not include_reference:
+        defer_reference = False
+        mode = "variants"
+    elif defer_reference:
+        mode = "variants"
+    else:
+        mode = "all"
     active_genome_index_path.unlink(missing_ok=True)
     connection = connect(active_genome_index_path)
     shard_paths: list[Path] = []
     try:
         _reset_schema(connection)
         _insert_metadata(connection, vcf_path, header, include_reference, max_records=max_records)
-        use_bgzf = _bgzip_indexed(vcf_path)
-        if use_bgzf:
-            from .parallel_build import bgzf_block_ranges, build_shard_from_bgzf_range
-
-            ranges = bgzf_block_ranges(str(vcf_path) + ".gzi", workers)
-            shard_worker = build_shard_from_bgzf_range
-        else:
-            ranges = _byte_ranges(vcf_path.stat().st_size, workers)
-            shard_worker = _build_active_genome_index_shard
+        ranges, shard_worker = _shard_ranges_and_worker(vcf_path, workers)
         shard_paths = [_shard_path(active_genome_index_path, shard_index) for shard_index in range(len(ranges))]
         for shard_path in shard_paths:
             if shard_path.exists():
@@ -250,7 +260,7 @@ def _create_active_genome_index_parallel(
                 start,
                 end,
                 header.samples,
-                include_reference,
+                mode,
                 commit_every,
             )
             for index, (start, end) in enumerate(ranges)
@@ -262,12 +272,17 @@ def _create_active_genome_index_parallel(
         stats = _merge_active_genome_index_shards(connection, shard_results)
         _create_query_indexes(connection)
         _insert_stat_rows(connection, stats)
-        _mark_active_genome_index_build_completed(connection)
+        if defer_reference:
+            _mark_active_genome_index_variants_ready(connection)
+        else:
+            _mark_active_genome_index_build_completed(connection)
         connection.commit()
         enable_wal(connection)
         return {
-            "status": "completed",
-            "active_genome_index_complete": True,
+            "status": "variants_ready" if defer_reference else "completed",
+            "active_genome_index_complete": not defer_reference,
+            "variants_ready": True,
+            "reference_pending": defer_reference,
             "vcf_path": str(vcf_path),
             "active_genome_index_path": str(active_genome_index_path),
             "schema_version": SCHEMA_VERSION,
@@ -282,8 +297,114 @@ def _create_active_genome_index_parallel(
             with contextlib.suppress(FileNotFoundError):
                 shard_path.unlink()
 
-def _build_active_genome_index_shard(args: tuple[str, str, int, int, list[str], bool, int]) -> dict[str, Any]:
-    vcf_path_raw, shard_path_raw, start, end, sample_names, include_reference, commit_every = args
+def _shard_ranges_and_worker(vcf_path: Path, workers: int) -> tuple[list[tuple[int, int]], Callable[[Any], dict[str, Any]]]:
+    """Partition the canonical for parallel parsing.
+
+    A bgzip canonical with a `.gzi` is partitioned by BGZF block (the real
+    parse path, since parse_source always canonicalizes to bgzip). A plain
+    uncompressed VCF is partitioned by raw byte range.
+    """
+    if _bgzip_indexed(vcf_path):
+        from .parallel_build import bgzf_block_ranges, build_shard_from_bgzf_range
+
+        return bgzf_block_ranges(str(vcf_path) + ".gzi", workers), build_shard_from_bgzf_range
+    return _byte_ranges(vcf_path.stat().st_size, workers), _build_active_genome_index_shard
+
+def append_reference_pass(
+    active_genome_index_path: str | Path,
+    vcf_path: str | Path | None = None,
+    *,
+    commit_every: int = 50_000,
+    parallel_workers: int | None = None,
+) -> dict[str, Any]:
+    """Phase B: append the reference-block tail to a variants_ready index.
+
+    Parses only non-variant records (in parallel, coalescing reference runs)
+    into shard DBs, merges them into the existing index, and flips it to
+    completed. Stats are left untouched — Phase A already counted every
+    record. Idempotent: a no-op on an index that is already complete.
+
+    When vcf_path is omitted it is resolved from the index's own
+    metadata.vcf_path (the per-index canonical bgzip that survives parse for
+    exactly this kind of follow-up read).
+    """
+    active_genome_index_path = Path(active_genome_index_path)
+    readiness = _active_genome_index_readiness_from_path(active_genome_index_path)
+    if readiness.get("complete"):
+        return {
+            "status": "completed",
+            "active_genome_index_complete": True,
+            "active_genome_index_path": str(active_genome_index_path),
+            "reference_pending": False,
+            "note": "Reference pass already complete; nothing to do.",
+        }
+    vcf_path = Path(vcf_path) if vcf_path is not None else _canonical_source_for_index(active_genome_index_path)
+    workers = _resolved_parallel_workers(vcf_path, parallel_workers=parallel_workers, max_records=None)
+    with _active_genome_index_build_lock(active_genome_index_path):
+        readiness = _active_genome_index_readiness_from_path(active_genome_index_path)
+        if readiness.get("complete"):
+            return {
+                "status": "completed",
+                "active_genome_index_complete": True,
+                "active_genome_index_path": str(active_genome_index_path),
+                "reference_pending": False,
+            }
+        connection = connect_existing(active_genome_index_path)
+        shard_paths: list[Path] = []
+        try:
+            ranges, shard_worker = _shard_ranges_and_worker(vcf_path, workers)
+            # Offset shard indices well past any Phase A shard names so a Phase A
+            # shard left behind by a crash can never be mistaken for a Phase B one.
+            shard_paths = [_shard_path(active_genome_index_path, 1000 + shard_index) for shard_index in range(len(ranges))]
+            for shard_path in shard_paths:
+                shard_path.unlink(missing_ok=True)
+            header_samples = _header_samples_from_index(connection)
+            tasks = [
+                (str(vcf_path), str(shard_paths[index]), start, end, header_samples, "reference", commit_every)
+                for index, (start, end) in enumerate(ranges)
+            ]
+            context = _multiprocessing_context()
+            with context.Pool(processes=len(tasks)) as pool:
+                shard_results = pool.map(shard_worker, tasks)
+            _merge_active_genome_index_shards(connection, shard_results)
+            _mark_active_genome_index_build_completed(connection)
+            connection.commit()
+            return {
+                "status": "completed",
+                "active_genome_index_complete": True,
+                "reference_pending": False,
+                "active_genome_index_path": str(active_genome_index_path),
+                "vcf_path": str(vcf_path),
+                "parallel_workers": len(tasks),
+            }
+        finally:
+            connection.close()
+            for shard_path in shard_paths:
+                with contextlib.suppress(FileNotFoundError):
+                    shard_path.unlink()
+
+def _active_genome_index_readiness_from_path(active_genome_index_path: Path) -> dict[str, Any]:
+    if not active_genome_index_path.exists():
+        return {"complete": False, "variants_ready": False}
+    try:
+        with connect_existing(active_genome_index_path) as connection:
+            return _active_genome_index_readiness_from_connection(connection)
+    except (sqlite3.Error, json.JSONDecodeError, ValueError):
+        return {"complete": False, "variants_ready": False}
+
+def _header_samples_from_index(connection: sqlite3.Connection) -> list[str]:
+    from ._agi_schema import read_header_from_active_genome_index
+
+    return read_header_from_active_genome_index(connection).samples
+
+def _canonical_source_for_index(active_genome_index_path: Path) -> Path:
+    from ._agi_readiness import canonical_source_for_active_genome_index
+
+    with connect_existing(active_genome_index_path) as connection:
+        return canonical_source_for_active_genome_index(connection)
+
+def _build_active_genome_index_shard(args: tuple[str, str, int, int, list[str], str, int]) -> dict[str, Any]:
+    vcf_path_raw, shard_path_raw, start, end, sample_names, mode, commit_every = args
     vcf_path = Path(vcf_path_raw)
     shard_path = Path(shard_path_raw)
     connection = connect(shard_path)
@@ -295,7 +416,7 @@ def _build_active_genome_index_shard(args: tuple[str, str, int, int, list[str], 
             start=start,
             end=end,
             sample_names=sample_names,
-            include_reference=include_reference,
+            mode=mode,
             commit_every=commit_every,
         )
         connection.commit()
@@ -310,9 +431,14 @@ def _populate_records_from_byte_range(
     start: int,
     end: int,
     sample_names: list[str],
-    include_reference: bool,
+    mode: str,
     commit_every: int,
 ) -> ActiveGenomeIndexStats:
+    from .vcf import alt_is_reference_only
+
+    store_variants = mode in ("all", "variants")
+    store_reference = mode in ("all", "reference")
+    count_stats = mode != "reference"
     total = 0
     variant = 0
     reference = 0
@@ -342,8 +468,20 @@ def _populate_records_from_byte_range(
                 continue
             parts = text.split("\t")
             sample_count = sample_count_from_parts(parts, sample_names)
+            reference_only = alt_is_reference_only(parts[4]) if len(parts) > 4 else True
+            if reference_only and not store_reference:
+                if count_stats:
+                    filt = parts[6] if len(parts) > 6 else "."
+                    total += sample_count
+                    reference += sample_count
+                    if filt == "PASS":
+                        pass_count += sample_count
+                    elif filt == "FAIL":
+                        fail_count += sample_count
+                continue
             for sample_index in range(sample_count):
-                total += 1
+                if count_stats:
+                    total += 1
                 record = parse_record_fields(
                     parts,
                     sample_names=sample_names,
@@ -353,20 +491,24 @@ def _populate_records_from_byte_range(
                 )
                 row = _record_row(record)
                 is_variant = bool(row[13])
-                if is_variant:
-                    variant += 1
-                else:
-                    reference += 1
-                if record.filter == "PASS":
-                    pass_count += 1
-                elif record.filter == "FAIL":
-                    fail_count += 1
-                if include_reference or is_variant:
-                    batch.append(row)
-                    if len(batch) >= commit_every:
-                        _insert_record_batch(connection, batch)
-                        connection.commit()
-                        batch.clear()
+                if count_stats:
+                    if is_variant:
+                        variant += 1
+                    else:
+                        reference += 1
+                    if record.filter == "PASS":
+                        pass_count += 1
+                    elif record.filter == "FAIL":
+                        fail_count += 1
+                if is_variant and not store_variants:
+                    continue
+                if not is_variant and not store_reference:
+                    continue
+                batch.append(row)
+                if len(batch) >= commit_every:
+                    _insert_record_batch(connection, batch)
+                    connection.commit()
+                    batch.clear()
 
     if batch:
         _insert_record_batch(connection, batch)

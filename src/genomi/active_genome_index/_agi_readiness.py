@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 import json
 import sqlite3
-from ._agi_schema import ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED, REQUIRED_QUERY_OBJECTS, SCHEMA_VERSION, _rows_as_dicts, _sort_bins, connect, connect_existing, default_active_genome_index_path
+from ._agi_schema import ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED, ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY, REQUIRED_QUERY_OBJECTS, SCHEMA_VERSION, _rows_as_dicts, _sort_bins, connect, connect_existing, default_active_genome_index_path
 
 
 class ActiveGenomeIndexSchemaTooNew(RuntimeError):
@@ -54,9 +54,35 @@ def active_genome_index_readiness(active_genome_index_path: str | Path) -> dict[
         }
     return _public_active_genome_index_readiness(readiness, active_genome_index_path=path)
 
+def reference_pending(active_genome_index_path: str | Path) -> bool:
+    """True when the index is variants_ready but its reference-block tail is
+    still being appended (Phase B). Reference-dependent reads use this to stamp
+    their result so a transient empty/negative is not read as a final answer."""
+    try:
+        return bool(active_genome_index_readiness(active_genome_index_path).get("variants_ready"))
+    except (ActiveGenomeIndexNeedsReparse, ActiveGenomeIndexSchemaTooNew, RuntimeError):
+        return False
+
+# Guidance stamped onto a reference-dependent result while Phase B runs, so the
+# host treats a negative as provisional instead of final.
+REFERENCE_PENDING_NOTE = (
+    "The Active Genome Index is variants_ready: every variant is queryable, but "
+    "the reference-block pass is still running. A negative or zero-coverage "
+    "reference answer here is provisional — do NOT treat it as final. Poll the "
+    "active_genome_index.build_reference_pass job (genomi.check_background_job) "
+    "or re-run this read once readiness reports 'completed'. Variant lookups are "
+    "already final and need no wait."
+)
+
 def ensure_active_genome_index_complete(active_genome_index_path: str | Path) -> None:
     readiness = active_genome_index_readiness(active_genome_index_path)
     if readiness.get("complete"):
+        return
+    # A variants_ready index is a usable read target: every variant is stored
+    # and indexed, and the resolver already degrades "confirmed reference vs
+    # not-callable" gracefully while the reference tail is appended. Let reads
+    # through; the readiness envelope they surface carries reference_pending.
+    if readiness.get("variants_ready"):
         return
     status = readiness.get("status") or "incomplete"
     reason = readiness.get("reason") or "active_genome_index_not_complete"
@@ -263,8 +289,18 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
     marker_complete = metadata.get("active_genome_index_complete") is True
     status = str(metadata.get("active_genome_index_build_status") or ("completed" if marker_complete else "unknown"))
     complete = marker_complete and status == ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED and not missing_objects and bool(stats)
+    # A two-phase gVCF build reaches variants_ready when every variant is
+    # stored and the query objects/stats exist, but the reference tail is still
+    # being appended (active_genome_index_complete stays False). It is queryable
+    # for variants now; only "confirmed reference vs not-callable" is provisional.
+    variants_ready = (
+        not complete
+        and status == ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY
+        and not missing_objects
+        and bool(stats)
+    )
     reason = None
-    if not complete:
+    if not complete and not variants_ready:
         if not marker_complete:
             reason = "completion_marker_missing_or_false"
         elif status != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
@@ -275,6 +311,8 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
             reason = "stats_missing"
         else:
             reason = "active_genome_index_not_complete"
+    elif variants_ready:
+        reason = "reference_pass_pending"
     else:
         # Even a structurally complete Active Genome Index is unusable if its
         # schema_version doesn't match the runtime. Downgrade readiness so
@@ -291,6 +329,7 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
             reason = "active_genome_index_schema_too_new"
     return {
         "complete": complete,
+        "variants_ready": variants_ready,
         "status": ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED if complete else status,
         "reason": reason,
         "metadata": metadata,
@@ -303,10 +342,18 @@ def _public_active_genome_index_readiness(readiness: dict[str, Any], *, active_g
     result: dict[str, Any] = {
         "status": readiness.get("status") or "unknown",
         "complete": bool(readiness.get("complete")),
+        "variants_ready": bool(readiness.get("variants_ready")),
         "reason": readiness.get("reason"),
         "missing_objects": list(readiness.get("missing_objects") or []),
         "retry_operation": "genomi.parse_source",
     }
+    if result["variants_ready"] and not result["complete"]:
+        result["reference_pending"] = True
+        result["note"] = (
+            "Variants are fully queryable. The reference-block pass is still "
+            "running, so 'confirmed reference vs not-callable' answers are "
+            "provisional — re-query once status is 'completed'."
+        )
     if active_genome_index_path is not None:
         result["active_genome_index_path"] = str(active_genome_index_path)
     return result

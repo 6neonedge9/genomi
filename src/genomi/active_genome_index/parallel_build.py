@@ -80,9 +80,21 @@ def build_shard_from_bgzf_range(args: tuple[Any, ...]) -> dict[str, Any]:
     """Multiprocessing worker: parse one bgzip virtual-offset range to a shard.
 
     ``args`` = (canonical_path, shard_path, start_voffset, end_voffset,
-    sample_names, include_reference, commit_every). Returns
-    ``{"shard_path", "stats"}``. Imports the build internals lazily so this
-    stays picklable and the worker process loads them fresh.
+    sample_names, mode, commit_every). ``mode`` selects which records this
+    shard stores:
+
+    - ``"all"``     — store every record (single-phase build).
+    - ``"variants"``— store only variant records, and cheap-skip the full parse
+      of reference-only-ALT lines (Phase A of the two-phase gVCF build). These
+      lines are still counted (so stats are final after Phase A) but never row-
+      built, which is where the speed comes from on a reference-heavy gVCF.
+    - ``"reference"``— store only non-variant records, coalescing reference runs
+      (Phase B). Every line is fully parsed so a real-ALT hom-ref call is stored
+      as the reference row it is; counting is left to Phase A to avoid double-
+      counting, so this mode reports zero stats.
+
+    Returns ``{"shard_path", "stats"}``. Imports the build internals lazily so
+    this stays picklable and the worker process loads them fresh.
     """
 
     (
@@ -91,7 +103,7 @@ def build_shard_from_bgzf_range(args: tuple[Any, ...]) -> dict[str, Any]:
         start_voffset,
         end_voffset,
         sample_names,
-        include_reference,
+        mode,
         commit_every,
     ) = args
 
@@ -105,7 +117,11 @@ def build_shard_from_bgzf_range(args: tuple[Any, ...]) -> dict[str, Any]:
         _reset_schema,
         connect,
     )
-    from .vcf import parse_record_fields, sample_count_from_parts
+    from .vcf import alt_is_reference_only, parse_record_fields, sample_count_from_parts
+
+    store_variants = mode in ("all", "variants")
+    store_reference = mode in ("all", "reference")
+    count_stats = mode != "reference"
 
     connection = connect(shard_path)
     total = variant = reference = pass_count = fail_count = 0
@@ -146,8 +162,23 @@ def build_shard_from_bgzf_range(args: tuple[Any, ...]) -> dict[str, Any]:
                 line_length = len(raw)
                 parts = text.split("\t")
                 sample_count = sample_count_from_parts(parts, sample_names)
+                # Cheap pre-classify: a reference-only ALT is never a variant,
+                # so the variant pass can count it and move on without building
+                # a row. The reference pass still needs the row, so it parses.
+                reference_only = alt_is_reference_only(parts[4]) if len(parts) > 4 else True
+                if reference_only and not store_reference:
+                    if count_stats:
+                        filt = parts[6] if len(parts) > 6 else "."
+                        total += sample_count
+                        reference += sample_count
+                        if filt == "PASS":
+                            pass_count += sample_count
+                        elif filt == "FAIL":
+                            fail_count += sample_count
+                    continue
                 for sample_index in range(sample_count):
-                    total += 1
+                    if count_stats:
+                        total += 1
                     record = parse_record_fields(
                         parts,
                         sample_names=sample_names,
@@ -157,21 +188,24 @@ def build_shard_from_bgzf_range(args: tuple[Any, ...]) -> dict[str, Any]:
                     )
                     row = _record_row(record)
                     is_variant = bool(row[13])
+                    if count_stats:
+                        if is_variant:
+                            variant += 1
+                        else:
+                            reference += 1
+                        if record.filter == "PASS":
+                            pass_count += 1
+                        elif record.filter == "FAIL":
+                            fail_count += 1
                     if is_variant:
-                        variant += 1
-                    else:
-                        reference += 1
-                    if record.filter == "PASS":
-                        pass_count += 1
-                    elif record.filter == "FAIL":
-                        fail_count += 1
-                    if not include_reference and not is_variant:
-                        continue
-                    if is_variant:
+                        if not store_variants:
+                            continue
                         for flushed in coalescer.flush():
                             _emit(flushed)
                         _emit(row)
                     else:
+                        if not store_reference:
+                            continue
                         for flushed in coalescer.add(row):
                             _emit(flushed)
         for flushed in coalescer.flush():

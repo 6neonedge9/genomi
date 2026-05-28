@@ -21,6 +21,7 @@ from .coerce import (
     _optional_str,
     _path,
     _require_personal_artifact_context,
+    _stamp_reference_pending,
     _str,
     _with_context,
 )
@@ -45,10 +46,13 @@ def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
     )
     if missing is not None:
         return missing
-    return ancestry_overlap.check_sample_overlap(
-        _path(resolved, "vcf"),
-        active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
-        genome_build=genome_build,
+    return _stamp_reference_pending(
+        ancestry_overlap.check_sample_overlap(
+            _path(resolved, "vcf"),
+            active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
+            genome_build=genome_build,
+        ),
+        resolved,
     )
 
 
@@ -62,11 +66,14 @@ def _ancestry_project_pca(params: JsonObject) -> JsonObject:
     )
     if missing is not None:
         return missing
-    return ancestry_pca.project_sample_pca(
-        _path(resolved, "vcf"),
-        active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
-        genome_build=genome_build,
-        nearest_reference_count=_int(resolved, "nearest_reference_count", 10),
+    return _stamp_reference_pending(
+        ancestry_pca.project_sample_pca(
+            _path(resolved, "vcf"),
+            active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
+            genome_build=genome_build,
+            nearest_reference_count=_int(resolved, "nearest_reference_count", 10),
+        ),
+        resolved,
     )
 
 
@@ -80,11 +87,14 @@ def _ancestry_estimate_population_context(params: JsonObject) -> JsonObject:
     )
     if missing is not None:
         return missing
-    return ancestry_pca.estimate_population_context(
-        _path(resolved, "vcf"),
-        active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
-        genome_build=genome_build,
-        nearest_reference_count=_int(resolved, "nearest_reference_count", 10),
+    return _stamp_reference_pending(
+        ancestry_pca.estimate_population_context(
+            _path(resolved, "vcf"),
+            active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
+            genome_build=genome_build,
+            nearest_reference_count=_int(resolved, "nearest_reference_count", 10),
+        ),
+        resolved,
     )
 
 
@@ -191,19 +201,22 @@ def _prs_build_source_context(_: JsonObject) -> JsonObject:
 
 def _prs_check_score_overlap(params: JsonObject) -> JsonObject:
     resolved = _prs_private_context(params, "checking sample overlap with a local polygenic-score file")
-    return prs_scorer.check_score_overlap(
-        _path(resolved, "vcf"),
-        active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
-        pgs_id=_optional_str(resolved, "pgs_id"),
-        score_dir=_optional_path(resolved, "score_dir"),
-        genome_build=_str(resolved, "genome_build", "GRCh38"),
-        skip_ambiguous_palindromic=_bool(resolved, "skip_ambiguous_palindromic", True),
+    return _stamp_reference_pending(
+        prs_scorer.check_score_overlap(
+            _path(resolved, "vcf"),
+            active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
+            pgs_id=_optional_str(resolved, "pgs_id"),
+            score_dir=_optional_path(resolved, "score_dir"),
+            genome_build=_str(resolved, "genome_build", "GRCh38"),
+            skip_ambiguous_palindromic=_bool(resolved, "skip_ambiguous_palindromic", True),
+        ),
+        resolved,
     )
 
 
 def _prs_calculate_score(params: JsonObject) -> JsonObject:
     resolved = _prs_private_context(params, "calculating a polygenic score from local Active Genome Index artifacts")
-    return prs_scorer.calculate_score(
+    return _stamp_reference_pending(prs_scorer.calculate_score(
         _path(resolved, "vcf"),
         active_genome_index_path=_optional_path(resolved, "active_genome_index_path"),
         pgs_id=_optional_str(resolved, "pgs_id"),
@@ -212,7 +225,7 @@ def _prs_calculate_score(params: JsonObject) -> JsonObject:
         skip_ambiguous_palindromic=_bool(resolved, "skip_ambiguous_palindromic", True),
         score_mean=_optional_float(resolved, "score_mean"),
         score_sd=_optional_float(resolved, "score_sd"),
-    )
+    ), resolved)
 
 
 def _prs_private_context(params: JsonObject, action: str) -> JsonObject:

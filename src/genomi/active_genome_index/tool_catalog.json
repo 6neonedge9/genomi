@@ -13,6 +13,7 @@
       "operations": [
         "active_genome_index.approve_access",
         "active_genome_index.assign_user_genome",
+        "active_genome_index.build_reference_pass",
         "active_genome_index.classify_callset_qc",
         "active_genome_index.classify_genotype_support",
         "active_genome_index.classify_region_callability",
@@ -28,6 +29,42 @@
     }
   },
   "operations": {
+    "active_genome_index.build_reference_pass": {
+      "capability": "active-genome-index",
+      "namespace": "active_genome_index",
+      "description": "Internal: append the gVCF reference-block tail (Phase B) to a variants_ready Active Genome Index and flip it to completed. Launched automatically as a background job by genomi.parse_source; not normally invoked by hand.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "active_genome_index_path": {
+            "$ref": "#/schema_fragments/properties/local_path"
+          },
+          "parallel_workers": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "active_genome_index_path"
+        ],
+        "additionalProperties": false
+      },
+      "skill": "skills/active-genome-index/SKILL.md",
+      "area": "vcf",
+      "requires": [],
+      "produces": [
+        "active_genome_index_build_status"
+      ],
+      "context_optional": [],
+      "privacy_scope": "local_private",
+      "operation_scope": "write",
+      "mutating": true,
+      "external_io": [],
+      "data_access": [
+        "active_genome_index_or_supplied_private_paths"
+      ],
+      "discovery_role": "internal_tool"
+    },
     "active_genome_index.summarize": {
       "capability": "active-genome-index",
       "namespace": "active_genome_index",

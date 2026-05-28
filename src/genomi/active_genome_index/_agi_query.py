@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 import json
 import sqlite3
-from ._agi_readiness import ensure_active_genome_index_complete
+from ._agi_readiness import REFERENCE_PENDING_NOTE, ensure_active_genome_index_complete, reference_pending
 from ._agi_schema import connect_existing_readonly, default_active_genome_index_path
 
 
@@ -111,7 +111,7 @@ def coverage_query(
     merged = _merge_segments(covered_segments)
     covered_bases = sum(segment_end - segment_start + 1 for segment_start, segment_end in merged)
     requested_bases = end - start + 1
-    return {
+    result: dict[str, Any] = {
         "chrom": chrom,
         "start": start,
         "end": end,
@@ -122,6 +122,14 @@ def coverage_query(
         "records": records,
         "truncated": len(records) >= limit,
     }
+    # Coverage is the reference-dependent answer: while Phase B is still
+    # appending reference blocks, a low/zero covered_fraction is provisional,
+    # not final. Stamp it so the host waits/polls instead of concluding "no
+    # coverage". (Resolves through the index path; harmless if path unknown.)
+    if active_genome_index_path is not None and reference_pending(active_genome_index_path):
+        result["reference_pending"] = True
+        result["reference_pending_note"] = REFERENCE_PENDING_NOTE
+    return result
 
 def _query_offsets(
     vcf_path: str | Path,

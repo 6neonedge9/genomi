@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from pathlib import Path
+from typing import Any
 
 from ...runtime.paths import (
     run_evidence_db_path_for_source,
@@ -61,12 +62,32 @@ def _parse_vcf_active_genome_index(
     # source entirely (it may even be gone). Otherwise we materialize a
     # canonical bgzip ONLY to parse it into the index, then delete it to
     # reclaim disk — the index is the sole source of truth afterward.
-    build_index = (
-        force
-        or max_records is not None
-        or not active_genome_index_readiness(active_genome_index_path).get("complete")
-    )
-    if build_index:
+    #
+    # gVCFs are ~96% reference blocks, so we parse in two phases: Phase A
+    # stores every variant and returns variants_ready (the whole interpretation
+    # surface is live in minutes); Phase B appends the reference-block tail as a
+    # detached background job. Only gVCFs get phased — a plain VCF has no
+    # reference tail, and max_records / forced builds stay single-phase.
+    readiness = active_genome_index_readiness(active_genome_index_path)
+    two_phase = detection.source_format == "gvcf" and max_records is None
+    reference_job: JsonObject | None = None
+    if readiness.get("complete") and not force:
+        active_genome_index_result = {
+            "status": "cached",
+            "active_genome_index_complete": True,
+            "active_genome_index_path": str(active_genome_index_path),
+        }
+    elif two_phase and readiness.get("variants_ready") and not force:
+        # Phase A already done from a prior call; just make sure the reference
+        # tail is (still) being built instead of rebuilding variants.
+        active_genome_index_result = {
+            "status": "variants_ready",
+            "active_genome_index_complete": False,
+            "reference_pending": True,
+            "active_genome_index_path": str(active_genome_index_path),
+        }
+        reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
+    else:
         canonical_result = build_canonical_bgzip(source_path, work_dir, force=force)
         canonical_path = Path(canonical_result["canonical_path"])
         active_genome_index_result = create_active_genome_index(
@@ -76,17 +97,19 @@ def _parse_vcf_active_genome_index(
             max_records=max_records,
             parallel_workers=parallel_workers,
             reuse_existing=not force,
+            defer_reference=two_phase,
         )
+        # Drop the work-dir canonical; the index owns a per-index canonical
+        # (metadata.vcf_path) that Phase B and every capability tool read from.
         for stale in (canonical_path, Path(str(canonical_path) + ".gzi")):
             with contextlib.suppress(FileNotFoundError):
                 stale.unlink()
-    else:
-        active_genome_index_result = {
-            "status": "cached",
-            "active_genome_index_complete": True,
-            "active_genome_index_path": str(active_genome_index_path),
-        }
-    outputs = {"active_genome_index_path": str(active_genome_index_path)}
+        if active_genome_index_result.get("status") == "variants_ready":
+            reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
+    outputs: dict[str, Any] = {"active_genome_index_path": str(active_genome_index_path)}
+    if reference_job is not None:
+        outputs["reference_pass_job_id"] = reference_job.get("job_id")
+        outputs["reference_pass_job_path"] = reference_job.get("job_path")
     return {
         "schema": SOURCE_PARSE_SCHEMA,
         "workflow_area": "active-genome-index",
@@ -120,3 +143,24 @@ def _parse_vcf_active_genome_index(
             "Public evidence libraries are materialized lazily by focused tools such as ClinVar, HPO, GenCC, panel, and region annotation operations.",
         ],
     }
+
+
+def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: int | None) -> JsonObject | None:
+    """Launch Phase B (the reference-block tail) as a detached background job.
+
+    Reuses the standard job machinery (job_id, heartbeat, dead-worker
+    detection, check_background_job polling). start_operation_job dedups on
+    operation+params, so a duplicate parse_source call attaches to the running
+    reference job instead of starting a second one. Best-effort: if the job
+    can't be launched the variant-ready index is still fully usable, so we
+    swallow the error rather than fail the parse.
+    """
+    from ...runtime import background_jobs
+
+    params: JsonObject = {"active_genome_index_path": str(active_genome_index_path)}
+    if parallel_workers is not None:
+        params["parallel_workers"] = parallel_workers
+    try:
+        return background_jobs.start_operation_job("active_genome_index.build_reference_pass", params)
+    except Exception:
+        return None

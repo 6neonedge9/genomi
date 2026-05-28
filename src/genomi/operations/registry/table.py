@@ -115,6 +115,7 @@ from .handlers_sequence import (
     _sequence_translate,
 )
 from .handlers_vcf_variant import (
+    _agi_build_reference_pass,
     _variant_lookup,
     _vcf_callability,
     _vcf_genotype_support,
@@ -142,6 +143,7 @@ OPERATIONS: list[Operation] = [
     Operation('active_genome_index.clear_default_user', _genomi_clear_default_user),
     Operation('active_genome_index.clear_selection', _genomi_clear_selection),
     Operation('genomi.parse_source', _genomi_parse_source),
+    Operation('active_genome_index.build_reference_pass', _agi_build_reference_pass),
     Operation('active_genome_index.summarize', _vcf_summary),
     Operation('active_genome_index.classify_callset_qc', _vcf_qc),
     Operation('active_genome_index.classify_genotype_support', _vcf_genotype_support),

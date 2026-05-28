@@ -225,6 +225,27 @@ Set the default user/profile for this GENOMI_HOME.
   source-review memory, GWAS, or normal agent research without adding a routine
   source-status line.
 
+## Reference pass (`variants_ready` → `completed`)
+
+A gVCF parse returns `variants_ready` once every variant is stored, then
+appends the reference-block tail in a detached background job. At
+`variants_ready` every variant query is correct; only "is this locus confirmed
+reference vs not-callable" coverage answers are provisional (readiness and the
+individual coverage/callability/genotype-support results carry
+`reference_pending`). Don't reparse to "finish" it — poll
+`genomi.check_background_job` with the surfaced `job_id`, or simply re-query
+once readiness reports `completed`.
+
+### active_genome_index.build_reference_pass
+
+**Internal — do not invoke by hand.** `genomi.parse_source` launches this
+automatically as a background job after a gVCF reaches `variants_ready`, and
+surfaces its `job_id` in the parse result's `next_actions`. It appends the
+reference-block tail to the variants_ready index and flips it to `completed`.
+It is idempotent (a no-op on an already-complete index). The only thing you do
+with it is poll its `job_id` via `genomi.check_background_job` if the user is
+waiting on reference-coverage answers.
+
 ## After Parsing
 
 Select the focused skill from the user intent:

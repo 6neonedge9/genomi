@@ -12,6 +12,7 @@ from ._agi_schema import (
     SCHEMA_VERSION as SCHEMA_VERSION,
     ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS as ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS,
     ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED as ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED,
+    ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY as ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY,
     REQUIRED_QUERY_OBJECTS as REQUIRED_QUERY_OBJECTS,
     ActiveGenomeIndexStats as ActiveGenomeIndexStats,
     default_active_genome_index_path as default_active_genome_index_path,
@@ -92,6 +93,7 @@ from ._agi_query import (
 )
 from ._agi_build import (
     create_active_genome_index as create_active_genome_index,
+    append_reference_pass as append_reference_pass,
     _cached_active_genome_index_if_usable as _cached_active_genome_index_if_usable,
     _cached_record_limit_satisfies_request as _cached_record_limit_satisfies_request,
     _create_active_genome_index_parallel as _create_active_genome_index_parallel,
@@ -114,6 +116,7 @@ __all__ = [
     'connect',
     'connect_existing',
     'create_active_genome_index',
+    'append_reference_pass',
     'active_genome_index_summary',
     'active_genome_index_readiness',
     'ensure_active_genome_index_complete',
