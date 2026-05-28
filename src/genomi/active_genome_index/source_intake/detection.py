@@ -47,7 +47,7 @@ def detect_source(source: str | Path) -> SourceDetection:
     if _looks_like_vcf(source_path):
         provider, reference_build = _detect_vcf_provider(source_path)
         return SourceDetection(
-            source_format="gvcf" if "gvcf" in source_path.name.lower() else "vcf",
+            source_format="gvcf" if _looks_like_gvcf(source_path) else "vcf",
             source_kind="variant_callset",
             reference_build=reference_build,
             provider=provider,
@@ -258,6 +258,49 @@ def _detect_livingdna(source_path: Path) -> SourceDetection:
         provider="livingdna",
     )
 
+
+def _looks_like_gvcf(source_path: Path) -> bool:
+    """Decide VCF vs gVCF by content, never by filename.
+
+    A gVCF differs from a plain VCF by carrying reference-block records: a
+    symbolic ``<NON_REF>``/``<*>`` ALT and/or an ``END=`` INFO key, usually
+    declared with an ``##ALT=<ID=NON_REF...>`` header line. WGS gVCFs are
+    routinely delivered as ``sample.vcf.gz`` (no "gvcf" in the name), so the
+    extension is not a reliable signal — and getting this wrong silently
+    disables the variants-first two-phase parse for exactly the large,
+    reference-heavy files that need it most. We scan the header plus the first
+    handful of data records; the first reference-block signature wins.
+    """
+    name = source_path.name.lower()
+    try:
+        if name.endswith((".gz", ".bgz")):
+            handle = gzip.open(source_path, "rt", encoding="utf-8", errors="replace")
+        else:
+            handle = source_path.open("rt", encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    try:
+        with handle as fh:
+            data_records_seen = 0
+            while data_records_seen < 200:
+                line = fh.readline()
+                if not line:
+                    break
+                if line.startswith("#"):
+                    upper = line.upper()
+                    if "ID=NON_REF" in upper or "GVCFBLOCK" in upper:
+                        return True
+                    continue
+                fields = line.rstrip("\n").split("\t")
+                if len(fields) >= 8:
+                    alt = fields[4].upper()
+                    info = fields[7]
+                    if "<NON_REF>" in alt or "<*>" in alt or "END=" in info:
+                        return True
+                data_records_seen += 1
+    except OSError:
+        return False
+    return False
 
 def _detect_vcf_provider(source_path: Path) -> tuple[str | None, str | None]:
     """Sniff a VCF header for a known sequencing-service provider tag.
