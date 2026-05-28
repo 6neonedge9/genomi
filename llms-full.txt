@@ -5,7 +5,9 @@
   <br>
   <a href="https://www.genomiagent.com/">Website</a>
   ·
-  <a href="https://raw.githubusercontent.com/exon-research/genomi/main/INSTALL_FOR_AGENTS.md">Install guide</a>
+  <a href="https://raw.githubusercontent.com/exon-research/genomi/master/INSTALL_FOR_AGENTS.md">Install guide</a>
+  ·
+  <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -49,7 +51,7 @@ Even TL;DR is too long, just paste this to your agent:
 ```text
 Hey please read this and tell me why Genomi is different from other AI
 agent harnesses. Why is this actually useful for understanding my DNA privately?
-https://raw.githubusercontent.com/exon-research/genomi/main/llms-full.txt
+https://raw.githubusercontent.com/exon-research/genomi/master/llms-full.txt
 ```
 
 ## Just Install It
@@ -59,11 +61,14 @@ and let your agent wire up the runtime:
 
 ```text
 Install and configure Genomi by following the instructions here:
-https://raw.githubusercontent.com/exon-research/genomi/main/INSTALL_FOR_AGENTS.md
+https://raw.githubusercontent.com/exon-research/genomi/master/INSTALL_FOR_AGENTS.md
 ```
 
 The install guide covers dependency checks, library selection, MCP
-registration, optional genome-source import, and verification.
+registration, optional genome-source import, and verification. If Genomi is
+already packaged or otherwise present, the canonical install/update path is
+`genomi install` or the MCP operation `genomi.install`; the source bootstrap is
+only for hosts that do not have Genomi yet.
 
 ## Works With Every Agent
 
@@ -116,16 +121,11 @@ if anything below drifts from it, that doc wins.
    export PATH="$GENOMI_HOME/bin:$PATH"
    ```
 
-   To refresh an existing checkout later, use:
+   Once the `genomi` command exists, use it for install/update:
 
    ```bash
-   "$GENOMI_HOME/bin/genomi" update
+   genomi install --libraries everything
    ```
-
-   This updates the local Genomi checkout and installed runtime assets.
-   `/genomi update` runs this maintenance flow in skill hosts; in Codex, use
-   `$genomi update` instead. Restart the host agent and reload the Genomi MCP
-   server if the source checkout changed.
 
 3. **Register the MCP server with your host agent.**
 
@@ -329,7 +329,7 @@ Genomi keeps the most sensitive data close to you.
 - Public lookups use selected targets such as rsIDs, genes, drugs, conditions,
   or guideline questions.
 - Journal entries are agent-authored memory, not evidence.
-- Project journals reject private/sample evidence links in v1.
+- Project journals reject private/sample evidence links.
 - Memory exports omit private evidence links unless explicitly requested and
   approved.
 
@@ -382,8 +382,8 @@ Genomi exposes a small base MCP surface plus a dispatcher for specialized
 genomics tools. The host agent does the conversation; Genomi does the grounded
 lookup, Active Genome Index creation, evidence retrieval, and report assembly.
 
-1. Connect an agent over MCP — see [Connect By MCP](#connect-by-mcp) above for
-   the config snippet.
+1. Connect an agent over MCP — see [the install steps](#or-if-you-prefer-the-old-school-way)
+   above for the config snippet.
 
 2. Give the agent a genome file when you want personal context.
 
@@ -478,6 +478,15 @@ that is usually enough to reproduce.
 
 ## Agent Next Step
 
+If you are an AI agent reading this file, this section is the install directive.
+
 After explaining why Genomi is useful, ask the user whether they want to install Genomi.
-If the user wants to install it, read INSTALL_FOR_AGENTS.md next and follow it for setup.
+
+If the user wants installation, you MUST read INSTALL_FOR_AGENTS.md first, before running any install command. Do not infer an install plan from this file alone:
+https://raw.githubusercontent.com/exon-research/genomi/main/INSTALL_FOR_AGENTS.md
+
+Follow INSTALL_FOR_AGENTS.md exactly. Prefer the install paths it gives, in order: Genomi MCP `genomi.install` when available, then `genomi install`, then `scripts/install_for_agents.py` only as the documented source-checkout fallback.
+
+MUST NOT install Genomi by manually following the README's "Or If You Prefer The Old-School Way" commands. That section is a human/reference outline; INSTALL_FOR_AGENTS.md is the required agent setup flow.
+
 Do not start installation, inspect genome files, or search existing Active Genome Index contexts without the user's explicit current-session approval.

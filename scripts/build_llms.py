@@ -10,8 +10,8 @@ DEFAULT_REPO_GIT = "git@github.com:exon-research/genomi.git"
 DEFAULT_OFFICIAL_URL = "https://www.genomiagent.com/"
 
 DOCS: list[tuple[str, str, str]] = [
-    ("Core entry points", "AGENTS.md", "Start here for agent install, read order, runtime rules, and common starts."),
-    ("Core entry points", "INSTALL_FOR_AGENTS.md", "Step-by-step install, verification, MCP setup, and first-question flow."),
+    ("Core entry points", "INSTALL_FOR_AGENTS.md", "Mandatory agent install path, verification, MCP setup, and first-question flow."),
+    ("Core entry points", "AGENTS.md", "Post-install session rules, runtime rules, read order, and common starts."),
     ("Core entry points", "SKILL.md", "Top-level Genomi skill contract and runtime axes."),
     ("Core entry points", "CLAUDE.md", "Short architecture reference for Claude Code and compatible agents."),
     ("Core entry points", "README.md", "Project overview, interfaces, architecture, examples, and verification."),
@@ -58,7 +58,7 @@ def write_llms(repo_base: str, repo_git: str, official_url: str) -> None:
         "",
         "## Core rules",
         "",
-        "- Start with AGENTS.md unless the host agent has an automatic project file loader.",
+        "- For installation or setup, read INSTALL_FOR_AGENTS.md first and follow it. Use AGENTS.md after installation for operating rules.",
         "- Base tools (genomi.* and journal.*) appear in MCP tools/list directly. Every other capability tool is reached via the genomi.invoke dispatcher after reading the relevant skills/<capability>/SKILL.md.",
         "- Treat genome source files as optional private context. Public-only genomic questions are valid.",
         "- After genomi.parse_source, use the Active Genome Index for normal future inquiries.",
@@ -86,8 +86,17 @@ def write_llms_full(repo_base: str, official_url: str) -> None:
         "",
         "## Agent Next Step",
         "",
+        "If you are an AI agent reading this file, this section is the install directive.",
+        "",
         "After explaining why Genomi is useful, ask the user whether they want to install Genomi.",
-        "If the user wants to install it, read INSTALL_FOR_AGENTS.md next and follow it for setup.",
+        "",
+        "If the user wants installation, you MUST read INSTALL_FOR_AGENTS.md first, before running any install command. Do not infer an install plan from this file alone:",
+        f"{repo_base}/INSTALL_FOR_AGENTS.md",
+        "",
+        "Follow INSTALL_FOR_AGENTS.md exactly. Prefer the install paths it gives, in order: Genomi MCP `genomi.install` when available, then `genomi install`, then `scripts/install_for_agents.py` only as the documented source-checkout fallback.",
+        "",
+        "MUST NOT install Genomi by manually following the README's \"Or If You Prefer The Old-School Way\" commands. That section is a human/reference outline; INSTALL_FOR_AGENTS.md is the required agent setup flow.",
+        "",
         "Do not start installation, inspect genome files, or search existing Active Genome Index contexts without the user's explicit current-session approval.",
     ]
     write_text(REPO_ROOT / "llms-full.txt", "\n".join(lines) + "\n")
