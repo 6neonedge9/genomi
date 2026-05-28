@@ -99,7 +99,7 @@ class RenderDashboardTests(unittest.TestCase):
         )
         html = out.read_text(encoding="utf-8")
         # The placeholder string ("Not gathered yet") is in the inlined script
-        # exactly once, used by the EmptyPanel component for the 6 missing panels.
+        # exactly once, used by the EmptyPanel component for the missing panels.
         self.assertIn("Not gathered yet", html)
         result = decode_dashboard.render_dashboard(
             evidence={"overview": overview},
@@ -107,7 +107,7 @@ class RenderDashboardTests(unittest.TestCase):
             output=out,
         )
         self.assertEqual(set(result["panels_empty"]), {
-            "variants", "pgx", "risk", "ancestry", "nutrigenomics", "journal",
+            "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal",
         })
         self.assertEqual(result["panels_rendered"], ["overview"])
 
@@ -327,7 +327,7 @@ class RenderDashboardTests(unittest.TestCase):
             output=out,
         )
         html = out.read_text(encoding="utf-8")
-        self.assertIn("No PCA points supplied", html)
+        self.assertIn("No PCA points in evidence", html)
 
     def test_render_update_missing_file_errors(self) -> None:
         missing = self.tmpdir / "nope" / "dash.html"
