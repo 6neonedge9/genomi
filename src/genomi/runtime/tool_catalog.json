@@ -173,7 +173,7 @@
     "genomi.parse_source": {
       "capability": "genomi",
       "namespace": "genomi",
-      "description": "Detect, parse, and digitize a genome source such as VCF/gVCF, BAM, 23andMe, or AncestryDNA raw genotype text/zip.",
+      "description": "Detect, parse, and digitize a genome source such as VCF/gVCF, BAM, 23andMe, or AncestryDNA raw genotype text/zip. After parsing, read skills/active-genome-index/SKILL.md before using the invoke-only active_genome_index.* interpretation/selection tools; the result's next_actions repeats this.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -246,7 +246,7 @@
     "genomi.describe_context": {
       "capability": "genomi",
       "namespace": "genomi",
-      "description": "Return the current personal/session context: Active Genome Index access state, current user, and active_response_profile — id + label + full guidance string for the user's selected tone (eli5 / patient / literate / expert, or the catalog default when none has been set). Use when the user asks about personal context, their own genome/context, a genome source, a previous run, a selected user, or before making sample-specific claims. Public-only context (no active genome) is a valid state. Do not require this as a universal bootstrap for public-only questions.",
+      "description": "Return the current personal/session context: Active Genome Index access state, current user, and active_response_profile — id + label + full guidance string for the user's selected tone (eli5 / patient / literate / expert, or the catalog default when none has been set). Use when the user asks about personal context, their own genome/context, a genome source, a previous run, a selected user, or before making sample-specific claims. Public-only context (no active genome) is a valid state. Do not require this as a universal bootstrap for public-only questions. When genome data exists but is not active+approved this session, the result's next_actions points at skills/active-genome-index/SKILL.md, whose active_genome_index.* selection/approval tools are invoke-only.",
       "input_schema": {
         "type": "object",
         "properties": {},

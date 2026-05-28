@@ -39,8 +39,54 @@ from .errors import JsonObject, OperationError
 RUNTIME_UPDATE_ENV = "GENOMI_RUNTIME_UPDATE"
 
 
+_ACTIVE_GENOME_INDEX_SKILL = "skills/active-genome-index/SKILL.md"
+
+
+def _read_agi_skill_next_action(why: str) -> JsonObject:
+    """A `next_actions` entry telling the host to read the active-genome-index
+    skill. The AGI selection/approval/interpretation tools (active_genome_index.*)
+    are invoke-only, so the host must read that skill before it can reach them
+    via genomi.invoke. parse_source and describe_context are the two base tools
+    that funnel into AGI work, so they surface this pointer."""
+    return {
+        "action": "read_skill",
+        "skill": _ACTIVE_GENOME_INDEX_SKILL,
+        "why": why,
+        "then": (
+            "Active Genome Index selection, approval, and interpretation tools "
+            "(active_genome_index.*) are invoke-only — read this skill, then call "
+            "them through genomi.invoke."
+        ),
+    }
+
+
+def _with_next_action(result: JsonObject, action: JsonObject) -> JsonObject:
+    existing = result.get("next_actions")
+    actions = list(existing) if isinstance(existing, list) else []
+    actions.append(action)
+    return {**result, "next_actions": actions}
+
+
 def _genomi_describe_context(_: JsonObject) -> JsonObject:
-    return runtime_context.describe_context()
+    context = runtime_context.describe_context()
+    access = context.get("active_genome_index_access") or {}
+    approved = bool(access.get("approved")) if isinstance(access, dict) else False
+    has_active = bool(context.get("has_active_genome_index"))
+    has_genome_data = bool(context.get("users")) or bool(context.get("session_agis")) or has_active
+    # Point at the AGI skill only when there is genome data to work with but it
+    # is not already active + approved (so the host needs the invoke-only
+    # selection/approval tools). When the default user's AGI is auto-selected
+    # and approved, downstream capability tools read it directly — no pointer.
+    if has_genome_data and not (has_active and approved):
+        context = _with_next_action(
+            context,
+            _read_agi_skill_next_action(
+                "Genome data exists for this machine but is not active and approved this "
+                "session; selecting a profile or approving access for a personal-data "
+                "question uses invoke-only active_genome_index.* tools."
+            ),
+        )
+    return context
 
 
 def _genomi_approve_agi_access(params: JsonObject) -> JsonObject:
@@ -663,10 +709,17 @@ def _genomi_parse_source(params: JsonObject) -> JsonObject:
         max_records=params.get("max_records"),
         parallel_workers=_optional_int(params, "parallel_workers"),
     )
-    return _remember_source_result(
+    parsed = _remember_source_result(
         source,
         result,
         status="parsed",
         user_nickname=params.get("user_nickname"),
         set_default_user=_bool(params, "set_default_user"),
+    )
+    return _with_next_action(
+        parsed,
+        _read_agi_skill_next_action(
+            "The genome is now an Active Genome Index. Interpreting it and assigning "
+            "it to a user profile use invoke-only active_genome_index.* tools."
+        ),
     )

@@ -118,6 +118,42 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_parse_and_describe_context_point_at_agi_skill_when_needed(self) -> None:
+        # The AGI selection/approval/interpretation tools are invoke-only, so the
+        # two base entry points (parse_source, describe_context) must tell the
+        # host to read the active-genome-index skill — but only when AGI work is
+        # actually needed.
+        def reads_agi_skill(result: dict) -> bool:
+            return any(
+                a.get("action") == "read_skill" and "active-genome-index" in str(a.get("skill", ""))
+                for a in (result.get("next_actions") or [])
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                # Empty/public-only context: no pointer.
+                self.assertFalse(reads_agi_skill(call_operation("genomi.describe_context")))
+
+                vcf = Path("sample.vcf")
+                vcf.write_text(
+                    "##fileformat=VCFv4.2\n"
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA12878\n",
+                    encoding="utf-8",
+                )
+                # A successful parse always points at the AGI skill.
+                self.assertTrue(reads_agi_skill(call_operation("genomi.parse_source", {"source": str(vcf)})))
+
+                # Active + approved (default): no pointer — downstream tools read it directly.
+                self.assertFalse(reads_agi_skill(call_operation("genomi.describe_context")))
+
+                # Revoked: genome data exists but isn't approved → pointer (new session
+                # asking about own data must read the skill to approve/select).
+                call_operation("active_genome_index.revoke_access")
+                self.assertTrue(reads_agi_skill(call_operation("genomi.describe_context")))
+            finally:
+                os.chdir(previous)
 
     def test_existing_personal_dna_artifacts_require_session_approval_after_revoke(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
