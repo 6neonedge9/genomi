@@ -355,6 +355,53 @@ class IndexTests(unittest.TestCase):
         self.assertEqual(records[0]["rsid"], "rs7999")
         self.assertEqual(records[0]["info_genes"], ["HFE"])
 
+    def test_parallel_and_serial_agree_on_gvcf_with_reference_blocks(self) -> None:
+        # A WGS gVCF is mostly contiguous reference blocks. Both the serial and
+        # the bgzip-parallel build coalesce those runs, so the two paths must
+        # report identical stats and identical coverage for the same input.
+        # The all-variant parallel test above never exercised reference-block
+        # coalescing in the parallel worker; this one does.
+        def _write_gvcf(path: Path) -> None:
+            with path.open("w", encoding="utf-8") as handle:
+                handle.write("##fileformat=VCFv4.2\n")
+                handle.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n')
+                handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n")
+                # Contiguous same-GQ reference blocks (coalesce into one run),
+                # interrupted by occasional variants, repeated across enough
+                # positions to span multiple bgzip blocks.
+                for pos in range(1, 6001):
+                    if pos % 500 == 0:
+                        handle.write(
+                            f"1\t{pos}\trs{pos}\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:42:99\n"
+                        )
+                    else:
+                        handle.write(
+                            f"1\t{pos}\t.\tA\t<NON_REF>\t.\tPASS\tEND={pos}\tGT:DP:GQ\t0/0:35:50\n"
+                        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            serial_vcf = Path(tmp) / "serial.vcf"
+            parallel_vcf = Path(tmp) / "parallel.vcf"
+            serial_index = Path(tmp) / "serial.sqlite"
+            parallel_index = Path(tmp) / "parallel.sqlite"
+            _write_gvcf(serial_vcf)
+            _write_gvcf(parallel_vcf)
+
+            serial = create_active_genome_index(serial_vcf, serial_index, parallel_workers=1)
+            parallel = create_active_genome_index(parallel_vcf, parallel_index, parallel_workers=4)
+
+            serial_coverage = coverage_query(serial_vcf, "1", 1, 6000, serial_index)
+            parallel_coverage = coverage_query(parallel_vcf, "1", 1, 6000, parallel_index)
+
+        # Parallelism actually fired and both saw the same raw record counts.
+        self.assertEqual(serial["parallel_workers"], 1)
+        self.assertGreater(parallel["parallel_workers"], 1)
+        self.assertEqual(parallel["stats"]["total_records"], serial["stats"]["total_records"])
+        self.assertEqual(parallel["stats"]["variant_records"], serial["stats"]["variant_records"])
+        self.assertEqual(parallel["stats"]["reference_records"], serial["stats"]["reference_records"])
+        # Coalesced reference runs cover the same positions regardless of path.
+        self.assertEqual(parallel_coverage["covered_fraction"], serial_coverage["covered_fraction"])
+
     def test_header_reconstructable_from_index_after_source_removed(self) -> None:
         # Parse self-sufficiency: the source VCF header is persisted into the
         # index at parse time, so it reconstructs from the structured index

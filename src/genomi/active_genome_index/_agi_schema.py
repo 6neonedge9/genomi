@@ -9,6 +9,7 @@ from ..runtime.external import utc_now
 from ..runtime.paths import run_output_path
 from ..runtime.sqlite_support import DEFAULT_BUSY_TIMEOUT_SECONDS
 from ..runtime.sqlite_support import connect_sqlite, connect_readonly_sqlite
+from .vcf import SIMPLE_GENE_KEYS
 from .vcf import VcfHeader
 from .vcf import VcfRecord
 from .vcf import _is_symbolic_non_ref_alt
@@ -22,7 +23,6 @@ import errno
 import json
 import multiprocessing
 import os
-import re
 import sqlite3
 import time
 
@@ -316,6 +316,9 @@ def _upsert_metadata(connection: sqlite3.Connection, key: str, value: Any) -> No
         (key, json.dumps(value)),
     )
 
+# json.dumps([]) for the common no-gene record, precomputed once.
+_EMPTY_INFO_GENES_JSON = json.dumps([])
+
 _ROW_CHROM = 0
 
 _ROW_POS = 2
@@ -405,6 +408,9 @@ def _record_row(record: VcfRecord) -> tuple[Any, ...]:
     genotype, depth, genotype_quality = _sample_metrics(record.format, record.sample)
     end, info_genes = _info_end_and_genes(record.info, record.pos, record.ref)
     alts = [] if record.alt in ("", ".") else record.alt.split(",")
+    # Reference blocks — the bulk of a WGS gVCF — carry no genes, so skip the
+    # json.dumps round-trip for the empty list with a shared literal.
+    info_genes_json = _EMPTY_INFO_GENES_JSON if not info_genes else json.dumps(info_genes)
     return (
         record.chrom,
         _chrom_sort(record.chrom),
@@ -413,7 +419,7 @@ def _record_row(record: VcfRecord) -> tuple[Any, ...]:
         None if record.record_id == "." else record.record_id,
         record.sample_index,
         record.sample_name,
-        json.dumps(info_genes),
+        info_genes_json,
         record.info,
         record.ref,
         record.alt,
@@ -455,16 +461,6 @@ def _info_end_and_genes(info: str, pos: int, ref: str) -> tuple[int, list[str]]:
         return fallback_end, []
     end = fallback_end
     genes: list[str] = []
-    simple_gene_keys = {
-        "GENE",
-        "Gene",
-        "GENES",
-        "GeneName",
-        "SYMBOL",
-        "Gene.refGene",
-        "Gene.knownGene",
-        "SNPEFF_GENE_NAME",
-    }
     for item in info.split(";"):
         if "=" not in item:
             continue
@@ -475,7 +471,7 @@ def _info_end_and_genes(info: str, pos: int, ref: str) -> tuple[int, list[str]]:
             except ValueError:
                 end = fallback_end
             continue
-        if key in simple_gene_keys:
+        if key in SIMPLE_GENE_KEYS:
             genes.extend(_split_gene_values(value))
             continue
         if key == "ANN":
@@ -522,7 +518,7 @@ def _record_is_variant(alt: str, alts: list[str], genotype: str | None) -> bool:
     if alt in ("", "."):
         return False
     if genotype:
-        for token in re.split(r"[\/|]", genotype):
+        for token in genotype.replace("|", "/").split("/"):
             if token in {"", ".", "0"}:
                 continue
             try:
@@ -571,14 +567,25 @@ def _sort_bins(rows: list[dict[str, Any]], key: str, order: list[str]) -> list[d
     order_index = {value: index for index, value in enumerate(order)}
     return sorted(rows, key=lambda row: (order_index.get(str(row[key]), len(order)), int(row["is_variant"])))
 
+# A whole-genome VCF has only ~25 distinct chromosome labels but tens of
+# millions of records, so memoize the label→sort-key mapping instead of
+# redoing the string work on every record in the parse hot path.
+_CHROM_SORT_CACHE: dict[str, int] = {}
+
 def _chrom_sort(chrom: str) -> int:
+    cached = _CHROM_SORT_CACHE.get(chrom)
+    if cached is not None:
+        return cached
     normalized = chrom.removeprefix("chr")
     if normalized.isdigit():
-        return int(normalized)
-    if normalized == "X":
-        return 23
-    if normalized == "Y":
-        return 24
-    if normalized in ("M", "MT"):
-        return 25
-    return 10_000
+        value = int(normalized)
+    elif normalized == "X":
+        value = 23
+    elif normalized == "Y":
+        value = 24
+    elif normalized in ("M", "MT"):
+        value = 25
+    else:
+        value = 10_000
+    _CHROM_SORT_CACHE[chrom] = value
+    return value

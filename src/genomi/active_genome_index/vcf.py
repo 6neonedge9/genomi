@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import gzip
-import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +17,22 @@ VCF_COLUMNS = [
     "INFO",
     "FORMAT",
 ]
+
+# INFO keys whose value is a direct gene symbol (or symbol list). Hoisted to a
+# module constant so the per-record parse hot path (millions of records on a
+# WGS gVCF) does not reallocate this set on every call.
+SIMPLE_GENE_KEYS = frozenset(
+    {
+        "GENE",
+        "Gene",
+        "GENES",
+        "GeneName",
+        "SYMBOL",
+        "Gene.refGene",
+        "Gene.knownGene",
+        "SNPEFF_GENE_NAME",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -97,7 +112,7 @@ class VcfRecord:
         alts = self.alts
         genotype = self.genotype
         if genotype:
-            for token in re.split(r"[\/|]", genotype):
+            for token in genotype.replace("|", "/").split("/"):
                 if token in {"", ".", "0"}:
                     continue
                 try:
@@ -225,22 +240,12 @@ def extract_info_genes(info: str | dict[str, str | bool]) -> list[str]:
 def _extract_info_genes_from_text(info: str) -> list[str]:
     if not info or info == ".":
         return []
-    simple_gene_keys = {
-        "GENE",
-        "Gene",
-        "GENES",
-        "GeneName",
-        "SYMBOL",
-        "Gene.refGene",
-        "Gene.knownGene",
-        "SNPEFF_GENE_NAME",
-    }
     genes: list[str] = []
     for item in info.split(";"):
         if "=" not in item:
             continue
         key, value = item.split("=", 1)
-        if key in simple_gene_keys:
+        if key in SIMPLE_GENE_KEYS:
             genes.extend(_split_gene_values(value))
             continue
         if key == "ANN":
