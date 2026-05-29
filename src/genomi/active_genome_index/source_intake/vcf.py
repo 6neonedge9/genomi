@@ -16,9 +16,12 @@ from ...runtime.paths import (
 from ...runtime.static_dependencies import resolve_genome_build
 from ..active_genome_index import (
     active_genome_index_readiness,
+    append_reference_pass,
+    connect_existing,
     create_active_genome_index,
     default_active_genome_index_path,
 )
+from .._agi_schema import _upsert_metadata
 from ..canonical import build_canonical_bgzip
 from .agi_store import SOURCE_PARSE_SCHEMA, JsonObject, _init_source_evidence_db
 from .detection import SourceDetection
@@ -63,13 +66,16 @@ def _parse_vcf_active_genome_index(
     # canonical bgzip ONLY to parse it into the index, then delete it to
     # reclaim disk — the index is the sole source of truth afterward.
     #
-    # gVCFs are ~96% reference blocks, so we parse in two phases: Phase A
-    # stores every variant and returns variants_ready (the whole interpretation
-    # surface is live in minutes); Phase B appends the reference-block tail as a
-    # detached background job. Only gVCFs get phased — a plain VCF has no
-    # reference tail, and max_records / forced builds stay single-phase.
+    # Every source parses in two phases on one unified path: Phase A stores
+    # every variant and returns variants_ready (the whole interpretation surface
+    # is live in minutes); Phase B appends the reference-block tail. A gVCF is
+    # ~96% reference blocks so its tail is the bulk of the work; a plain VCF's
+    # reference tail (homref/no-call rows) is tiny and Phase B finishes almost
+    # immediately — but it travels the same code path either way. Only a
+    # capped/forced build (max_records) stays single-phase, since there is no
+    # stable reference tail to defer.
     readiness = active_genome_index_readiness(active_genome_index_path)
-    two_phase = detection.source_format == "gvcf" and max_records is None
+    two_phase = max_records is None
     reference_job: JsonObject | None = None
     if readiness.get("complete") and not force:
         active_genome_index_result = {
@@ -99,13 +105,21 @@ def _parse_vcf_active_genome_index(
             reuse_existing=not force,
             defer_reference=two_phase,
         )
-        # Drop the work-dir canonical; the index owns a per-index canonical
-        # (metadata.vcf_path) that Phase B and every capability tool read from.
-        for stale in (canonical_path, Path(str(canonical_path) + ".gzi")):
-            with contextlib.suppress(FileNotFoundError):
-                stale.unlink()
+        # The canonical the index adopted as its source of record
+        # (metadata.vcf_path) must outlive this call: a deferred reference pass
+        # (Phase B) reads it, and every resume reuses it. So drop only a
+        # *redundant* work-dir copy — present when create_active_genome_index
+        # materialized its own separate per-index canonical (a different path).
+        # When the index adopted this very file, keep it: Phase B reclaims it
+        # once the reference tail lands. A single-phase complete build has no
+        # later reader, so its canonical is disposable right away.
+        index_canonical = Path(str(active_genome_index_result.get("vcf_path") or ""))
         if active_genome_index_result.get("status") == "variants_ready":
+            _discard_canonical(canonical_path, keep=index_canonical)
             reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
+        else:
+            _discard_canonical(canonical_path, keep=None)
+            _discard_canonical(index_canonical, keep=None)
     outputs: dict[str, Any] = {"active_genome_index_path": str(active_genome_index_path)}
     if reference_job is not None:
         outputs["reference_pass_job_id"] = reference_job.get("job_id")
@@ -145,22 +159,74 @@ def _parse_vcf_active_genome_index(
     }
 
 
-def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: int | None) -> JsonObject | None:
-    """Launch Phase B (the reference-block tail) as a detached background job.
+def _discard_canonical(path: Path, *, keep: Path | None) -> None:
+    """Unlink a canonical bgzip (and its .gzi) unless it is the file to keep.
 
-    Reuses the standard job machinery (job_id, heartbeat, dead-worker
-    detection, check_background_job polling). start_operation_job dedups on
-    operation+params, so a duplicate parse_source call attaches to the running
-    reference job instead of starting a second one. Best-effort: if the job
-    can't be launched the variant-ready index is still fully usable, so we
-    swallow the error rather than fail the parse.
+    `keep` is the canonical the index adopted as metadata.vcf_path; never delete
+    that one here — Phase B (or a resume) still needs it.
+    """
+    if path == Path(""):
+        return
+    try:
+        if keep is not None and path.resolve() == keep.resolve():
+            return
+    except OSError:
+        if keep is not None and str(path) == str(keep):
+            return
+    for stale in (path, Path(str(path) + ".gzi")):
+        with contextlib.suppress(FileNotFoundError):
+            stale.unlink()
+
+
+def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: int | None) -> JsonObject | None:
+    """Run Phase B (the reference-block tail) — inline or as a detached job.
+
+    When background jobs are disabled (the synchronous test/CLI default), run
+    the reference pass inline so the index reaches `completed` within this call.
+    Otherwise launch it through the standard job machinery (job_id, heartbeat,
+    dead-worker detection, check_background_job polling); start_operation_job
+    dedups on operation+params, so a duplicate parse_source call attaches to the
+    running reference job instead of starting a second one, and we persist the
+    job_id onto the index so readiness can later report whether that worker is
+    alive, done, or dead. Best-effort throughout: if Phase B can't be launched
+    the variants_ready index is still fully usable, so we swallow rather than
+    fail the parse.
     """
     from ...runtime import background_jobs
+
+    if not background_jobs.background_enabled():
+        with contextlib.suppress(Exception):
+            append_reference_pass(active_genome_index_path, parallel_workers=parallel_workers)
+        return None
 
     params: JsonObject = {"active_genome_index_path": str(active_genome_index_path)}
     if parallel_workers is not None:
         params["parallel_workers"] = parallel_workers
     try:
-        return background_jobs.start_operation_job("active_genome_index.build_reference_pass", params)
+        job = background_jobs.start_operation_job("active_genome_index.build_reference_pass", params)
     except Exception:
         return None
+    _record_reference_pass_job(active_genome_index_path, job)
+    return job
+
+
+def _record_reference_pass_job(active_genome_index_path: Path, job: JsonObject | None) -> None:
+    """Persist the reference-pass job id onto the index so readiness can find it.
+
+    Lets active_genome_index_readiness tell a still-running Phase B from a dead
+    one (instead of reporting reference_pending forever). Best-effort.
+    """
+    if not isinstance(job, dict):
+        return
+    job_id = job.get("job_id")
+    if not job_id:
+        return
+    try:
+        with connect_existing(active_genome_index_path) as connection:
+            _upsert_metadata(connection, "reference_pass_job_id", str(job_id))
+            job_path = job.get("job_path")
+            if job_path:
+                _upsert_metadata(connection, "reference_pass_job_path", str(job_path))
+            connection.commit()
+    except Exception:
+        pass

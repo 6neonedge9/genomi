@@ -338,11 +338,23 @@ def _stamp_reference_pending_if_due(name: str, params: JsonObject, result: objec
         return result
     from . import agi_access
 
-    if agi_access.reference_pending_for_call(params, agi_id=params.get("agi_id")):
-        from ...active_genome_index._agi_readiness import REFERENCE_PENDING_NOTE
-
-        result["reference_pending"] = True
-        result["reference_pending_note"] = REFERENCE_PENDING_NOTE
+    state = agi_access.reference_state_for_call(params, agi_id=params.get("agi_id"))
+    if state is None:
+        return result
+    # Relay the reconciled state from the readiness layer at the exact read that
+    # needs the reference surface, so the host learns the tail's state without
+    # guessing when to poll. The wording and the failed/running decision are made
+    # once, in active_genome_index_readiness; the chokepoint composes nothing of
+    # its own — if Phase B died, `failed` and the re-run note already say so.
+    result["reference_pending"] = True
+    if state.get("note"):
+        result["reference_pending_note"] = state["note"]
+    if state.get("failed"):
+        result["reference_pending_failed"] = True
+        if state.get("retry_operation"):
+            result["retry_operation"] = state["retry_operation"]
+    if state.get("reference_pass"):
+        result["reference_pass"] = state["reference_pass"]
     return result
 
 

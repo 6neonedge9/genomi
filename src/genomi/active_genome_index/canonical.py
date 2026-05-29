@@ -1,16 +1,18 @@
-"""Active Genome Index-owned canonical source files.
+"""Active Genome Index canonical source files.
 
-After `genomi.parse_source` runs, every Active Genome Index owns a
-canonical bgzip-compressed copy of the intake VCF at
+During parse, the intake is materialized into a canonical bgzip copy at
 `<agi_work_dir>/source/canonical.vcf.gz` (with a sibling `.gzi` BGZF index).
+It is a strict bgzip recompression of the intake — same record bytes, same
+header lines, no reordering — partitioned by BGZF block (block_address << 16 |
+within-block-offset) so the multi-worker parse and the deferred reference pass
+(Phase B) can seek into it via `pysam.libcbgzf.BGZFile`.
 
-This canonical is the **only** path downstream capability tools are allowed
-to read after parse. The user's intake source file is not re-opened.
-
-The canonical is a strict bgzip recompression of the intake — same record
-bytes, same header lines, no reordering. Downstream reads use BGZF virtual
-offsets (block_address << 16 | within-block-offset) for O(log block)
-random access via `pysam.libcbgzf.BGZFile`.
+The canonical is a **parse-time intermediate**, not a permanent artifact. Once
+the build is complete the structured SQLite index is self-sufficient — every
+capability tool reads the index alone and never reopens the canonical or the
+user's intake. Phase B is the canonical's sole post-Phase-A reader, so it is
+reclaimed as soon as the reference tail lands (see `append_reference_pass`); a
+single-phase complete build reclaims it immediately.
 """
 
 from __future__ import annotations

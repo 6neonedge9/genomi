@@ -34,6 +34,17 @@ HEARTBEAT_INTERVAL_SECONDS = 5.0
 HEARTBEAT_STALE_AFTER_SECONDS = 60.0
 
 
+def background_enabled() -> bool:
+    """Whether long operations should run as detached background jobs.
+
+    Mirrors the MCP layer's `GENOMI_MCP_BACKGROUND` switch (default on). When
+    off — the unit-test / synchronous-CLI default — callers that would normally
+    enqueue a job run it inline instead, so the work finishes within the call.
+    """
+    env_value = os.environ.get("GENOMI_MCP_BACKGROUND", "1").strip().lower()
+    return env_value not in {"0", "false", "no", "off", "disabled"}
+
+
 def background_timeout_seconds() -> float:
     configured = os.environ.get("GENOMI_MCP_BACKGROUND_TIMEOUT_SECONDS") or os.environ.get("GENOMI_TOOL_BACKGROUND_TIMEOUT_SECONDS")
     if not configured:

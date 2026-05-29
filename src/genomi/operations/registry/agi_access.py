@@ -190,3 +190,32 @@ def reference_pending_for_call(params: JsonObject | None, *, agi_id: str | None 
         return _reference_pending(path)
     except Exception:
         return False
+
+
+def reference_state_for_call(params: JsonObject | None, *, agi_id: str | None = None) -> JsonObject | None:
+    """The reconciled reference-tail state for this call's AGI, or ``None`` when
+    there is no resolvable AGI or its tail is not pending.
+
+    Unlike the bool :func:`reference_pending_for_call`, this reflects whether the
+    Phase B worker has *died*: the readiness layer reconciles ``variants_ready``
+    against the recorded reference-pass job, so a crashed/stalled pass reports
+    ``failed`` here. The chokepoint uses that to tell the host to re-run rather
+    than wait — at the exact read that needs the reference surface, so the host
+    never has to guess when to poll."""
+    try:
+        path = _resolved_index_path(params, agi_id=agi_id)
+        if path is None:
+            return None
+        from ...active_genome_index.active_genome_index import active_genome_index_readiness
+
+        readiness = active_genome_index_readiness(path)
+    except Exception:
+        return None
+    if not readiness.get("reference_pending"):
+        return None
+    return {
+        "failed": bool(readiness.get("reference_pass_failed")),
+        "note": readiness.get("note"),
+        "retry_operation": readiness.get("retry_operation"),
+        "reference_pass": readiness.get("reference_pass"),
+    }

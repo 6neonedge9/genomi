@@ -83,6 +83,18 @@ REFERENCE_PENDING_NOTE = (
     "already final and need no wait."
 )
 
+# Stamped when the reference-block pass DIED (worker crashed / went stale)
+# rather than merely being slow. Distinct from REFERENCE_PENDING_NOTE because
+# the answer is "re-run", not "wait": a dead pass never finishes on its own, so
+# polling would loop forever.
+REFERENCE_PENDING_FAILED_NOTE = (
+    "The Active Genome Index is variants_ready, but its reference-block pass "
+    "(Phase B) STOPPED before completing — it will not finish on its own, so "
+    "waiting/polling is futile. This reference answer is provisional. Re-run "
+    "genomi.parse_source for this source to resume the reference tail; variant "
+    "lookups are already final."
+)
+
 def ensure_active_genome_index_complete(active_genome_index_path: str | Path) -> None:
     readiness = active_genome_index_readiness(active_genome_index_path)
     if readiness.get("complete"):
@@ -358,14 +370,45 @@ def _public_active_genome_index_readiness(readiness: dict[str, Any], *, active_g
     }
     if result["variants_ready"] and not result["complete"]:
         result["reference_pending"] = True
-        result["note"] = (
-            "Variants are fully queryable. The reference-block pass is still "
-            "running, so 'confirmed reference vs not-callable' answers are "
-            "provisional — re-query once status is 'completed'."
-        )
+        # Reconcile the SQLite state against the Phase B job: variants_ready only
+        # means the reference tail had not landed *as of the last write*. If the
+        # worker that was appending it died, the index would sit at variants_ready
+        # forever — so surface the job's liveness instead of an open-ended "still
+        # running". A dead worker turns the provisional note into a retry.
+        # `retry_operation` is already genomi.parse_source in the base result.
+        # The two notes are the single source of this wording (the chokepoint
+        # relays whatever we set here — it composes no message of its own).
+        job_status = _reference_pass_job_status(readiness.get("metadata") or {})
+        if job_status is not None:
+            result["reference_pass"] = job_status
+        if job_status is not None and job_status.get("status") == "failed":
+            result["reference_pass_failed"] = True
+            result["note"] = REFERENCE_PENDING_FAILED_NOTE
+        else:
+            result["note"] = REFERENCE_PENDING_NOTE
     if active_genome_index_path is not None:
         result["active_genome_index_path"] = str(active_genome_index_path)
     return result
+
+
+def _reference_pass_job_status(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """The public status of the Phase B job recorded on this index, if any.
+
+    Returns None when no job id was persisted (e.g. an inline reference pass, or
+    an index built before this field existed). read_job lazily flips a worker
+    that died or went stale to `failed`, so a crashed Phase B shows up as failed
+    here rather than as a perpetually-running job.
+    """
+    job_id = metadata.get("reference_pass_job_id")
+    if not job_id:
+        return None
+    try:
+        from ..runtime import background_jobs
+
+        job = background_jobs.read_job(job_id=str(job_id))
+        return background_jobs.public_job_status(job)
+    except Exception:
+        return None
 
 AGI_SCHEMA_CURRENT = "current"
 
@@ -386,8 +429,9 @@ def canonical_source_for_active_genome_index(connection: sqlite3.Connection) -> 
 
     Schema v3 stores this as `metadata.vcf_path` (the path passed into
     `create_active_genome_index`, which `_parse_vcf_active_genome_index` populates from
-    `build_canonical_bgzip`). Capability tools must read from this path
-    via `pysam.libcbgzf.BGZFile` — never the user's intake source.
+    `build_canonical_bgzip`). This is the deferred reference pass's source: Phase B
+    re-opens it via `pysam.libcbgzf.BGZFile` to append the reference-block tail,
+    then reclaims it. Capability tools never read it — they read the SQLite index.
 
     This is also the lifecycle gate. Every capability tool resolves
     through here, so we enforce schema-version compatibility once:

@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from genomi.operations import call_operation
+from genomi.active_genome_index.active_genome_index import active_genome_index_readiness
 
 from _genomi_runtime_helpers import GenomiRuntimeTestCase
 
@@ -53,6 +54,46 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(match["source_format"], "vcf")
                 self.assertNotIn(str(vcf), json.dumps(lookup))
                 self.assertNotIn(str(vcf.resolve(strict=False)), json.dumps(lookup))
+            finally:
+                os.chdir(previous)
+
+    def test_gvcf_parse_completes_through_unified_two_phase(self) -> None:
+        # Regression: parse_source used to delete the canonical it had just
+        # adopted as the index's source of record, so the reference pass (Phase B)
+        # crashed with needs_file and the index sat at variants_ready forever.
+        # With background disabled (the test default) Phase B runs inline, so a
+        # correct flow reaches `complete` and the gVCF's reference blocks land.
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                gvcf = Path("sample.g.vcf")
+                with gvcf.open("w", encoding="utf-8") as handle:
+                    handle.write("##fileformat=VCFv4.2\n")
+                    handle.write('##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n')
+                    handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n")
+                    for pos in range(1, 4001):
+                        if pos % 400 == 0:
+                            handle.write(f"1\t{pos}\trs{pos}\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:42:99\n")
+                        else:
+                            handle.write(f"1\t{pos}\t.\tA\t<NON_REF>\t.\tPASS\tEND={pos}\tGT:DP:GQ\t0/0:35:50\n")
+
+                self.approve_access()
+                parsed = call_operation(
+                    "genomi.parse_source",
+                    {"source": str(gvcf), "genome_build": "GRCh38"},
+                )
+                self.assertEqual(parsed["status"], "completed")
+                self.assertEqual(parsed["source_format"], "gvcf")
+
+                index_path = parsed["outputs"]["active_genome_index_path"]
+                readiness = active_genome_index_readiness(index_path)
+                # Inline Phase B finished, so the index is complete and not stuck.
+                self.assertTrue(readiness["complete"])
+                self.assertNotIn("reference_pending", readiness)
+
+                lookup = call_operation("variant.resolve", {"rsid": "rs400"})
+                self.assertEqual(lookup["sample_context"]["count"], 1)
             finally:
                 os.chdir(previous)
 

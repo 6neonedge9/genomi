@@ -118,6 +118,13 @@ def create_active_genome_index(
                 max_records=max_records,
                 defer_reference=defer_reference,
             )
+        # Phase A defers the reference tail exactly like the parallel path: store
+        # only variants now (mark variants_ready), let append_reference_pass fill
+        # in the reference rows later. Stats still count every record — _populate_records
+        # tallies reference rows before skipping their storage — so they are final
+        # after this pass. A defer only makes sense when there is a reference tail
+        # to defer (include_reference); otherwise it is a complete variant-only index.
+        defer_now = defer_reference and include_reference
         active_genome_index_path.unlink(missing_ok=True)
         connection = connect(active_genome_index_path)
         try:
@@ -126,7 +133,7 @@ def create_active_genome_index(
             stats = _populate_records(
                 connection,
                 vcf_path,
-                include_reference=include_reference,
+                include_reference=include_reference and not defer_now,
                 commit_every=commit_every,
                 max_records=max_records,
                 progress_every=progress_every,
@@ -134,12 +141,17 @@ def create_active_genome_index(
             )
             _create_query_indexes(connection)
             _insert_stat_rows(connection, stats)
-            _mark_active_genome_index_build_completed(connection)
+            if defer_now:
+                _mark_active_genome_index_variants_ready(connection)
+            else:
+                _mark_active_genome_index_build_completed(connection)
             connection.commit()
             enable_wal(connection)
             return {
-                "status": "completed",
-                "active_genome_index_complete": True,
+                "status": "variants_ready" if defer_now else "completed",
+                "active_genome_index_complete": not defer_now,
+                "variants_ready": True,
+                "reference_pending": defer_now,
                 "vcf_path": str(vcf_path),
                 "active_genome_index_path": str(active_genome_index_path),
                 "schema_version": SCHEMA_VERSION,
@@ -338,6 +350,10 @@ def append_reference_pass(
             "reference_pending": False,
             "note": "Reference pass already complete; nothing to do.",
         }
+    # When the caller passes an explicit vcf_path it owns that file's lifecycle;
+    # only a canonical we resolved ourselves (the index's own metadata.vcf_path)
+    # is ours to reclaim once the reference tail lands.
+    owns_canonical = vcf_path is None
     vcf_path = Path(vcf_path) if vcf_path is not None else _canonical_source_for_index(active_genome_index_path)
     workers = _resolved_parallel_workers(vcf_path, parallel_workers=parallel_workers, max_records=None)
     with _active_genome_index_build_lock(active_genome_index_path):
@@ -369,19 +385,28 @@ def append_reference_pass(
             _merge_active_genome_index_shards(connection, shard_results)
             _mark_active_genome_index_build_completed(connection)
             connection.commit()
-            return {
-                "status": "completed",
-                "active_genome_index_complete": True,
-                "reference_pending": False,
-                "active_genome_index_path": str(active_genome_index_path),
-                "vcf_path": str(vcf_path),
-                "parallel_workers": len(tasks),
-            }
         finally:
             connection.close()
             for shard_path in shard_paths:
                 with contextlib.suppress(FileNotFoundError):
                     shard_path.unlink()
+    # The index is now complete and reads only its own SQLite — capability tools
+    # never reopen the canonical. Phase B was its sole remaining reader, so the
+    # canonical bgzip (and its .gzi) can be reclaimed now. This is the correctly
+    # timed disk reclaim that parse_source used to do too early (orphaning the
+    # very file this pass needs).
+    if owns_canonical:
+        for stale in (vcf_path, Path(str(vcf_path) + ".gzi")):
+            with contextlib.suppress(OSError):
+                stale.unlink()
+    return {
+        "status": "completed",
+        "active_genome_index_complete": True,
+        "reference_pending": False,
+        "active_genome_index_path": str(active_genome_index_path),
+        "vcf_path": str(vcf_path),
+        "parallel_workers": len(tasks),
+    }
 
 def _active_genome_index_readiness_from_path(active_genome_index_path: Path) -> dict[str, Any]:
     if not active_genome_index_path.exists():
