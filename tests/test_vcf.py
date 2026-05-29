@@ -782,5 +782,52 @@ class IndexTests(unittest.TestCase):
         self.assertIn("ALT='.' records are reference or gVCF block records, not variant calls.", result["notes"])
 
 
+class CanonicalCompressionTests(unittest.TestCase):
+    """The canonical builder decompresses bzip2/xz intakes, not just gzip.
+
+    Some PGP exports (and Complete Genomics) ship VCFs as ``.vcf.bz2``. Feeding
+    those bytes to bgzip as if they were plain text produced garbage; the
+    builder must decompress them first.
+    """
+
+    _VCF_BODY = (
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "1\t800007\trs6681049\tT\tC\t.\t.\t.\tGT\t1/1\n"
+        "1\t861808\trs13302982\tA\tG\t.\t.\t.\tGT\t1/1\n"
+    )
+
+    def _assert_canonical_roundtrips(self, intake: Path) -> None:
+        import shutil
+
+        from genomi.active_genome_index.canonical import build_canonical_bgzip
+
+        if shutil.which("bgzip") is None:
+            self.skipTest("bgzip CLI not available")
+        with tempfile.TemporaryDirectory() as work:
+            result = build_canonical_bgzip(intake, work)
+            canonical = Path(result["canonical_path"])
+            self.assertTrue(canonical.exists())
+            with gzip.open(canonical, "rt", encoding="utf-8") as handle:
+                recovered = handle.read()
+            self.assertEqual(recovered, self._VCF_BODY)
+
+    def test_bzip2_vcf_is_canonicalized(self) -> None:
+        import bz2
+
+        with tempfile.TemporaryDirectory() as tmp:
+            intake = Path(tmp) / "sample.vcf.bz2"
+            intake.write_bytes(bz2.compress(self._VCF_BODY.encode()))
+            self._assert_canonical_roundtrips(intake)
+
+    def test_xz_vcf_is_canonicalized(self) -> None:
+        import lzma
+
+        with tempfile.TemporaryDirectory() as tmp:
+            intake = Path(tmp) / "sample.vcf.xz"
+            intake.write_bytes(lzma.compress(self._VCF_BODY.encode()))
+            self._assert_canonical_roundtrips(intake)
+
+
 if __name__ == "__main__":
     unittest.main()

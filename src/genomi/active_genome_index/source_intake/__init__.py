@@ -88,21 +88,11 @@ from .arrays import (
     parse_consumer_array_source,
 )
 from .detection import (
-    _BAM_EXTENSIONS,
-    _FASTQ_EXTENSIONS,
     _NEBULA_SAMPLE_PATTERN,
-    _VCF_EXTENSIONS,
     _VCF_PROVIDER_SIGNATURES,
     SourceDetection,
     _detect_23andme,
     _detect_ancestrydna,
-    _detect_ftdna,
-    _detect_livingdna,
-    _detect_myheritage,
-    _detect_vcf_provider,
-    _looks_like_bam,
-    _looks_like_fastq,
-    _looks_like_vcf,
     detect_source,
 )
 from .dispatch import parse_source

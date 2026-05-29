@@ -15,7 +15,9 @@ random access via `pysam.libcbgzf.BGZFile`.
 
 from __future__ import annotations
 
+import bz2
 import gzip
+import lzma
 import os
 import shutil
 import subprocess
@@ -175,6 +177,21 @@ def build_canonical_bgzip(
                     rc = proc.wait()
                     if rc != 0:
                         raise RuntimeError(f"bgzip exited with rc={rc}")
+    elif _looks_like_bzip2(intake_path) or _looks_like_xz(intake_path):
+        # bzip2 / xz intake (e.g. Complete Genomics and some PGP VCF exports):
+        # no ubiquitous decompressor binary to pipe, so stream through the
+        # stdlib module into bgzip's stdin.
+        opener = bz2.open if _looks_like_bzip2(intake_path) else lzma.open
+        with opener(intake_path, "rb") as source, tmp_canonical.open("wb") as out:
+            proc = subprocess.Popen(bgzip_cmd, stdin=subprocess.PIPE, stdout=out)
+            try:
+                assert proc.stdin is not None
+                shutil.copyfileobj(source, proc.stdin)
+                proc.stdin.close()
+            finally:
+                rc = proc.wait()
+                if rc != 0:
+                    raise RuntimeError(f"bgzip exited with rc={rc}")
     else:
         # Plain VCF: bgzip < intake > canonical
         with intake_path.open("rb") as source, tmp_canonical.open("wb") as out:
@@ -195,6 +212,16 @@ def build_canonical_bgzip(
 def _looks_like_gzip(path: Path) -> bool:
     with path.open("rb") as handle:
         return handle.read(2) == b"\x1f\x8b"
+
+
+def _looks_like_bzip2(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(3) == b"BZh"
+
+
+def _looks_like_xz(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(6) == b"\xfd7zXZ\x00"
 
 
 def _is_bgzip(path: Path) -> bool:
