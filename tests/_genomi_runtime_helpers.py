@@ -50,6 +50,7 @@ class GenomiRuntimeTestCase(unittest.TestCase):
                 "GENOMI_SESSION_ID": "",
                 "GENOMI_MCP_BACKGROUND": "0",
                 "GENOMI_RUNTIME_UPDATE": "",
+                "GENOMI_SKIP_RUNTIME_GIT_PULL": "",
                 **{name: "" for name in runtime_context.AGENT_SESSION_ENVS},
             },
         )

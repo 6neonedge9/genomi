@@ -93,7 +93,7 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
         self.assertEqual(result["active_response_profile"]["id"], "expert")
         self.assertEqual(result["install_scope"]["updates"][0], "genomi_home_setup")
         # A bare operation call does not request a runtime git pull.
-        self.assertEqual(result["runtime_update"]["status"], "unconfigured")
+        self.assertEqual(result["runtime_update"]["status"], "not_requested")
 
     def test_library_inventory_points_to_genomi_install_command(self) -> None:
         result = call_operation("genomi.install", {"libraries": "setup-only"})
@@ -108,7 +108,7 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
         _register_stale_genome(self.genomi_home)
         result = call_operation("genomi.install", {"libraries": "setup-only"})
         self.assertIsNone(result["reparse"])
-        self.assertEqual(result["runtime_update"]["status"], "unconfigured")
+        self.assertEqual(result["runtime_update"]["status"], "not_requested")
 
     def test_reparse_stale_launches_background_job_per_genome(self) -> None:
         vcf, _index = _register_stale_genome(self.genomi_home)
@@ -147,16 +147,24 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
         self.assertEqual(reparse["launched"], [])
         self.assertEqual(reparse["skipped"][0]["reason"], "source_unavailable")
 
-    def test_packaged_runtime_reports_external_update_provider(self) -> None:
-        with mock.patch.dict(
-            "os.environ",
-            {
-                "GENOMI_RUNTIME_UPDATE": "external:Install a newer package.",
-            },
-        ):
-            result = call_operation("genomi.install", {"libraries": "setup-only"})
-
+    def test_skip_env_suppresses_runtime_git_pull(self) -> None:
+        # The gate's whole reason for existing: a non-git distribution sets it so
+        # `genomi update` never tries to git pull.
+        with mock.patch.dict("os.environ", {"GENOMI_SKIP_RUNTIME_GIT_PULL": "1"}):
+            result = call_operation(
+                "genomi.install", {"libraries": "setup-only", "update_runtime": True}
+            )
         runtime_update = result["runtime_update"]
-        self.assertEqual(runtime_update["status"], "external")
-        self.assertEqual(runtime_update["provider"], "external")
-        self.assertEqual(runtime_update["message"], "Install a newer package.")
+        self.assertEqual(runtime_update["status"], "skipped")
+        self.assertFalse(runtime_update["restart_required"])
+        self.assertIn("GENOMI_SKIP_RUNTIME_GIT_PULL", runtime_update["message"])
+
+    def test_legacy_runtime_update_env_still_suppresses_git_pull(self) -> None:
+        # Backward-compat: an existing install that set the retired command env
+        # must not suddenly start pulling.
+        with mock.patch.dict("os.environ", {"GENOMI_RUNTIME_UPDATE": "anything"}):
+            result = call_operation(
+                "genomi.install", {"libraries": "setup-only", "update_runtime": True}
+            )
+        self.assertEqual(result["runtime_update"]["status"], "skipped")
+        self.assertIn("GENOMI_RUNTIME_UPDATE", result["runtime_update"]["message"])

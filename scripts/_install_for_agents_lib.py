@@ -141,21 +141,14 @@ def install_genomi_command_shim() -> Path:
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / "genomi"
     python = Path(sys.executable).expanduser().resolve(strict=False)
-    runtime_update = ""
-    if (REPO_ROOT / ".git").is_dir():
-        update_command = (
-            f"git -C {shlex.quote(str(REPO_ROOT))} pull --ff-only origin master "
-            f"&& {shlex.quote(str(python))} -m pip install -e {shlex.quote(str(REPO_ROOT))}"
-        )
-        runtime_update = (
-            'if [ -z "${GENOMI_RUNTIME_UPDATE+x}" ]; then\n'
-            f"  export GENOMI_RUNTIME_UPDATE={shlex.quote(update_command)}\n"
-            "fi\n"
-        )
+    # The runtime updates itself: `genomi update` runs `git pull --ff-only` on
+    # the checkout it lives in (an editable `pip install -e` install picks up the
+    # pulled source directly). No update command is exported here — and we must
+    # not export the legacy GENOMI_RUNTIME_UPDATE, which now signals "skip the
+    # git pull" and would defeat self-update for this git checkout.
     content = (
         "#!/usr/bin/env sh\n"
         f"export GENOMI_HOME={shlex.quote(str(genomi_home))}\n"
-        f"{runtime_update}"
         f"exec {shlex.quote(str(python))} -m genomi \"$@\"\n"
     )
     shim.write_text(content, encoding="utf-8")

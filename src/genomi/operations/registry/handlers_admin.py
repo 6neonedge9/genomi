@@ -36,7 +36,15 @@ from .coerce import (
 )
 from .errors import JsonObject, OperationError
 
-RUNTIME_UPDATE_ENV = "GENOMI_RUNTIME_UPDATE"
+# Gate for the runtime git pull. The pull is the default on `genomi update`;
+# distributions that are not git-bound set this to suppress it (they update via
+# their own package manager).
+SKIP_GIT_PULL_ENV = "GENOMI_SKIP_RUNTIME_GIT_PULL"
+# Legacy: GENOMI_RUNTIME_UPDATE used to hold a custom update command. That
+# behavior is retired, but its presence still signals "this runtime updates
+# itself another way", so we honor it as a skip rather than start pulling under
+# an existing non-git install.
+LEGACY_RUNTIME_UPDATE_ENV = "GENOMI_RUNTIME_UPDATE"
 
 
 _ACTIVE_GENOME_INDEX_SKILL = "skills/active-genome-index/SKILL.md"
@@ -336,71 +344,50 @@ def _genomi_install_scope() -> JsonObject:
             "response_profile",
         ],
         "does_not_update": [
-            "runtime_code_without_a_configured_runtime_update_provider",
+            "runtime_code_unless_update_runtime_is_requested",
         ],
-        "force_behavior": "force=true reinstalls selected public reference libraries; runtime code updates are controlled by the configured runtime update provider.",
+        "force_behavior": "force=true reinstalls selected public reference libraries; runtime code updates via git pull when update_runtime is requested, unless GENOMI_SKIP_RUNTIME_GIT_PULL is set.",
     }
+
+
+def _env_truthy(name: str) -> bool:
+    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _git_pull_suppressed_by() -> str | None:
+    """The env disabling the runtime git pull, or None to allow it."""
+    if _env_truthy(SKIP_GIT_PULL_ENV):
+        return SKIP_GIT_PULL_ENV
+    if (os.environ.get(LEGACY_RUNTIME_UPDATE_ENV) or "").strip():
+        return LEGACY_RUNTIME_UPDATE_ENV
+    return None
 
 
 def _runtime_update_step(*, allow_git_pull: bool = False) -> JsonObject:
-    configured = (os.environ.get(RUNTIME_UPDATE_ENV) or "").strip()
-    external_prefix = "external:"
+    """Update the runtime code via git pull, unless gated off.
 
-    if not configured:
-        # A configured GENOMI_RUNTIME_UPDATE provider always wins; only when none
-        # is set does `genomi update` fall back to a git pull of the checkout the
-        # runtime lives in. (Some distributions are package-managed, not git —
-        # those set the env, which suppresses this path.)
-        if allow_git_pull:
-            return _git_pull_runtime_step()
+    The git pull is the runtime update mechanism: `genomi update` pulls the
+    checkout the runtime lives in. GENOMI_SKIP_RUNTIME_GIT_PULL suppresses it
+    for distributions that are not git-bound (they update via their package
+    manager); the pull is also a no-op when the runtime is not a git checkout.
+    """
+    base: JsonObject = {"provider": "git", "gate_env": SKIP_GIT_PULL_ENV}
+    if not allow_git_pull:
         return {
-            "status": "unconfigured",
-            "provider": "none",
-            "env": RUNTIME_UPDATE_ENV,
-            "message": "No runtime update provider is configured; genomi install updated setup, response profile, and public reference libraries only.",
+            **base,
+            "status": "not_requested",
             "restart_required": False,
+            "message": "Runtime git pull runs on `genomi install` / `genomi update`, not on bare operation calls.",
         }
-
-    if configured.lower() == "external" or configured.lower().startswith(external_prefix):
-        message = configured[len(external_prefix) :].strip() if configured.lower().startswith(external_prefix) else ""
+    suppressed_by = _git_pull_suppressed_by()
+    if suppressed_by is not None:
         return {
-            "status": "external",
-            "provider": "external",
-            "env": RUNTIME_UPDATE_ENV,
-            "message": message or "Runtime code is managed by the host package/update mechanism.",
-            "restart_required": True,
+            **base,
+            "status": "skipped",
+            "restart_required": False,
+            "message": f"Runtime git pull disabled by {suppressed_by}; this runtime is updated outside genomi.",
         }
-
-    command = configured
-    try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            shell=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=os.environ.copy(),
-        )
-    except OSError as exc:
-        raise OperationError("runtime_update_failed", f"Genomi runtime update command could not start: {exc}") from exc
-
-    result = {
-        "status": "completed" if completed.returncode == 0 else "failed",
-        "provider": "command",
-        "env": RUNTIME_UPDATE_ENV,
-        "returncode": completed.returncode,
-        "stdout_tail": _tail(completed.stdout),
-        "stderr_tail": _tail(completed.stderr),
-        "restart_required": True,
-        "restart_hint": "Restart the host agent and reload the Genomi MCP server if runtime code changed.",
-    }
-    if completed.returncode != 0:
-        raise OperationError(
-            "runtime_update_failed",
-            f"Genomi runtime update command failed with exit code {completed.returncode}: {_tail(completed.stderr or completed.stdout)}",
-        )
-    return result
+    return _git_pull_runtime_step()
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -430,14 +417,14 @@ def _runtime_git_repo() -> Path | None:
 
 
 def _git_pull_runtime_step() -> JsonObject:
-    base = {"provider": "git", "env": RUNTIME_UPDATE_ENV}
+    base = {"provider": "git", "gate_env": SKIP_GIT_PULL_ENV}
     repo = _runtime_git_repo()
     if repo is None:
         return {
             **base,
             "status": "unmanaged",
             "restart_required": False,
-            "message": "Runtime is not a git checkout (package-managed install); set GENOMI_RUNTIME_UPDATE to update its code.",
+            "message": "Runtime is not a git checkout (package-managed install); update it with your package manager.",
         }
     if _git(repo, "status", "--porcelain").stdout.strip():
         return {

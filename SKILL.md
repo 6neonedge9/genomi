@@ -125,14 +125,17 @@ context, a selected user, a genome source, or a previous run.
 
 ## Setup
 
-`genomi.install` installs **or updates** Genomi: it updates the runtime code
-(when a `GENOMI_RUNTIME_UPDATE` provider is configured), installs or tops up the
-selected public reference libraries into `GENOMI_HOME` (idempotent — present
-libraries are skipped), and persists the response profile. CLI equivalent:
-`genomi install`, aliased as `genomi update`. A bare call defaults to
-`setup-only` (update the runtime, leave libraries untouched). This path only
-applies once Genomi is installed; first-time setup on a machine without the
-`genomi` runtime follows the source bootstrap in `INSTALL_FOR_AGENTS.md`.
+`genomi.install` installs **or updates** Genomi. The `genomi install` /
+`genomi update` CLI commands (aliases) update everything: the runtime code
+(`git pull --ff-only` on a git checkout, unless `GENOMI_SKIP_RUNTIME_GIT_PULL`
+is set for a non-git distribution), all public reference libraries into
+`GENOMI_HOME` (idempotent — present libraries are skipped), and a background
+reparse of any genome whose index schema is older than the updated runtime's.
+As an operation, `genomi.install` is more granular (libraries default to
+`setup-only`; `update_runtime` / `reparse_stale` default off) so programmatic
+callers can do a subset. This path only applies once Genomi is installed;
+first-time setup on a machine without the `genomi` runtime follows the source
+bootstrap in `INSTALL_FOR_AGENTS.md`.
 
 ## Parsing A Genome Source
 
