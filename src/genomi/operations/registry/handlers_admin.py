@@ -346,7 +346,7 @@ def _genomi_install_scope() -> JsonObject:
         "does_not_update": [
             "runtime_code_unless_update_runtime_is_requested",
         ],
-        "force_behavior": "force=true reinstalls selected public reference libraries; runtime code updates via git pull when update_runtime is requested, unless GENOMI_SKIP_RUNTIME_GIT_PULL is set.",
+        "force_behavior": "force=true reinstalls selected public reference libraries; runtime code updates via git pull when update_runtime is requested, unless GENOMI_SKIP_RUNTIME_GIT_PULL is set. A code-changing pull also reinstalls the editable package so changed dependencies are synced.",
     }
 
 
@@ -454,8 +454,48 @@ def _git_pull_runtime_step() -> JsonObject:
         "stdout_tail": _tail(completed.stdout),
     }
     if changed:
+        # A git pull updates the source in place (an editable install reads it
+        # directly), but it does NOT install new or bumped dependencies from a
+        # changed pyproject — pulled code can then import a package that isn't
+        # present. Re-run the editable install with the running interpreter so
+        # those deps land in the right environment.
+        result["dependency_sync"] = _sync_runtime_dependencies(repo)
         result["restart_hint"] = "Restart the host agent and reload the Genomi MCP server to load the pulled code."
     return result
+
+
+def _sync_runtime_dependencies(repo: Path) -> JsonObject:
+    """Reinstall the editable package so a pulled pyproject's deps are present.
+
+    Uses the *running* interpreter (``sys.executable``) — which is the same venv
+    interpreter the ``genomi`` shim launches — so changed dependencies resolve
+    into the environment Genomi actually runs in. Non-fatal: on a PEP 668
+    externally-managed base interpreter or a host without pip this reports
+    ``failed`` with a manual hint rather than aborting an otherwise-successful
+    update (the code itself is already pulled and usable if deps are unchanged).
+    """
+    base: JsonObject = {"interpreter": sys.executable}
+    command = [sys.executable, "-m", "pip", "install", "-e", str(repo)]
+    manual_hint = "Sync deps manually inside your venv: pip install -e . (or `uv pip install -e .`)."
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        return {**base, "status": "failed", "error": str(exc), "hint": manual_hint}
+    if completed.returncode != 0:
+        return {
+            **base,
+            "status": "failed",
+            "returncode": completed.returncode,
+            "stderr_tail": _tail(completed.stderr),
+            "hint": manual_hint,
+        }
+    return {**base, "status": "completed", "stdout_tail": _tail(completed.stdout)}
 
 
 def _effective_runtime_schema() -> int:

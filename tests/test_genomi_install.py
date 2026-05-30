@@ -168,3 +168,130 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
             )
         self.assertEqual(result["runtime_update"]["status"], "skipped")
         self.assertIn("GENOMI_RUNTIME_UPDATE", result["runtime_update"]["message"])
+
+
+def _completed(returncode: int = 0, stdout: str = "", stderr: str = ""):
+    import subprocess
+
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+def _git_pull_sequence(*, before: str, after: str):
+    """side_effect for handlers_admin._git simulating a clean, fast-forward pull."""
+    responses = iter(
+        [
+            _completed(stdout=""),          # status --porcelain (clean tree)
+            _completed(stdout=before),      # rev-parse HEAD (before)
+            _completed(stdout="Updated."),  # pull --ff-only
+            _completed(stdout=after),       # rev-parse HEAD (after)
+        ]
+    )
+    return lambda *args, **kwargs: next(responses)
+
+
+class GenomiRuntimeDependencySyncTests(GenomiRuntimeTestCase):
+    def test_code_changing_pull_reinstalls_editable_package_for_deps(self) -> None:
+        # A git pull that moves HEAD must reinstall the editable package so a
+        # changed pyproject's dependencies are installed — pulled code can
+        # otherwise import a package that isn't present.
+        from genomi.operations.registry import handlers_admin
+
+        pip_calls: list[list[str]] = []
+
+        def _fake_run(command, **kwargs):
+            pip_calls.append(command)
+            return _completed(stdout="Successfully installed genomi")
+
+        with mock.patch.object(handlers_admin, "_runtime_git_repo", return_value=handlers_admin.Path("/tmp/genomi-repo")), \
+             mock.patch.object(handlers_admin, "_git", side_effect=_git_pull_sequence(before="aaa", after="bbb")), \
+             mock.patch.object(handlers_admin.subprocess, "run", side_effect=_fake_run):
+            result = call_operation(
+                "genomi.install", {"libraries": "setup-only", "update_runtime": True}
+            )
+
+        runtime_update = result["runtime_update"]
+        self.assertEqual(runtime_update["status"], "completed")
+        self.assertTrue(runtime_update["changed"])
+        sync = runtime_update["dependency_sync"]
+        self.assertEqual(sync["status"], "completed")
+        # Reinstalled editable, with the running interpreter, from the repo root.
+        self.assertEqual(len(pip_calls), 1)
+        self.assertEqual(pip_calls[0][:4], [handlers_admin.sys.executable, "-m", "pip", "install"])
+        self.assertIn("-e", pip_calls[0])
+        self.assertIn("/tmp/genomi-repo", pip_calls[0])
+
+    def test_no_op_pull_does_not_reinstall(self) -> None:
+        # HEAD unchanged → nothing pulled → no dependency reinstall.
+        from genomi.operations.registry import handlers_admin
+
+        with mock.patch.object(handlers_admin, "_runtime_git_repo", return_value=handlers_admin.Path("/tmp/genomi-repo")), \
+             mock.patch.object(handlers_admin, "_git", side_effect=_git_pull_sequence(before="aaa", after="aaa")), \
+             mock.patch.object(handlers_admin.subprocess, "run", side_effect=AssertionError("pip must not run")):
+            result = call_operation(
+                "genomi.install", {"libraries": "setup-only", "update_runtime": True}
+            )
+
+        runtime_update = result["runtime_update"]
+        self.assertFalse(runtime_update["changed"])
+        self.assertNotIn("dependency_sync", runtime_update)
+
+    def test_dependency_sync_failure_is_non_fatal_with_hint(self) -> None:
+        # PEP 668 / no-pip hosts: a failed reinstall must not abort the update;
+        # it reports failed with a manual hint (code is already pulled).
+        from genomi.operations.registry import handlers_admin
+
+        def _fake_run(command, **kwargs):
+            return _completed(returncode=1, stderr="externally-managed-environment")
+
+        with mock.patch.object(handlers_admin, "_runtime_git_repo", return_value=handlers_admin.Path("/tmp/genomi-repo")), \
+             mock.patch.object(handlers_admin, "_git", side_effect=_git_pull_sequence(before="aaa", after="bbb")), \
+             mock.patch.object(handlers_admin.subprocess, "run", side_effect=_fake_run):
+            result = call_operation(
+                "genomi.install", {"libraries": "setup-only", "update_runtime": True}
+            )
+
+        self.assertEqual(result["status"], "completed")  # update did not abort
+        sync = result["runtime_update"]["dependency_sync"]
+        self.assertEqual(sync["status"], "failed")
+        self.assertIn("pip install -e", sync["hint"])
+
+
+def _load_install_lib():
+    """Load scripts/_install_for_agents_lib.py by path (it isn't an importable package)."""
+    import importlib.util
+    from pathlib import Path
+
+    import genomi
+
+    repo_root = Path(genomi.__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "_install_for_agents_lib.py"
+    spec = importlib.util.spec_from_file_location("_genomi_install_lib_under_test", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class GenomiShimTests(GenomiRuntimeTestCase):
+    def test_shim_does_not_dereference_venv_interpreter_symlink(self) -> None:
+        # Regression: a uv/venv python is a symlink to the base interpreter.
+        # The shim must point at the venv interpreter as-is; resolving the
+        # symlink escapes the venv to a Python without the editable genomi
+        # install ("No module named genomi").
+        import os
+
+        install_lib = _load_install_lib()
+
+        venv_bin = self.genomi_home / "venv" / "bin"
+        venv_bin.mkdir(parents=True, exist_ok=True)
+        base_python = self.genomi_home / "base" / "python3"
+        base_python.parent.mkdir(parents=True, exist_ok=True)
+        base_python.write_text("#!/bin/sh\n", encoding="utf-8")
+        venv_python = venv_bin / "python"
+        os.symlink(base_python, venv_python)  # venv python -> base interpreter
+
+        with mock.patch.object(install_lib.sys, "executable", str(venv_python)):
+            shim = install_lib.install_genomi_command_shim()
+
+        content = shim.read_text(encoding="utf-8")
+        self.assertIn(str(venv_python), content)         # venv interpreter kept
+        self.assertNotIn(str(base_python), content)      # symlink not followed

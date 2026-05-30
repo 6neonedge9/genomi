@@ -334,8 +334,16 @@ export PATH="<GENOMI_HOME>/bin:$PATH"
 ```bash
 uv venv .venv && uv pip install -e . --python .venv/bin/python
 export PATH="$PWD/.venv/bin:$PATH"
-python3 scripts/install_for_agents.py --skip-package --libraries <Q1-value>
+.venv/bin/python scripts/install_for_agents.py --skip-package --libraries <Q1-value>
 ```
+
+Run the installer with the **venv's** interpreter (`.venv/bin/python …`, as
+above): the generated `genomi` launcher points at the interpreter that ran the
+installer, and the editable `genomi` package lives only in the venv's
+site-packages. The launcher uses the venv python as-is (it does not dereference
+the symlink), so a standard `uv venv` / `python -m venv` works; `python -m venv
+--copies .venv` (a real interpreter file rather than a symlink) is an equivalent
+belt-and-suspenders option.
 
 **Re-running into a populated `GENOMI_HOME` is safe and idempotent.** Install
 skips any library whose files already exist and downloads only what's missing,

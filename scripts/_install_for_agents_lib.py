@@ -140,7 +140,17 @@ def install_genomi_command_shim() -> Path:
     bin_dir = genomi_home / "bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     shim = bin_dir / "genomi"
-    python = Path(sys.executable).expanduser().resolve(strict=False)
+    # Use the running interpreter as-is — do NOT resolve symlinks. In a
+    # virtualenv (including the `uv venv` / `python -m venv` fallback the docs
+    # recommend on PEP 668 hosts) the venv's `python` is normally a symlink back
+    # to the base interpreter. Path.resolve()/realpath would follow it out of the
+    # venv to a base Python that lacks the editable `genomi` install — it only
+    # lives in the venv's site-packages — so the shim would launch the wrong
+    # interpreter and fail with "No module named genomi". abspath() normalizes
+    # the path (absolute, no `..`) without dereferencing the symlink, keeping the
+    # shim pointed at the venv interpreter. `python -m venv --copies` (real file,
+    # not a symlink) also works either way.
+    python = Path(os.path.abspath(os.path.expanduser(sys.executable)))
     # The runtime updates itself: `genomi update` runs `git pull --ff-only` on
     # the checkout it lives in (an editable `pip install -e` install picks up the
     # pulled source directly). No update command is exported here — and we must
