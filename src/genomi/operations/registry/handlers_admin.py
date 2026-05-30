@@ -208,7 +208,9 @@ def _genomi_install(params: JsonObject) -> JsonObject:
     if not libraries:
         raise OperationError("invalid_params", "libraries is required. Use setup-only, common-questions, medication-response, or another installer library selection.")
 
-    runtime_update = _runtime_update_step()
+    update_runtime = _bool(params, "update_runtime")
+    reparse_stale = _bool(params, "reparse_stale")
+    runtime_update = _runtime_update_step(allow_git_pull=update_runtime)
 
     response_profile = _optional_str(params, "response_profile") or _optional_str(params, "profile")
     active_profile: JsonObject | None = None
@@ -286,6 +288,12 @@ def _genomi_install(params: JsonObject) -> JsonObject:
             "errors": errors,
         }
 
+    # After the runtime may have changed (git pull), reparse genomes whose stored
+    # index schema is older than the on-disk schema. Each reparse runs as a
+    # background job (fresh subprocess at the new schema), so update returns
+    # immediately with job ids to poll rather than blocking on full rebuilds.
+    reparse_result = _reparse_stale_genomes() if reparse_stale else None
+
     return {
         "status": "completed",
         "schema": "genomi-install-result-v1",
@@ -295,6 +303,7 @@ def _genomi_install(params: JsonObject) -> JsonObject:
         "runtime_update": runtime_update,
         "install": install_result,
         "reindex": reindex_result,
+        "reparse": reparse_result,
         "active_response_profile": active_profile,
         "library_inventory": library_inventory(),
     }
@@ -333,11 +342,17 @@ def _genomi_install_scope() -> JsonObject:
     }
 
 
-def _runtime_update_step() -> JsonObject:
+def _runtime_update_step(*, allow_git_pull: bool = False) -> JsonObject:
     configured = (os.environ.get(RUNTIME_UPDATE_ENV) or "").strip()
     external_prefix = "external:"
 
     if not configured:
+        # A configured GENOMI_RUNTIME_UPDATE provider always wins; only when none
+        # is set does `genomi update` fall back to a git pull of the checkout the
+        # runtime lives in. (Some distributions are package-managed, not git —
+        # those set the env, which suppresses this path.)
+        if allow_git_pull:
+            return _git_pull_runtime_step()
         return {
             "status": "unconfigured",
             "provider": "none",
@@ -386,6 +401,173 @@ def _runtime_update_step() -> JsonObject:
             f"Genomi runtime update command failed with exit code {completed.returncode}: {_tail(completed.stderr or completed.stdout)}",
         )
     return result
+
+
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def _runtime_git_repo() -> Path | None:
+    """The git work-tree root the runtime is installed from, or None.
+
+    None means the runtime is not a git checkout (packaged install) or git is
+    unavailable — either way there is nothing to `git pull`."""
+    import genomi
+
+    start = Path(genomi.__file__).resolve().parent
+    try:
+        completed = _git(start, "rev-parse", "--show-toplevel")
+    except OSError:
+        return None
+    top = completed.stdout.strip()
+    return Path(top) if completed.returncode == 0 and top else None
+
+
+def _git_pull_runtime_step() -> JsonObject:
+    base = {"provider": "git", "env": RUNTIME_UPDATE_ENV}
+    repo = _runtime_git_repo()
+    if repo is None:
+        return {
+            **base,
+            "status": "unmanaged",
+            "restart_required": False,
+            "message": "Runtime is not a git checkout (package-managed install); set GENOMI_RUNTIME_UPDATE to update its code.",
+        }
+    if _git(repo, "status", "--porcelain").stdout.strip():
+        return {
+            **base,
+            "status": "skipped",
+            "restart_required": False,
+            "repo": str(repo),
+            "message": f"Runtime git checkout at {repo} has uncommitted changes; skipped git pull. Commit or stash, then re-run.",
+        }
+    before = _git(repo, "rev-parse", "HEAD").stdout.strip() or None
+    completed = _git(repo, "pull", "--ff-only")
+    after = _git(repo, "rev-parse", "HEAD").stdout.strip() or None
+    if completed.returncode != 0:
+        raise OperationError(
+            "runtime_update_failed",
+            f"git pull --ff-only failed in {repo}: {_tail(completed.stderr or completed.stdout)}",
+        )
+    changed = bool(before and after and before != after)
+    result: JsonObject = {
+        **base,
+        "status": "completed",
+        "repo": str(repo),
+        "from": before,
+        "to": after,
+        "changed": changed,
+        "restart_required": changed,
+        "stdout_tail": _tail(completed.stdout),
+    }
+    if changed:
+        result["restart_hint"] = "Restart the host agent and reload the Genomi MCP server to load the pulled code."
+    return result
+
+
+def _effective_runtime_schema() -> int:
+    """The Active Genome Index SCHEMA_VERSION of the *on-disk* runtime code.
+
+    Probed in a fresh subprocess so a git pull performed earlier in this same
+    call is reflected, even though the running process still holds the old
+    constant. The reparse jobs are themselves fresh subprocesses, so they build
+    at this schema. Falls back to the in-process constant if the probe fails."""
+    from ...active_genome_index._agi_schema import SCHEMA_VERSION
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", "import genomi.active_genome_index._agi_schema as s; print(s.SCHEMA_VERSION)"],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=os.environ.copy(),
+        )
+        if completed.returncode == 0:
+            return int(completed.stdout.strip())
+    except (OSError, ValueError):
+        pass
+    return SCHEMA_VERSION
+
+
+def _stored_index_schema(index_path: str) -> int | None:
+    from ...active_genome_index.active_genome_index import connect_existing
+
+    try:
+        with connect_existing(index_path) as connection:
+            row = connection.execute("select value from metadata where key = 'schema_version'").fetchone()
+    except Exception:
+        return None
+    if not row or row[0] is None:
+        return None
+    raw = row[0]
+    try:
+        return int(json.loads(raw))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
+
+def _reparse_stale_genomes() -> JsonObject:
+    """Launch a background reparse for every registered genome whose stored
+    index schema is older than the on-disk runtime schema.
+
+    Reparse jobs run via the standard background machinery (a fresh job-worker
+    subprocess that builds at the current on-disk schema). start_operation_job
+    dedups on source, so re-running update attaches to an in-flight reparse
+    rather than starting a second one. A genome whose source is gone cannot be
+    rebuilt — it is reported, not launched."""
+    from ...runtime import background_jobs
+
+    effective_schema = _effective_runtime_schema()
+    registry = runtime_context.load_registry()
+    agis = registry.get("agis", {})
+    checked = 0
+    launched: list[JsonObject] = []
+    skipped: list[JsonObject] = []
+    for agi_id, record in agis.items():
+        if not isinstance(record, dict):
+            continue
+        index_path = record.get("active_genome_index_path")
+        if not index_path or not Path(str(index_path)).exists():
+            continue
+        checked += 1
+        stored = _stored_index_schema(str(index_path))
+        if stored is None or stored >= effective_schema:
+            continue
+        source = record.get("source") or record.get("vcf")
+        entry: JsonObject = {
+            "agi_id": agi_id,
+            "nickname": record.get("nickname"),
+            "stored_schema": stored,
+            "source": str(source) if source else None,
+        }
+        if not source or not Path(str(source)).exists():
+            skipped.append({**entry, "reason": "source_unavailable"})
+            continue
+        try:
+            job = background_jobs.start_operation_job(
+                "genomi.parse_source", {"source": str(source), "force": True}
+            )
+            launched.append({**entry, "job_id": job.get("job_id"), "job_path": job.get("job_path")})
+        except Exception as exc:  # pragma: no cover - best effort per genome
+            skipped.append({**entry, "reason": f"launch_failed: {exc}"})
+    return {
+        "schema": "genomi-reparse-scan-v1",
+        "effective_schema_version": effective_schema,
+        "checked": checked,
+        "stale": len(launched) + len(skipped),
+        "launched": launched,
+        "skipped": skipped,
+    }
 
 
 def _install_for_agents_script() -> Path:

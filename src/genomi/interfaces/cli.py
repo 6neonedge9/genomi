@@ -100,17 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser = subparsers.add_parser(
         "install",
         aliases=["update"],
-        help="Install or update Genomi setup inside the current runtime. `genomi update` is an alias.",
+        help="Update everything: runtime code (git pull when not a packaged distro), all reference libraries, and reparse genomes whose schema changed. `genomi update` is an alias.",
     )
     install_parser.add_argument(
         "--libraries",
-        default="setup-only",
+        default="everything",
         help=(
             "Library purpose or exact comma-separated library IDs, e.g. "
-            "common-questions, medication-response, everything. Defaults to "
-            "'setup-only': a bare `genomi install` updates the runtime and "
-            "leaves reference libraries untouched. Re-running with a purpose is "
-            "idempotent — it downloads only the libraries that are missing."
+            "common-questions, medication-response, everything, or setup-only. "
+            "Defaults to 'everything' — `genomi install` / `genomi update` updates "
+            "all reference libraries. Idempotent: only missing libraries download "
+            "(pass --force to refresh). Use --libraries setup-only to update the "
+            "runtime without touching libraries."
         ),
     )
     install_parser.add_argument(
@@ -150,9 +151,15 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 def _cmd_install(args: argparse.Namespace) -> dict[str, Any]:
+    # `genomi install` and `genomi update` are the same command and both update
+    # everything: runtime + libraries + reparse-stale. (The operation itself
+    # leaves update_runtime/reparse_stale off by default for programmatic and
+    # first-time-bootstrap callers; the CLI is the "do it all" front door.)
     params: dict[str, Any] = {
         "libraries": args.libraries,
         "force": bool(args.force),
+        "update_runtime": True,
+        "reparse_stale": True,
     }
     for attr in (
         "response_profile",
