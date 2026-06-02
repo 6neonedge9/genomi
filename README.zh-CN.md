@@ -30,6 +30,23 @@
 
 基诺米（Genomi）就是为这件事写的。它是一套本地基因组学运行框架（Harness），Claude Code、Codex、OpenClaw、Hermes，以及任何能讲 MCP 的 host 都接得上。Genomi 给 agent 留一块私有工作区：变异躺在本地的 Active Genome Index 里，公共遗传学证据随手可查，它记得你查过什么，DNA 的问题它能写成有据可查的报告。基因组不出你的机器。活儿，agent 干。
 
+<p align="center">
+  <a href="https://youtu.be/8CkoDNlyvZ0">
+    <img src="https://img.youtube.com/vi/8CkoDNlyvZ0/maxresdefault.jpg" alt="Genomi 发布视频" width="640">
+  </a>
+  <br>
+  <em>▶ Genomi 发布视频</em>
+</p>
+
+## 实际演示
+
+几个简短片段：
+
+- [Genomi 把你的原始 DNA 文件解析成本地数据库，让 agent 随手查询](https://youtu.be/mJUw6Lf8zEk)
+- [Genomi 让你的原始 DNA 文件留在自己机器上](https://youtu.be/Paj2ixdeZGk)
+- [Genomi 知道什么时候该说「不」和「我不知道」](https://youtu.be/-yXZhFDiYP0)
+- [Genomi 会进化——agent 自我更新，跟上最新研究](https://youtu.be/ih_7elp2H2w)
+
 ## TL;DR
 
 连 TL;DR 都嫌长？直接把下面这段贴给 agent：

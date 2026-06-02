@@ -44,6 +44,23 @@ query, memory of what you explored, and report tools that turn DNA questions
 into evidence-backed answers. Your genome stays on your machine. The agent
 does the work.
 
+<p align="center">
+  <a href="https://youtu.be/8CkoDNlyvZ0">
+    <img src="https://img.youtube.com/vi/8CkoDNlyvZ0/maxresdefault.jpg" alt="Watch the Genomi launch video" width="640">
+  </a>
+  <br>
+  <em>▶ Watch the Genomi launch video</em>
+</p>
+
+## See it in action
+
+Short demos:
+
+- [Genomi parses your raw DNA file into a local database your agent can query](https://youtu.be/mJUw6Lf8zEk)
+- [Genomi keeps your raw DNA file on your machine](https://youtu.be/Paj2ixdeZGk)
+- [Genomi knows when to say "No" and "I don't know"](https://youtu.be/-yXZhFDiYP0)
+- [Genomi evolves — your agent self-updates to sync with the latest research](https://youtu.be/ih_7elp2H2w)
+
 ## TL;DR
 
 Even TL;DR is too long, just paste this to your agent:
