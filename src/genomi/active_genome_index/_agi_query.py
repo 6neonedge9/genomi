@@ -9,6 +9,7 @@ import json
 import sqlite3
 from ._agi_readiness import ensure_active_genome_index_complete
 from ._agi_schema import connect_existing_readonly, default_active_genome_index_path
+from .record_kinds import infer_record_kind
 
 
 def query_rsid(vcf_path: str | Path, rsid: str, active_genome_index_path: str | Path | None = None, *, limit: int = 50) -> list[dict[str, Any]]:
@@ -332,6 +333,12 @@ def _index_record_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     info_raw = row["info"] if _row_has_key(row, "info") else ""
     format_raw = row["format"] if _row_has_key(row, "format") else ""
     sample_raw = row["sample"] if _row_has_key(row, "sample") else ""
+    record_kind = infer_record_kind(
+        format_value=format_raw,
+        is_variant=bool(row["is_variant"]),
+        filter_value=row["filter"],
+        info_raw=info_raw,
+    )
     payload: dict[str, Any] = {
         "chrom": row["chrom"],
         "pos": int(row["pos"]),
@@ -344,6 +351,7 @@ def _index_record_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "qual": None if row["qual"] == "." else row["qual"],
         "filter": row["filter"],
         "is_variant": bool(row["is_variant"]),
+        "record_kind": record_kind,
         "sample_name": row["sample_name"] if _row_has_key(row, "sample_name") else None,
         "sample_index": _row_sample_index(row),
         "genotype": row["genotype"],

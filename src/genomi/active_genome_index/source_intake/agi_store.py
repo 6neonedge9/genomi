@@ -22,6 +22,12 @@ from .._agi_schema import (
 )
 from ..active_genome_index import SCHEMA_VERSION, _chrom_sort
 from ..active_genome_index import connect as connect_active_genome_index
+from ..record_kinds import (
+    ARRAY_FORMAT,
+    ARRAY_NO_CALL_FILTER,
+    ARRAY_RECORD_KIND_VERSION,
+    array_record_info,
+)
 from .detection import SourceDetection
 
 JsonObject = dict[str, Any]
@@ -46,13 +52,13 @@ def _array_record_row(
         0,
         sample_name,
         json.dumps([]),
-        json.dumps({"source_format": source_format, "coordinate_semantics": "plus_strand_grch37"}),
+        json.dumps(array_record_info(source_format=source_format, is_called=is_called), sort_keys=True),
         "N",
         genotype if is_called else ".",
         None,
-        "PASS" if is_called else "NO_CALL",
+        "PASS" if is_called else ARRAY_NO_CALL_FILTER,
         int(is_called),
-        "GT_ARRAY",
+        ARRAY_FORMAT,
         genotype,
         genotype,
         None,
@@ -157,6 +163,7 @@ def _insert_source_active_genome_index_metadata(
         "source_member": detection.member_name,
         "genome_build": genome_build,
         "max_records": max_records,
+        "array_record_kind_version": ARRAY_RECORD_KIND_VERSION,
         "active_genome_index_build_status": ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS,
         "active_genome_index_complete": False,
         "active_genome_index_started_at": utc_now(),
@@ -168,6 +175,7 @@ def _insert_source_active_genome_index_metadata(
             "alt": "observed genotype string for genotype-array sources",
             "depth": None,
             "genotype_quality": None,
+            "record_kind": "array_call or array_no_call for genotype-array sources",
             "reference_blocks": "not_available_for_consumer_genotype_array_sources",
         },
     }
@@ -264,6 +272,8 @@ def _cached_array_active_genome_index_if_usable(
     if metadata.get("genome_build") != genome_build:
         return None
     if metadata.get("max_records") != max_records:
+        return None
+    if metadata.get("array_record_kind_version") != ARRAY_RECORD_KIND_VERSION:
         return None
     if metadata.get("active_genome_index_build_status") != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
         return None

@@ -42,6 +42,20 @@ from .detection import (
 from .text_io import _clean_array_chrom, _effective_array_build, _open_text_source
 
 
+def _array_record_stats(*, total: int, called: int, no_call: int, rsid_count: int) -> JsonObject:
+    return {
+        "total_records": total,
+        "variant_records": called,
+        "reference_records": 0,
+        "pass_records": called,
+        "fail_records": no_call,
+        "no_call_records": no_call,
+        "array_call_records": called,
+        "array_no_call_records": no_call,
+        "rsid_records": rsid_count,
+    }
+
+
 def parse_23andme_source(
     source: str | Path,
     *,
@@ -215,14 +229,7 @@ def _populate_23andme_records(
     if batch:
         _insert_source_record_batch(connection, batch)
     return (
-        {
-            "total_records": total,
-            "variant_records": called,
-            "reference_records": no_call,
-            "pass_records": called,
-            "fail_records": no_call,
-            "rsid_records": rsid_count,
-        },
+        _array_record_stats(total=total, called=called, no_call=no_call, rsid_count=rsid_count),
         chrom_counts,
     )
 
@@ -423,14 +430,7 @@ def _populate_ancestrydna_records(
     if batch:
         _insert_source_record_batch(connection, batch)
     return (
-        {
-            "total_records": total,
-            "variant_records": called,
-            "reference_records": no_call,
-            "pass_records": called,
-            "fail_records": no_call,
-            "rsid_records": rsid_count,
-        },
+        _array_record_stats(total=total, called=called, no_call=no_call, rsid_count=rsid_count),
         chrom_counts,
     )
 
@@ -740,13 +740,6 @@ def _populate_consumer_array_records(
     if batch:
         _insert_source_record_batch(connection, batch)
     return (
-        {
-            "total_records": total,
-            "variant_records": called,
-            "reference_records": no_call,
-            "pass_records": called,
-            "fail_records": no_call,
-            "rsid_records": rsid_count,
-        },
+        _array_record_stats(total=total, called=called, no_call=no_call, rsid_count=rsid_count),
         chrom_counts,
     )

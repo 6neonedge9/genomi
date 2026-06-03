@@ -180,8 +180,22 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertTrue(readiness["complete"])
                 self.assertEqual(readiness["status"], "completed")
                 self.assertEqual(readiness["missing_objects"], [])
+                stats = parsed["steps"][0]["result"]["stats"]
+                self.assertEqual(stats["variant_records"], 1)
+                self.assertEqual(stats["reference_records"], 0)
+                self.assertEqual(stats["array_no_call_records"], 1)
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(parsed))
                 self.assertNotIn(str(raw), json.dumps(parsed))
+
+                index_path = Path(parsed["outputs"]["active_genome_index_path"])
+                with sqlite3.connect(index_path) as connection:
+                    connection.row_factory = sqlite3.Row
+                    no_call = connection.execute("select * from records where rsid = 'rs999'").fetchone()
+                self.assertIsNotNone(no_call)
+                self.assertEqual(no_call["filter"], "NO_CALL")
+                self.assertEqual(no_call["format"], "GT_ARRAY")
+                self.assertEqual(no_call["is_variant"], 0)
+                self.assertEqual(json.loads(no_call["info"])["record_kind"], "array_no_call")
 
                 current = call_operation("genomi.describe_context")
                 self.assertTrue(current["has_active_genome_index"])
@@ -195,6 +209,31 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(match["source_format"], "23andme")
                 self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(lookup))
+
+                no_call_lookup = call_operation("variant.resolve", {"rsid": "rs999", "include_fail": True})
+                self.assertEqual(no_call_lookup["sample_context"]["count"], 1)
+                no_call_match = no_call_lookup["sample_context"]["matches"][0]
+                self.assertEqual(no_call_match["filter"], "NO_CALL")
+                self.assertEqual(no_call_match["record_kind"], "array_no_call")
+                self.assertEqual(no_call_match["observation_semantics"]["kind"], "consumer_genotype_array_no_call")
+
+                qc = call_operation("active_genome_index.classify_callset_qc", {"genome_build": "GRCh37", "scan_records": 10})
+                self.assertEqual(qc["status"], "completed", qc)
+                self.assertEqual(qc["input_type"], "array_or_genotyping_callset")
+                self.assertFalse(qc["has_reference_blocks"])
+                self.assertFalse(qc["absence_claims_allowed_by_default"])
+                self.assertEqual(qc["summary"]["reference_records"], 0)
+                self.assertEqual(qc["summary"]["no_call_records"], 1)
+                self.assertEqual(qc["summary"]["array_no_call_records"], 1)
+
+                callability = call_operation(
+                    "active_genome_index.classify_region_callability",
+                    {"region": "2:200-200", "genome_build": "GRCh37"},
+                )
+                self.assertEqual(callability["status"], "completed", callability)
+                self.assertEqual(callability["callability_status"], "unknown_no_reference_blocks")
+                self.assertFalse(callability["can_support_negative_or_reference_claim"])
+                self.assertEqual(callability["matched_records"][0]["record_kind"], "array_no_call")
             finally:
                 os.chdir(previous)
 

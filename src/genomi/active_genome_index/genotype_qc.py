@@ -18,6 +18,7 @@ from .active_genome_index import (
     read_header_from_active_genome_index,
 )
 from .active_genome_index import connect_existing as connect_active_genome_index_existing
+from .record_kinds import array_no_call_sql, reference_block_sql
 from .vcf import parse_region
 
 DEFAULT_MIN_DEPTH = 10
@@ -58,6 +59,7 @@ def assess_sample_qc(
         "pass_records": counts["pass_records"],
         "fail_records": counts["fail_records"],
         "no_call_records": counts["no_call_records"],
+        "array_no_call_records": counts["array_no_call_records"],
         "depth_present_records": counts["depth_present_records"],
         "low_depth_records": counts["low_depth_records"],
         "genotype_quality_present_records": counts["genotype_quality_present_records"],
@@ -254,13 +256,15 @@ def _ensure_active_genome_index(vcf_path: Path, active_genome_index_path: str | 
 
 
 def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any]:
+    reference_block_predicate = reference_block_sql()
+    array_no_call_predicate = array_no_call_sql()
     with connect_active_genome_index_existing(active_genome_index_path) as connection:
         row = connection.execute(
-            """
+            f"""
             select
               count(*) as total_records,
               sum(case when is_variant = 1 then 1 else 0 end) as variant_records,
-              sum(case when is_variant = 0 then 1 else 0 end) as reference_records,
+              sum(case when {reference_block_predicate} then 1 else 0 end) as reference_records,
               sum(case when filter in ('PASS', '.') then 1 else 0 end) as pass_records,
               sum(case when filter not in ('PASS', '.') then 1 else 0 end) as fail_records,
               sum(case when depth is not null then 1 else 0 end) as depth_present_records,
@@ -268,8 +272,10 @@ def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any
               sum(case when genotype_quality is not null then 1 else 0 end) as genotype_quality_present_records,
               sum(case when genotype_quality is not null and genotype_quality < ? then 1 else 0 end)
                 as low_genotype_quality_records,
-              sum(case when genotype is null or genotype in ('./.', '.|.', '.') or genotype like './%' or genotype like '%/.'
-                    or genotype like '.|%' or genotype like '%|.' then 1 else 0 end) as no_call_records
+              sum(case when {array_no_call_predicate}
+                    or genotype is null or genotype in ('./.', '.|.', '.') or genotype like './%' or genotype like '%/.'
+                    or genotype like '.|%' or genotype like '%|.' then 1 else 0 end) as no_call_records,
+              sum(case when {array_no_call_predicate} then 1 else 0 end) as array_no_call_records
             from records
             """,
             (DEFAULT_MIN_DEPTH, DEFAULT_MIN_GENOTYPE_QUALITY),
@@ -304,6 +310,7 @@ def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any
             "genotype_quality_present_records",
             "low_genotype_quality_records",
             "no_call_records",
+            "array_no_call_records",
         )
     } | {"filter_counts": filter_counts, "genotype_counts": genotype_counts}
 

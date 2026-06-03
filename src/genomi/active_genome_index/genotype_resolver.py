@@ -6,6 +6,7 @@ from typing import Any
 
 from .array_genotypes import called_genotype_tokens, count_array_allele, is_array_genotype_record
 from .active_genome_index import query_region
+from .record_kinds import is_reference_block_record
 
 
 @dataclass(frozen=True)
@@ -137,7 +138,8 @@ def resolve_locus_genotype_from_records(
     reference_blocks = [
         record
         for record in records
-        if not record.get("is_variant") and int(record.get("pos") or 0) <= int(pos) <= int(record.get("end") or 0)
+        if is_reference_block_record(record)
+        and int(record.get("pos") or 0) <= int(pos) <= int(record.get("end") or 0)
     ]
     if reference_blocks:
         record = _best_record(reference_blocks)
@@ -626,7 +628,7 @@ def _site_observation(
 ) -> dict[str, Any]:
     return {
         "site_status": status,
-        "record_type": record_type or ("variant" if record.get("is_variant") else "reference_block"),
+        "record_type": record_type or record.get("record_kind") or ("variant" if record.get("is_variant") else "reference_block"),
         "matched_by": matched_by,
         "allele_bases": allele_bases,
         "observed_genotype": "/".join(allele_bases) if allele_bases else None,
@@ -649,6 +651,7 @@ def _compact_record(record: dict[str, Any]) -> dict[str, Any]:
         "alt": record.get("alt"),
         "alts": record.get("alts"),
         "filter": record.get("filter"),
+        "record_kind": record.get("record_kind"),
         "genotype": record.get("genotype"),
         "depth": record.get("depth"),
         "genotype_quality": record.get("genotype_quality"),

@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from ....active_genome_index.active_genome_index import ActiveGenomeIndexReader
+from ....active_genome_index.record_kinds import (
+    RECORD_KIND_ARRAY_NO_CALL,
+    infer_record_kind,
+    reference_block_sql,
+)
 from ....runtime.sqlite_support import connect_readonly_sqlite
 from .parsing import _chrom_aliases, _dedupe_records, _target_key
 
@@ -49,7 +54,7 @@ def _query_active_genome_index(
                     # raw VCF grep.
                     for chrom_value in _chrom_aliases(str(target["chrom"])):
                         sql = _record_select_sql(
-                            "chrom = ? and pos <= ? and end >= ? and (is_variant = 0 or is_variant is null)"
+                            f"chrom = ? and pos <= ? and end >= ? and ({reference_block_sql()})"
                         )
                         params = [chrom_value, int(target["pos"]), int(target["pos"])]
                         ref_rows = _record_matches(
@@ -112,7 +117,7 @@ def _query_active_genome_index(
 def _record_select_sql(where: str) -> str:
     return f"""
         select chrom, pos, end, rsid, sample_name, info_genes, ref, alt, qual, filter,
-               is_variant, genotype, depth, genotype_quality
+               is_variant, info as _info_raw, format as _format_raw, genotype, depth, genotype_quality
         from records
         where {where}
     """
@@ -144,8 +149,13 @@ def _record_matches(
         row["selection"] = selection
         row["target"] = _target_key(target)
         if run.get("source_format") in {"23andme", "ancestrydna", "myheritage", "ftdna", "livingdna"}:
+            semantics_kind = (
+                "consumer_genotype_array_no_call"
+                if row.get("record_kind") == RECORD_KIND_ARRAY_NO_CALL
+                else "consumer_genotype_array_call"
+            )
             row["observation_semantics"] = {
-                "kind": "consumer_genotype_array_call",
+                "kind": semantics_kind,
                 "genome_build": run.get("genome_build") or "GRCh37",
                 "source_format": run.get("source_format"),
                 "genotype": row.get("genotype"),
@@ -348,6 +358,12 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
 
 def _index_record(row: sqlite3.Row) -> JsonObject:
     item = dict(row)
+    item["record_kind"] = infer_record_kind(
+        format_value=item.pop("_format_raw", None),
+        is_variant=bool(item.get("is_variant")),
+        filter_value=item.get("filter"),
+        info_raw=item.pop("_info_raw", None),
+    )
     genes_raw = item.get("info_genes")
     if genes_raw:
         try:

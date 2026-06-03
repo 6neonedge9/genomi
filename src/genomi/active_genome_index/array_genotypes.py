@@ -2,18 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from .record_kinds import ARRAY_FORMAT, is_array_record_format
+
 JsonObject = dict[str, Any]
 
-ARRAY_FORMAT = "GT_ARRAY"
 ARRAY_NO_CALLS = {"", ".", "--", "00", "NN"}
 SUPPORTED_ARRAY_BASES = {"A", "C", "G", "T", "I", "D"}
 
 
 def is_array_genotype_record(record: JsonObject) -> bool:
-    value = record.get("format")
-    if isinstance(value, list):
-        return ARRAY_FORMAT in {str(item).upper() for item in value}
-    return str(value or "").upper() == ARRAY_FORMAT
+    return is_array_record_format(record.get("format"))
 
 
 def array_genotype_bases(record: JsonObject) -> list[str] | None:
