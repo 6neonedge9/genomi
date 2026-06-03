@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import tempfile
 import urllib.error
 import urllib.request
 from collections.abc import Iterable
@@ -33,35 +34,13 @@ def import_scoring_file(
     scoring_url: str | None = None,
     force: bool = False,
 ) -> JsonObject:
-    normalized_build = normalize_build(genome_build)
+    requested_build = normalize_build(genome_build)
+    authoritative_build = requested_build
     clean_pgs_id = pgs_catalog.normalize_pgs_id(pgs_id)
     rest_metadata: JsonObject = {}
+    source_choice: JsonObject = {}
     source_url = scoring_url
-    if not scoring_file and not source_url and clean_pgs_id:
-        try:
-            rest_metadata = pgs_catalog.fetch_rest_metadata(clean_pgs_id)
-        except pgs_catalog.SourceUnavailable as exc:
-            return pgs_catalog.source_unavailable_result(exc, schema="genomi-prs-score-import-v1")
-        source_url = pgs_catalog.scoring_file_url_from_metadata(rest_metadata, normalized_build)
-        if not source_url:
-            return {
-                "schema": "genomi-prs-score-import-v1",
-                "status": "source_unavailable",
-                "pgs_id": clean_pgs_id,
-                "genome_build": normalized_build,
-                "message": f"No PGS Catalog scoring file URL was available for {clean_pgs_id} on {normalized_build}.",
-                "source_urls": source_context.source_urls(),
-                "next_actions": [{"action": "supply_scoring_file_or_scoring_url"}],
-            }
-
-    if not scoring_file and not source_url:
-        return {
-            "schema": "genomi-prs-score-import-v1",
-            "status": "invalid_params",
-            "message": "Provide pgs_id, scoring_file, or scoring_url.",
-            "source_urls": source_context.source_urls(),
-        }
-
+    source_path: Path | None = None
     if scoring_file:
         source_path = Path(scoring_file).expanduser()
         if not source_path.exists():
@@ -72,96 +51,248 @@ def import_scoring_file(
                 "source_status": {"source": str(source_path), "error": "file_not_found"},
                 "next_actions": [{"action": "provide_existing_scoring_file"}],
             }
-        inferred_id = clean_pgs_id or _infer_pgs_id_from_name(source_path) or f"CUSTOM-{_short_file_hash(source_path)}"
-        out_dir = prs_score_dir(inferred_id, normalized_build)
-        if out_dir.exists() and not force and manifest_path(out_dir).exists():
-            return _already_imported(out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        cached_source = _copy_source(source_path, out_dir / _source_filename_for(source_path))
-        source_label = str(source_path)
-    else:
-        assert source_url is not None
-        inferred_id = clean_pgs_id or _infer_pgs_id_from_name(Path(urllib.request.url2pathname(source_url))) or "CUSTOM"
-        out_dir = prs_score_dir(inferred_id, normalized_build)
-        if out_dir.exists() and not force and manifest_path(out_dir).exists():
-            return _already_imported(out_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        cached_source = out_dir / SOURCE_FILE_NAME
+        source_choice = _local_source_choice(source_path, requested_build)
+    elif source_url:
+        source_choice = _explicit_url_source_choice(source_url, requested_build)
+    elif clean_pgs_id:
         try:
-            _download_source(source_url, cached_source)
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            rest_metadata = pgs_catalog.fetch_rest_metadata(clean_pgs_id)
+        except pgs_catalog.SourceUnavailable as exc:
+            return pgs_catalog.source_unavailable_result(exc, schema="genomi-prs-score-import-v1")
+        source_choice = pgs_catalog.scoring_file_source_from_metadata(rest_metadata, requested_build)
+        if source_choice.get("status") != "available":
+            return _catalog_source_unavailable(clean_pgs_id, requested_build, source_choice)
+        source_url = str(source_choice.get("url") or "")
+        authoritative_build = normalize_build(str(source_choice.get("genome_build") or requested_build))
+
+    if not scoring_file and not source_url:
+        return {
+            "schema": "genomi-prs-score-import-v1",
+            "status": "invalid_params",
+            "message": "Provide pgs_id, scoring_file, or scoring_url.",
+            "source_urls": source_context.source_urls(),
+        }
+
+    if clean_pgs_id:
+        known_dir = prs_score_dir(clean_pgs_id, authoritative_build)
+        if _complete_cache_exists(known_dir) and not force:
+            return _already_imported(known_dir, requested_genome_build=requested_build, source_choice=source_choice)
+
+    staging_dir: Path | None = None
+    try:
+        staging_dir = _new_staging_dir(authoritative_build)
+        if source_path is not None:
+            cached_source = _copy_source(source_path, staging_dir / _source_filename_for(source_path))
+            source_label = str(source_path)
+            inferred_id = _infer_pgs_id_from_name(source_path)
+        else:
+            assert source_url is not None
+            cached_source = staging_dir / SOURCE_FILE_NAME
+            inferred_id = _infer_pgs_id_from_name(Path(urllib.request.url2pathname(source_url)))
+            source_label = source_url
+            try:
+                _download_source(source_url, cached_source)
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                return {
+                    "schema": "genomi-prs-score-import-v1",
+                    "status": "source_unavailable",
+                    "pgs_id": clean_pgs_id or inferred_id,
+                    "genome_build": authoritative_build,
+                    "requested_genome_build": requested_build,
+                    "source_choice": source_choice,
+                    "source_status": {"source": source_url, "error": str(exc)},
+                    "source_urls": source_context.source_urls(),
+                    "next_actions": [{"action": "retry_later_or_supply_local_scoring_file"}],
+                }
+        try:
+            parsed = parse_scoring_file(cached_source)
+        except (OSError, ValueError, UnicodeError) as exc:
             return {
                 "schema": "genomi-prs-score-import-v1",
-                "status": "source_unavailable",
-                "pgs_id": inferred_id,
-                "genome_build": normalized_build,
-                "source_status": {"source": source_url, "error": str(exc)},
-                "source_urls": source_context.source_urls(),
-                "next_actions": [{"action": "retry_later_or_supply_local_scoring_file"}],
+                "status": "invalid_scoring_file",
+                "pgs_id": clean_pgs_id or inferred_id,
+                "genome_build": authoritative_build,
+                "requested_genome_build": requested_build,
+                "message": str(exc),
+                "source": source_label,
+                "source_choice": source_choice,
+                "limitations": source_context.limitations(),
+                "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
             }
-        source_label = source_url
+        if not inferred_id:
+            inferred_id = f"CUSTOM-{_short_file_hash(cached_source)}"
+        identity = _resolve_score_id(clean_pgs_id, str(parsed.get("pgs_id") or ""), inferred_id)
+        if identity.get("status") != "completed":
+            return {
+                "schema": "genomi-prs-score-import-v1",
+                "status": "invalid_scoring_file",
+                "pgs_id": clean_pgs_id or parsed.get("pgs_id") or inferred_id,
+                "genome_build": authoritative_build,
+                "requested_genome_build": requested_build,
+                "message": identity["message"],
+                "source": source_label,
+                "source_choice": source_choice,
+                "limitations": source_context.limitations(),
+                "next_actions": [{"action": "provide_matching_pgs_id_or_scoring_file"}],
+            }
+        score_id = str(identity["pgs_id"])
+        if not parsed["variants"]:
+            return {
+                "schema": "genomi-prs-score-import-v1",
+                "status": "invalid_scoring_file",
+                "pgs_id": score_id,
+                "genome_build": authoritative_build,
+                "requested_genome_build": requested_build,
+                "message": "The scoring file did not contain any usable variant weight rows.",
+                "skipped": parsed["skipped"],
+                "source": source_label,
+                "source_choice": source_choice,
+                "limitations": source_context.limitations(),
+                "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
+            }
+        out_dir = prs_score_dir(score_id, authoritative_build)
+        if _complete_cache_exists(out_dir) and not force:
+            return _already_imported(out_dir, requested_genome_build=requested_build, source_choice=source_choice)
 
-    try:
-        parsed = parse_scoring_file(cached_source)
-    except (OSError, ValueError, UnicodeError) as exc:
-        return {
-            "schema": "genomi-prs-score-import-v1",
-            "status": "invalid_scoring_file",
-            "pgs_id": clean_pgs_id or inferred_id,
-            "genome_build": normalized_build,
-            "message": str(exc),
-            "source": source_label,
-            "limitations": source_context.limitations(),
-            "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
-        }
-    if not parsed["variants"]:
-        return {
-            "schema": "genomi-prs-score-import-v1",
-            "status": "invalid_scoring_file",
-            "pgs_id": clean_pgs_id or parsed.get("pgs_id") or inferred_id,
-            "genome_build": normalized_build,
-            "message": "The scoring file did not contain any usable variant weight rows.",
-            "skipped": parsed["skipped"],
-            "source": source_label,
-            "limitations": source_context.limitations(),
-            "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
-        }
-    score_id = clean_pgs_id or parsed.get("pgs_id") or inferred_id
-    if score_id != inferred_id:
-        target_dir = prs_score_dir(score_id, normalized_build)
-        if target_dir != out_dir:
-            if target_dir.exists() and force:
-                shutil.rmtree(target_dir)
-            if not target_dir.exists():
-                out_dir.rename(target_dir)
-                out_dir = target_dir
-                cached_source = out_dir / cached_source.name
+        db_path = variants_db_path(staging_dir)
+        write_variants_db(db_path, parsed["variants"])
+        manifest = _manifest(
+            score_id=score_id,
+            genome_build=authoritative_build,
+            requested_genome_build=requested_build,
+            score_dir=out_dir,
+            source_file=out_dir / cached_source.name,
+            source_label=source_label,
+            source_choice=source_choice,
+            parsed=parsed,
+            rest_metadata=rest_metadata,
+        )
+        _write_json_atomic(manifest_path(staging_dir), manifest)
+        if _publish_cache(staging_dir, out_dir, force=force) == "already_exists":
+            return _already_imported(out_dir, requested_genome_build=requested_build, source_choice=source_choice)
+        staging_dir = None
+    finally:
+        if staging_dir is not None and staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
-    db_path = variants_db_path(out_dir)
-    write_variants_db(db_path, parsed["variants"])
-    manifest = _manifest(
-        score_id=score_id,
-        genome_build=normalized_build,
-        score_dir=out_dir,
-        source_file=cached_source,
-        source_label=source_label,
-        parsed=parsed,
-        rest_metadata=rest_metadata,
-    )
-    manifest_path(out_dir).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {
         "schema": "genomi-prs-score-import-v1",
         "status": "completed",
         "pgs_id": score_id,
-        "genome_build": normalized_build,
+        "genome_build": authoritative_build,
+        "requested_genome_build": requested_build,
+        "source_choice": source_choice,
         "score_cache": _cache_summary(out_dir, manifest),
         "source_urls": source_context.source_urls(),
         "limitations": source_context.limitations(),
         "next_actions": [
-            {"action": "check_score_overlap", "operation": "prs.check_score_overlap", "pgs_id": score_id, "genome_build": normalized_build},
-            {"action": "calculate_score", "operation": "prs.calculate_score", "pgs_id": score_id, "genome_build": normalized_build},
+            {"action": "check_score_overlap", "operation": "prs.check_score_overlap", "pgs_id": score_id, "genome_build": authoritative_build},
+            {"action": "calculate_score", "operation": "prs.calculate_score", "pgs_id": score_id, "genome_build": authoritative_build},
         ],
     }
+
+
+def _catalog_source_unavailable(pgs_id: str, requested_build: str, source_choice: JsonObject) -> JsonObject:
+    reason = str(source_choice.get("reason") or "no_scoring_file_url")
+    message = str(source_choice.get("message") or f"No PGS Catalog scoring file URL was available for {pgs_id} on {requested_build}.")
+    if reason == "fallback_build_unproven":
+        message = (
+            f"PGS Catalog only provided a direct/original scoring-file fallback for {pgs_id}, "
+            "but its original genome build was not proven by supported catalog metadata."
+        )
+    return {
+        "schema": "genomi-prs-score-import-v1",
+        "status": "source_unavailable",
+        "pgs_id": pgs_id,
+        "genome_build": requested_build,
+        "requested_genome_build": requested_build,
+        "message": message,
+        "source_choice": source_choice,
+        "source_urls": source_context.source_urls(),
+        "next_actions": [{"action": "supply_scoring_file_or_scoring_url"}],
+    }
+
+
+def _local_source_choice(source_path: Path, genome_build: str) -> JsonObject:
+    return {
+        "status": "available",
+        "path": str(source_path),
+        "location": str(source_path),
+        "genome_build": genome_build,
+        "requested_genome_build": genome_build,
+        "harmonized": False,
+        "fallback_used": False,
+        "source_kind": "local_scoring_file",
+        "build_evidence": "caller_declared_genome_build",
+    }
+
+
+def _explicit_url_source_choice(source_url: str, genome_build: str) -> JsonObject:
+    return {
+        "status": "available",
+        "url": source_url,
+        "location": source_url,
+        "genome_build": genome_build,
+        "requested_genome_build": genome_build,
+        "harmonized": False,
+        "fallback_used": False,
+        "source_kind": "explicit_scoring_url",
+        "build_evidence": "caller_declared_genome_build",
+    }
+
+
+def _resolve_score_id(declared_id: str, parsed_id: str, inferred_id: str) -> JsonObject:
+    if declared_id and parsed_id and declared_id != parsed_id:
+        return {
+            "status": "invalid",
+            "message": f"Declared pgs_id {declared_id} does not match scoring-file metadata pgs_id {parsed_id}.",
+        }
+    score_id = declared_id or parsed_id or inferred_id
+    return {"status": "completed", "pgs_id": score_id}
+
+
+def _complete_cache_exists(score_dir: Path) -> bool:
+    return bool(manifest_path(score_dir).exists() and variants_db_path(score_dir).exists())
+
+
+def _new_staging_dir(genome_build: str) -> Path:
+    parent = prs_score_dir("placeholder", genome_build).parents[1]
+    parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=".import-", dir=parent))
+
+
+def _write_json_atomic(path: Path, payload: JsonObject) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, delete=False, mode="w", encoding="utf-8")
+    tmp = Path(handle.name)
+    try:
+        with handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
+    if target_dir.exists():
+        if not force:
+            return "already_exists"
+        backup = target_dir.with_name(f".{target_dir.name}.replace-backup")
+        if backup.exists():
+            shutil.rmtree(backup)
+        target_dir.replace(backup)
+        try:
+            staging_dir.replace(target_dir)
+        except Exception:
+            if not target_dir.exists() and backup.exists():
+                backup.replace(target_dir)
+            raise
+        shutil.rmtree(backup, ignore_errors=True)
+        return "published"
+    staging_dir.replace(target_dir)
+    return "published"
 
 
 def list_imported_scores(root: str | Path | None = None) -> JsonObject:
@@ -327,56 +458,64 @@ def parse_scoring_file(path: str | Path) -> JsonObject:
 
 def write_variants_db(path: str | Path, variants: Iterable[JsonObject]) -> None:
     db_path = Path(path)
-    if db_path.exists():
-        db_path.unlink()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with connect_sqlite(db_path) as connection:
-        connection.executescript(
-            """
-            create table score_variants (
-              variant_index integer primary key,
-              variant_id text,
-              rsid text,
-              chrom text not null,
-              pos integer not null,
-              effect_allele text not null,
-              other_allele text,
-              effect_weight real not null,
-              harmonized integer not null,
-              palindromic integer not null,
-              source_row_number integer not null
-            );
-            create index score_variants_locus_idx on score_variants(chrom, pos);
-            """
-        )
-        rows = []
-        for index, variant in enumerate(variants):
-            rows.append(
-                (
-                    index,
-                    variant.get("variant_id"),
-                    variant.get("rsid"),
-                    variant["chrom"],
-                    int(variant["pos"]),
-                    str(variant["effect_allele"]).upper(),
-                    str(variant.get("other_allele") or "").upper() or None,
-                    float(variant["effect_weight"]),
-                    1 if variant.get("harmonized") else 0,
-                    1 if variant.get("palindromic") else 0,
-                    int(variant.get("source_row_number") or 0),
+    handle = tempfile.NamedTemporaryFile(prefix=f".{db_path.name}.", suffix=".tmp", dir=db_path.parent, delete=False)
+    tmp_path = Path(handle.name)
+    handle.close()
+    try:
+        with connect_sqlite(tmp_path) as connection:
+            connection.executescript(
+                """
+                create table score_variants (
+                  variant_index integer primary key,
+                  variant_id text,
+                  rsid text,
+                  chrom text not null,
+                  pos integer not null,
+                  effect_allele text not null,
+                  other_allele text,
+                  effect_weight real not null,
+                  harmonized integer not null,
+                  palindromic integer not null,
+                  source_row_number integer not null
+                );
+                create index score_variants_locus_idx on score_variants(chrom, pos);
+                """
+            )
+            rows = []
+            for index, variant in enumerate(variants):
+                rows.append(
+                    (
+                        index,
+                        variant.get("variant_id"),
+                        variant.get("rsid"),
+                        variant["chrom"],
+                        int(variant["pos"]),
+                        str(variant["effect_allele"]).upper(),
+                        str(variant.get("other_allele") or "").upper() or None,
+                        float(variant["effect_weight"]),
+                        1 if variant.get("harmonized") else 0,
+                        1 if variant.get("palindromic") else 0,
+                        int(variant.get("source_row_number") or 0),
+                    )
                 )
+            connection.executemany(
+                """
+                insert into score_variants(
+                  variant_index, variant_id, rsid, chrom, pos, effect_allele,
+                  other_allele, effect_weight, harmonized, palindromic,
+                  source_row_number
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
             )
-        connection.executemany(
-            """
-            insert into score_variants(
-              variant_index, variant_id, rsid, chrom, pos, effect_allele,
-              other_allele, effect_weight, harmonized, palindromic,
-              source_row_number
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
+        tmp_path.replace(db_path)
+    finally:
+        _unlink_if_exists(tmp_path)
+        _unlink_if_exists(tmp_path.with_name(tmp_path.name + "-journal"))
+        _unlink_if_exists(tmp_path.with_name(tmp_path.name + "-wal"))
+        _unlink_if_exists(tmp_path.with_name(tmp_path.name + "-shm"))
 
 
 def normalize_build(genome_build: str) -> str:
@@ -489,9 +628,11 @@ def _manifest(
     *,
     score_id: str,
     genome_build: str,
+    requested_genome_build: str,
     score_dir: Path,
     source_file: Path,
     source_label: str,
+    source_choice: JsonObject,
     parsed: JsonObject,
     rest_metadata: JsonObject,
 ) -> JsonObject:
@@ -499,9 +640,11 @@ def _manifest(
         "schema": SCHEMA_VERSION,
         "pgs_id": score_id,
         "genome_build": genome_build,
+        "requested_genome_build": requested_genome_build,
         "score_dir": str(score_dir),
         "source_file": str(source_file),
         "source": source_label,
+        "source_choice": source_choice,
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "variant_count": parsed["variant_count"],
         "skipped": parsed["skipped"],
@@ -516,19 +659,26 @@ def _cache_summary(score_dir: Path, manifest: JsonObject) -> JsonObject:
     return {
         "pgs_id": manifest.get("pgs_id"),
         "genome_build": manifest.get("genome_build"),
+        "requested_genome_build": manifest.get("requested_genome_build"),
         "score_dir": str(score_dir),
         "manifest_path": str(manifest_path(score_dir)),
         "variants_db": str(variants_db_path(score_dir)),
         "variant_count": manifest.get("variant_count"),
         "harmonized": manifest.get("harmonized"),
         "source": manifest.get("source"),
+        "source_choice": manifest.get("source_choice"),
         "imported_at": manifest.get("imported_at"),
     }
 
 
-def _already_imported(score_dir: Path) -> JsonObject:
+def _already_imported(
+    score_dir: Path,
+    *,
+    requested_genome_build: str | None = None,
+    source_choice: JsonObject | None = None,
+) -> JsonObject:
     manifest = read_manifest(score_dir)
-    return {
+    result = {
         "schema": "genomi-prs-score-import-v1",
         "status": "already_installed",
         "pgs_id": manifest.get("pgs_id"),
@@ -536,6 +686,11 @@ def _already_imported(score_dir: Path) -> JsonObject:
         "score_cache": _cache_summary(score_dir, manifest),
         "next_actions": [{"action": "calculate_score", "operation": "prs.calculate_score", "pgs_id": manifest.get("pgs_id")}],
     }
+    if requested_genome_build:
+        result["requested_genome_build"] = requested_genome_build
+    if source_choice:
+        result["source_choice"] = source_choice
+    return result
 
 
 def _copy_source(source: Path, target: Path) -> Path:
@@ -549,6 +704,13 @@ def _download_source(url: str, target: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=120) as response:
         target.write_bytes(response.read())
+
+
+def _unlink_if_exists(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
 
 
 def _source_filename_for(path: Path) -> str:

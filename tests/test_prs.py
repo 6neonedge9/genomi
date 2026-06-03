@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import os
 import sqlite3
 import tempfile
@@ -11,6 +12,7 @@ from genomi.active_genome_index.active_genome_index import create_active_genome_
 from genomi.capabilities.prs import harmonize as prs_harmonize
 from genomi.capabilities.prs import pgs_catalog as prs_pgs_catalog
 from genomi.capabilities.prs import scorer as prs_scorer
+from genomi.capabilities.prs import scoring_files as prs_scoring_files
 from genomi.operations import OperationError, call_operation, list_operations
 from genomi.runtime import context as runtime_context
 from genomi.runtime.liftover import chain_file_path, liftover_preflight
@@ -227,6 +229,125 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(score["score_result"]["calibration"]["status"], "not_provided")
         self.assertIn("not an absolute risk", " ".join(score["limitations"]).lower())
         self.assertTrue(score["personal_context"]["uses_personal_dna"])
+
+    def test_catalog_source_choice_prefers_requested_harmonized_build(self) -> None:
+        choice = prs_pgs_catalog.scoring_file_source_from_metadata(
+            {
+                "id": "PGS900001",
+                "genome_build": "GRCh37",
+                "ftp_scoring_file": "https://example.test/PGS900001.txt.gz",
+                "ftp_harmonized_scoring_files": {
+                    "GRCh38": {"positions": "https://example.test/PGS900001_hmPOS_GRCh38.txt.gz"}
+                },
+            },
+            "GRCh38",
+        )
+
+        self.assertEqual(choice["status"], "available")
+        self.assertEqual(choice["url"], "https://example.test/PGS900001_hmPOS_GRCh38.txt.gz")
+        self.assertEqual(choice["genome_build"], "GRCh38")
+        self.assertTrue(choice["harmonized"])
+        self.assertFalse(choice["fallback_used"])
+
+    def test_catalog_direct_fallback_uses_authoritative_original_build(self) -> None:
+        scoring_file = self._write_scoring_file(
+            filename="catalog-original.txt",
+            pgs_id="PGS900001",
+            harmonized=False,
+        )
+        metadata = {
+            "id": "PGS900001",
+            "genome_build": "GRCh37",
+            "ftp_scoring_file": "https://example.test/PGS900001.txt.gz",
+            "ftp_harmonized_scoring_files": {},
+        }
+        self.assertIsNone(prs_pgs_catalog.scoring_file_url_from_metadata(metadata, "GRCh38"))
+        self.assertEqual(
+            prs_pgs_catalog.scoring_file_url_from_metadata(metadata, "GRCh37"),
+            "https://example.test/PGS900001.txt.gz",
+        )
+
+        def fake_download(_: str, target: Path) -> None:
+            with gzip.open(target, "wt", encoding="utf-8") as handle:
+                handle.write(scoring_file.read_text(encoding="utf-8"))
+
+        with (
+            mock.patch.object(prs_pgs_catalog, "fetch_rest_metadata", return_value=metadata),
+            mock.patch.object(prs_scoring_files, "_download_source", side_effect=fake_download),
+        ):
+            imported = call_operation(
+                "prs.import_scoring_file",
+                {"pgs_id": "PGS900001", "genome_build": "GRCh38"},
+            )
+
+        self.assertEqual(imported["status"], "completed")
+        self.assertEqual(imported["requested_genome_build"], "GRCh38")
+        self.assertEqual(imported["genome_build"], "GRCh37")
+        self.assertTrue(imported["source_choice"]["fallback_used"])
+        self.assertFalse(imported["source_choice"]["harmonized"])
+        self.assertIn("PGS900001/GRCH37", imported["score_cache"]["score_dir"])
+        self.assertFalse((self.genomi_home / "reference" / "prs" / "PGS900001" / "GRCH38").exists())
+
+    def test_catalog_direct_fallback_requires_proven_original_build(self) -> None:
+        metadata = {
+            "id": "PGS900001",
+            "genome_build": "",
+            "ftp_scoring_file": "https://example.test/PGS900001.txt.gz",
+            "ftp_harmonized_scoring_files": {},
+        }
+
+        with (
+            mock.patch.object(prs_pgs_catalog, "fetch_rest_metadata", return_value=metadata),
+            mock.patch.object(prs_scoring_files, "_download_source") as download,
+        ):
+            result = call_operation(
+                "prs.import_scoring_file",
+                {"pgs_id": "PGS900001", "genome_build": "GRCh38"},
+            )
+
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["source_choice"]["reason"], "fallback_build_unproven")
+        self.assertTrue(result["source_choice"]["fallback_used"])
+        download.assert_not_called()
+
+    def test_import_reuses_final_cache_after_parsed_identity_is_known(self) -> None:
+        scoring_file = self._write_scoring_file(
+            filename="score-with-metadata.txt",
+            pgs_id="PGS900777",
+        )
+
+        first = call_operation("prs.import_scoring_file", {"scoring_file": str(scoring_file)})
+        second = call_operation("prs.import_scoring_file", {"scoring_file": str(scoring_file)})
+
+        self.assertEqual(first["status"], "completed")
+        self.assertEqual(first["pgs_id"], "PGS900777")
+        self.assertEqual(second["status"], "already_installed")
+        prs_root = self.genomi_home / "reference" / "prs"
+        score_dirs = sorted(path.name for path in prs_root.iterdir() if path.is_dir() and not path.name.startswith("."))
+        self.assertEqual(score_dirs, ["PGS900777"])
+
+    def test_variant_db_write_failure_preserves_existing_database(self) -> None:
+        db_path = Path(self._home_tmp.name) / "variants.sqlite"
+        variant = {
+            "variant_id": "rs1",
+            "rsid": "rs1",
+            "chrom": "1",
+            "pos": 100,
+            "effect_allele": "C",
+            "other_allele": "A",
+            "effect_weight": 0.5,
+            "harmonized": False,
+            "palindromic": False,
+            "source_row_number": 2,
+        }
+        prs_scoring_files.write_variants_db(db_path, [variant])
+
+        with self.assertRaises(KeyError):
+            prs_scoring_files.write_variants_db(db_path, [{"chrom": "1"}])
+
+        with sqlite3.connect(db_path) as connection:
+            rows = connection.execute("select rsid, effect_weight from score_variants").fetchall()
+        self.assertEqual(rows, [("rs1", 0.5)])
 
     def test_calibration_uses_only_supplied_parameters(self) -> None:
         scoring_file = self._write_scoring_file()
@@ -514,19 +635,31 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "genotype_allele_outside_score_alleles")
 
-    def _write_scoring_file(self) -> Path:
-        path = Path(self._home_tmp.name) / "PGS900001_hmPOS_GRCh38.txt"
+    def _write_scoring_file(
+        self,
+        *,
+        filename: str = "PGS900001_hmPOS_GRCh38.txt",
+        pgs_id: str = "PGS900001",
+        harmonized: bool = True,
+    ) -> Path:
+        path = Path(self._home_tmp.name) / filename
+        header = "hm_chr\thm_pos\trsID\teffect_allele\tother_allele\teffect_weight"
+        rows = [
+            "1\t100\trs1\tC\tA\t0.5",
+            "1\t200\trs2\tG\tT\t1.0",
+            "1\t300\trs3\tG\tA\t-0.25",
+            "1\t400\trs4\tT\tC\t2.0",
+        ]
+        if not harmonized:
+            header = "chr_name\tchr_position\trsID\teffect_allele\tother_allele\teffect_weight"
         path.write_text(
             "\n".join(
                 [
-                    "#pgs_id=PGS900001",
+                    f"#pgs_id={pgs_id}",
                     "#pgs_name=SYNTHETIC",
                     "#reported_trait=Synthetic common trait",
-                    "hm_chr\thm_pos\trsID\teffect_allele\tother_allele\teffect_weight",
-                    "1\t100\trs1\tC\tA\t0.5",
-                    "1\t200\trs2\tG\tT\t1.0",
-                    "1\t300\trs3\tG\tA\t-0.25",
-                    "1\t400\trs4\tT\tC\t2.0",
+                    header,
+                    *rows,
                 ]
             )
             + "\n",

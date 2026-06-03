@@ -174,16 +174,73 @@ def refresh_score_search_index(rows: list[JsonObject] | None = None) -> JsonObje
     )
 
 
-def scoring_file_url_from_metadata(metadata: JsonObject, genome_build: str) -> str | None:
+def scoring_file_source_from_metadata(metadata: JsonObject, genome_build: str) -> JsonObject:
+    requested_build = _normalize_build(genome_build)
     harmonized = metadata.get("ftp_harmonized_scoring_files")
     if isinstance(harmonized, dict):
-        build_payload = harmonized.get(_normalize_build(genome_build)) or harmonized.get(genome_build)
-        if isinstance(build_payload, dict):
-            positions = build_payload.get("positions")
+        for build_key, build_payload in harmonized.items():
+            authoritative_build = _normalize_supported_build(str(build_key))
+            if authoritative_build != requested_build or not isinstance(build_payload, dict):
+                continue
+            positions = str(build_payload.get("positions") or "").strip()
             if positions:
-                return str(positions)
+                return {
+                    "status": "available",
+                    "url": positions,
+                    "location": positions,
+                    "genome_build": authoritative_build,
+                    "requested_genome_build": requested_build,
+                    "harmonized": True,
+                    "fallback_used": False,
+                    "source_kind": "pgs_catalog_harmonized_positions",
+                    "build_evidence": "ftp_harmonized_scoring_files build key",
+                }
     direct = metadata.get("ftp_scoring_file")
-    return str(direct) if direct else None
+    direct_url = str(direct or "").strip()
+    if direct_url:
+        original_build = _metadata_supported_build(metadata)
+        if original_build:
+            return {
+                "status": "available",
+                "url": direct_url,
+                "location": direct_url,
+                "genome_build": original_build,
+                "requested_genome_build": requested_build,
+                "harmonized": False,
+                "fallback_used": True,
+                "source_kind": "pgs_catalog_original_scoring_file",
+                "build_evidence": "PGS Catalog score genome_build metadata",
+            }
+        return {
+            "status": "unavailable",
+            "reason": "fallback_build_unproven",
+            "url": direct_url,
+            "location": direct_url,
+            "genome_build": None,
+            "requested_genome_build": requested_build,
+            "harmonized": False,
+            "fallback_used": True,
+            "source_kind": "pgs_catalog_original_scoring_file",
+            "message": "PGS Catalog did not provide a supported original genome build for the direct scoring-file fallback.",
+        }
+    return {
+        "status": "unavailable",
+        "reason": "no_scoring_file_url",
+        "genome_build": None,
+        "requested_genome_build": requested_build,
+        "harmonized": False,
+        "fallback_used": False,
+        "message": "No PGS Catalog scoring file URL was available.",
+    }
+
+
+def scoring_file_url_from_metadata(metadata: JsonObject, genome_build: str) -> str | None:
+    choice = scoring_file_source_from_metadata(metadata, genome_build)
+    if choice.get("status") != "available":
+        return None
+    if choice.get("genome_build") != _normalize_build(genome_build):
+        return None
+    return str(choice.get("url") or "") or None
 
 
 def fetch_rest_metadata(pgs_id: str) -> JsonObject:
@@ -573,6 +630,19 @@ def _normalize_build(genome_build: str) -> str:
     if lowered in {"grch37", "hg19", "37"}:
         return "GRCh37"
     return str(genome_build or "").strip()
+
+
+def _normalize_supported_build(genome_build: str) -> str:
+    normalized = _normalize_build(genome_build)
+    return normalized if normalized in {"GRCh37", "GRCh38"} else ""
+
+
+def _metadata_supported_build(metadata: JsonObject) -> str:
+    for key in ("genome_build", "original_genome_build", "Original Genome Build"):
+        normalized = _normalize_supported_build(str(metadata.get(key) or ""))
+        if normalized:
+            return normalized
+    return ""
 
 
 def _maybe_int(value: object) -> int | None:
