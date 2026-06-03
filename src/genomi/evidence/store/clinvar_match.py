@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
-from ...active_genome_index.vcf import parse_info, parse_sample
+from ...active_genome_index.vcf import parse_sample
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
 from ...runtime.paths import run_evidence_db_path, run_output_path
@@ -30,6 +29,14 @@ from .clinvar_query import (
 )
 from .clinvar_array_match import (
     clinvar_array_direct_select_sql,
+)
+from .clinvar_match_provenance import (
+    MATCH_BASIS_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
+    MATCH_BASIS_MULTIALLELIC_ALT,
+    _write_clinvar_match_rows,
+    build_clinvar_match_payload,
 )
 
 
@@ -149,33 +156,57 @@ def match_clinvar_variants(
                 matched_alleles += 1
                 for sample_record in sample_records:
                     sample_fields = parse_sample(sample_record.get("format", ""), sample_record.get("sample", ""))
+                    source_record = {
+                        "chrom": record["chrom"],
+                        "pos": int(record["pos"]),
+                        "ref": record["ref"],
+                        "alt": record["alt"],
+                        "format": sample_record.get("format"),
+                        "genotype": sample_fields.get("GT"),
+                        "source_format": "vcf",
+                    }
+                    is_multiallelic_alt = "," in str(record["alt"] or "")
+                    if lifter is not None:
+                        match_basis = (
+                            MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT
+                            if is_multiallelic_alt
+                            else MATCH_BASIS_LIFTOVER_EXACT_ALLELE
+                        )
+                    else:
+                        match_basis = MATCH_BASIS_MULTIALLELIC_ALT if is_multiallelic_alt else MATCH_BASIS_EXACT_ALLELE
                     for row in rows:
-                        payload: dict[str, Any] = {
-                            "sample_variant": {
-                                "chrom": record["chrom"],
-                                "pos": int(record["pos"]),
-                                "id": _none_if_dot(record["id"]),
-                                "sample_index": sample_record.get("sample_index"),
-                                "sample_name": sample_record.get("sample_name"),
-                                "ref": record["ref"],
-                                "alt": alt,
-                                "qual": _none_if_dot(record["qual"]),
-                                "filter": record["filter"],
-                                "genotype": sample_fields.get("GT"),
-                                "depth": sample_fields.get("DP"),
-                                "genotype_quality": sample_fields.get("GQ"),
-                                "genome_build": genome_build,
-                            },
-                            "clinvar": dict(row),
+                        sample_variant = {
+                            "chrom": record["chrom"],
+                            "pos": int(record["pos"]),
+                            "id": _none_if_dot(record["id"]),
+                            "sample_index": sample_record.get("sample_index"),
+                            "sample_name": sample_record.get("sample_name"),
+                            "ref": record["ref"],
+                            "alt": alt,
+                            "qual": _none_if_dot(record["qual"]),
+                            "filter": record["filter"],
+                            "genotype": sample_fields.get("GT"),
+                            "depth": sample_fields.get("DP"),
+                            "genotype_quality": sample_fields.get("GQ"),
+                            "genome_build": genome_build,
                         }
+                        liftover = None
                         if lifter is not None:
-                            payload["liftover"] = {
+                            liftover = {
                                 "source_build": genome_build,
                                 "target_build": cache_build,
                                 "lifted_chrom": query_chrom,
                                 "lifted_pos": query_pos,
                                 "chain": "UCSC pyliftover",
                             }
+                        payload = build_clinvar_match_payload(
+                            sample_variant=sample_variant,
+                            clinvar=dict(row),
+                            match_basis=match_basis,
+                            source_format="vcf",
+                            source_record=source_record,
+                            liftover=liftover,
+                        )
                         handle.write(json.dumps(payload, sort_keys=True) + "\n")
                         written_records += 1
 
@@ -275,7 +306,7 @@ def match_clinvar_variants_from_active_genome_index(
                 "stats": cached["stats"],
                 "evidence_context": evidence_context(
                     "static",
-                    reason="Active Genome Index ClinVar exact matches can be summarized and scanned into deterministic candidate inventory.",
+                    reason="Active Genome Index ClinVar matches include explicit provenance and can be summarized into deterministic candidate inventory.",
                     commands=[
                         "genomi call clinvar.scan_candidates --params '{\"matches\":\"<clinvar.matches.jsonl>\"}'"
                     ],
@@ -363,7 +394,7 @@ def match_clinvar_variants_from_active_genome_index(
         "clinvar_evidence": clinvar_identity,
         "evidence_context": evidence_context(
             "static",
-            reason="Active Genome Index ClinVar exact matches can be summarized and scanned into deterministic candidate inventory.",
+            reason="Active Genome Index ClinVar matches include explicit provenance and can be summarized into deterministic candidate inventory.",
             commands=["genomi call clinvar.scan_candidates --params '{\"matches\":\"<clinvar.matches.jsonl>\"}'"],
         ),
     }
@@ -383,6 +414,7 @@ def _selected_active_genome_index_records_cte_sql(
         return """
             with selected_records as (
                 select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                       info,
                        sample_index, sample_name, format, genotype, depth, genotype_quality,
                        sample_chrom_original, sample_pos_original
                 from temp.lifted_selected_records
@@ -391,6 +423,7 @@ def _selected_active_genome_index_records_cte_sql(
     sql = """
             with selected_records as (
                 select rowid as record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                       info,
                        sample_index, sample_name, format, genotype, depth, genotype_quality
                 from sample_active_genome_index.records
                 where is_variant = 1
@@ -440,6 +473,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
             rsid text,
             ref text,
             alt text,
+            info text,
             qual text,
             filter text,
             sample_index integer,
@@ -484,6 +518,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["rsid"],
                 row["ref"],
                 row["alt"],
+                row["info"],
                 row["qual"],
                 row["filter"],
                 row["sample_index"],
@@ -500,10 +535,10 @@ def _populate_lifted_selected_active_genome_index_records_table(
             """
             insert into temp.lifted_selected_records (
                 record_rowid, sample_chrom_original, sample_pos_original,
-                chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                chrom, chrom_sort, pos, rsid, ref, alt, info, qual, filter,
                 sample_index, sample_name, format, genotype, depth, genotype_quality
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             insert_buffer,
         )
@@ -720,11 +755,17 @@ def _clinvar_index_direct_select_sql(
     batch_id = "cast(r.record_rowid as text)"
     sample_ref = "r.ref"
     sample_alt = "r.alt"
+    match_basis = f"'{MATCH_BASIS_LIFTOVER_EXACT_ALLELE}'" if cross_build else f"'{MATCH_BASIS_EXACT_ALLELE}'"
     alt_where = "and r.alt not in ('', '.') and instr(r.alt, ',') = 0 and cv.alt = r.alt"
     ref_where = "and cv.ref = r.ref"
     if multiallelic:
         batch_id = "cast(r.record_rowid as text) || ':' || cv.alt"
         sample_alt = "cv.alt"
+        match_basis = (
+            f"'{MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT}'"
+            if cross_build
+            else f"'{MATCH_BASIS_MULTIALLELIC_ALT}'"
+        )
         alt_where = "and instr(r.alt, ',') > 0 and instr(',' || r.alt || ',', ',' || cv.alt || ',') > 0"
     where = f"""
               and cv.chrom = {chrom_expression}
@@ -750,6 +791,8 @@ def _clinvar_index_direct_select_sql(
     return f"""
             select
                 {batch_id} as batch_id,
+                {match_basis} as match_basis,
+                {match_basis} as match_kind,
                 {sample_chrom_select},
                 {sample_pos_select},
                 r.rsid as sample_rsid,
@@ -762,6 +805,12 @@ def _clinvar_index_direct_select_sql(
                 r.genotype as genotype,
                 r.depth as depth,
                 r.genotype_quality as genotype_quality,
+                r.ref as source_record_ref,
+                r.alt as source_record_alt,
+                r.format as source_record_format,
+                r.genotype as source_record_genotype,
+                r.info as source_record_info,
+                null as source_format,
                 cv.chrom as chrom,
                 cv.pos as pos,
                 cv.ref as ref,
@@ -861,84 +910,12 @@ def _write_clinvar_index_match_batch(
     return _write_clinvar_match_rows(handle, rows)
 
 
-def _write_clinvar_match_rows(
-    handle: Any,
-    rows: Iterable[sqlite3.Row],
-    *,
-    sample_build: str | None = None,
-    cache_build: str | None = None,
-) -> dict[str, int]:
-    matched_batch_ids: set[str] = set()
-    written_records = 0
-    clinvar_fields = (
-        "chrom",
-        "pos",
-        "ref",
-        "alt",
-        "genome_build",
-        "clinvar_id",
-        "allele_id",
-        "clinical_significance",
-        "review_status",
-        "conditions",
-        "gene_info",
-        "hgvs",
-        "source_path",
-        "source_version",
-        "imported_at",
-    )
-    row_keys: set[str] | None = None
-    for row in rows:
-        if row_keys is None:
-            row_keys = set(row.keys())
-        batch_id = str(row["batch_id"])
-        matched_batch_ids.add(batch_id)
-        sample_variant: dict[str, Any] = {
-            "chrom": row["sample_chrom"],
-            "pos": int(row["sample_pos"]),
-            "id": row["sample_rsid"],
-            "sample_index": row["sample_index"],
-            "sample_name": row["sample_name"],
-            "ref": row["sample_ref"],
-            "alt": row["sample_alt"],
-            "qual": row["sample_qual"],
-            "filter": row["sample_filter"],
-            "genotype": row["genotype"],
-            "depth": row["depth"],
-            "genotype_quality": row["genotype_quality"],
-        }
-        if sample_build is not None:
-            sample_variant["genome_build"] = sample_build
-        payload: dict[str, Any] = {
-            "sample_variant": sample_variant,
-            "clinvar": {field: row[field] for field in clinvar_fields},
-        }
-        if (
-            cache_build is not None
-            and "lifted_chrom" in row_keys
-            and row["lifted_chrom"] is not None
-            and row["lifted_pos"] is not None
-        ):
-            payload["liftover"] = {
-                "source_build": sample_build,
-                "target_build": cache_build,
-                "lifted_chrom": row["lifted_chrom"],
-                "lifted_pos": int(row["lifted_pos"]),
-                "chain": "UCSC pyliftover",
-            }
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
-        written_records += 1
-
-    return {
-        "matched_alleles": len(matched_batch_ids),
-        "written_records": written_records,
-    }
-
-
 def _clinvar_index_match_select_sql(table_name: str) -> str:
     return f"""
             select
                 q.batch_id as batch_id,
+                '{MATCH_BASIS_EXACT_ALLELE}' as match_basis,
+                '{MATCH_BASIS_EXACT_ALLELE}' as match_kind,
                 q.chrom as sample_chrom,
                 q.pos as sample_pos,
                 q.rsid as sample_rsid,
@@ -951,6 +928,12 @@ def _clinvar_index_match_select_sql(table_name: str) -> str:
                 q.genotype as genotype,
                 q.depth as depth,
                 q.genotype_quality as genotype_quality,
+                q.ref as source_record_ref,
+                q.alt as source_record_alt,
+                null as source_record_format,
+                q.genotype as source_record_genotype,
+                null as source_record_info,
+                null as source_format,
                 cv.chrom as chrom,
                 cv.pos as pos,
                 cv.ref as ref,

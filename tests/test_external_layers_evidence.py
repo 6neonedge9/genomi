@@ -438,6 +438,12 @@ class EvidenceImportTests(EvidenceImportTestBase):
             lines = output.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 2)
             self.assertIn('"clinical_significance": "Benign"', lines[0])
+            payloads = [json.loads(line) for line in lines]
+            self.assertEqual({payload["match_basis"] for payload in payloads}, {"exact_allele"})
+            self.assertEqual(payloads[0]["match_kind"], "exact_allele")
+            self.assertEqual(payloads[0]["source_format"], "vcf")
+            self.assertEqual(payloads[0]["sample_variant"]["source_record_ref"], payloads[0]["sample_variant"]["ref"])
+            self.assertEqual(payloads[0]["sample_variant"]["source_record_alt"], payloads[0]["sample_variant"]["alt"])
             self.assertTrue(Path(result["manifest_path"]).exists())
 
             chr_vcf = Path(tmp) / "chr-input.vcf"
@@ -453,6 +459,9 @@ class EvidenceImportTests(EvidenceImportTestBase):
             active_genome_index_result = match_clinvar_variants_from_active_genome_index(active_genome_index_file, db, active_genome_index_output)
             self.assertEqual(active_genome_index_result["stats"]["matched_alleles"], 2)
             self.assertIn('"chrom": "chr1"', active_genome_index_output.read_text(encoding="utf-8").splitlines()[0])
+            active_payload = json.loads(active_genome_index_output.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(active_payload["match_basis"], "exact_allele")
+            self.assertEqual(active_payload["sample_variant"]["source_record_ref"], active_payload["sample_variant"]["ref"])
 
             incomplete_active_genome_index = Path(tmp) / "incomplete-active-genome-index.sqlite"
             with sqlite3.connect(incomplete_active_genome_index) as connection:
@@ -505,6 +514,36 @@ class EvidenceImportTests(EvidenceImportTestBase):
             )
             cached_after_record = match_clinvar_variants(TINY_VCF, db, output)
             self.assertEqual(cached_after_record["status"], "cached")
+
+    def test_clinvar_match_report_marks_multiallelic_source_alt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            output = Path(tmp) / "matches.jsonl"
+            sample_vcf = Path(tmp) / "multiallelic.vcf"
+            sample_vcf.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                        "1\t10257\trs111200574\tA\tC,G\t.\tPASS\t.\tGT\t1/2",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            import_clinvar_vcf(TINY_CLINVAR, db, source_version="fixture")
+
+            result = match_clinvar_variants(sample_vcf, db, output)
+
+            self.assertEqual(result["stats"]["matched_alleles"], 2)
+            payloads = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+            self.assertEqual(len(payloads), 2)
+            self.assertEqual({payload["match_basis"] for payload in payloads}, {"multiallelic_alt"})
+            self.assertEqual({payload["sample_variant"]["alt"] for payload in payloads}, {"C", "G"})
+            for payload in payloads:
+                self.assertEqual(payload["sample_variant"]["source_record_alt"], "C,G")
+                self.assertEqual(payload["match_provenance"]["source_record"]["alt"], "C,G")
 
     def test_gene_evidence_fetches_clinvar_and_sample_matches_without_interpretation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

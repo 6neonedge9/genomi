@@ -33,6 +33,12 @@ from .helpers import (
 from .clinvar_query import (
     query_genotype_support,
 )
+from .clinvar_match_provenance import (
+    MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+    MATCH_BASIS_EXACT_ALLELE,
+    match_basis_from_record,
+    match_kind_from_record,
+)
 from .population import (
     _population_freshness_summary,
     query_population_frequency,
@@ -52,6 +58,7 @@ def _build_candidate(
     sample = dict(group["sample_variant"])
     records = group["records"]
     clinvar_records = [item.get("clinvar") or {} for item in records]
+    match_provenance = _candidate_match_provenance(records)
     clinical_significance: Counter[str] = Counter(
         record.get("clinical_significance") or "missing" for record in clinvar_records
     )
@@ -92,6 +99,12 @@ def _build_candidate(
             "genotype": sample.get("genotype"),
             "depth": sample.get("depth"),
             "genotype_quality": sample.get("genotype_quality"),
+            "match_basis": match_provenance["primary_match_basis"],
+            "match_kind": match_provenance["primary_match_kind"],
+            "source_format": match_provenance.get("primary_source_format"),
+            "source_record_ref": sample.get("source_record_ref"),
+            "source_record_alt": sample.get("source_record_alt"),
+            "source_record_format": sample.get("source_record_format") or sample.get("format"),
         },
         "genes": genes,
         "clinvar": {
@@ -100,15 +113,73 @@ def _build_candidate(
             "review_status_counts": review_status.most_common(),
             "clinvar_ids": clinvar_ids[:20],
             "conditions": conditions[:20],
+            "match_basis_counts": match_provenance["match_basis_counts"],
+            "match_kind_counts": match_provenance["match_kind_counts"],
+            "source_format_counts": match_provenance["source_format_counts"],
+            "source_record_format_counts": match_provenance["source_record_format_counts"],
         },
+        "match_provenance": match_provenance,
         "genotype_support": genotype_support,
         "population_evidence": population_evidence,
         "evidence_groups": evidence_groups,
         "tags": tags,
         "clinvar_triage_score": clinvar_triage_score,
-        "decision_points": _candidate_decision_points(tags, population_evidence, genotype_support),
+        "decision_points": _candidate_decision_points(
+            tags,
+            population_evidence,
+            genotype_support,
+            match_provenance=match_provenance,
+        ),
     }
     return candidate
+
+
+def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]:
+    match_basis: Counter[str] = Counter(match_basis_from_record(item) for item in records)
+    match_kind: Counter[str] = Counter(match_kind_from_record(item) for item in records)
+    source_formats: Counter[str] = Counter(
+        source_format for item in records if (source_format := _record_source_format(item))
+    )
+    source_record_formats: Counter[str] = Counter(
+        source_format for item in records if (source_format := _record_source_record_format(item))
+    )
+    primary_match_basis = _primary_counter_value(match_basis) or MATCH_BASIS_EXACT_ALLELE
+    return {
+        "primary_match_basis": primary_match_basis,
+        "primary_match_kind": _primary_counter_value(match_kind) or primary_match_basis,
+        "primary_source_format": _primary_counter_value(source_formats),
+        "match_basis_counts": match_basis.most_common(),
+        "match_kind_counts": match_kind.most_common(),
+        "source_format_counts": source_formats.most_common(),
+        "source_record_format_counts": source_record_formats.most_common(),
+    }
+
+
+def _record_source_format(item: dict[str, Any]) -> str | None:
+    sample = item.get("sample_variant") if isinstance(item.get("sample_variant"), dict) else {}
+    provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
+    source_record = provenance.get("source_record") if isinstance(provenance.get("source_record"), dict) else {}
+    source_format = (
+        item.get("source_format")
+        or sample.get("source_format")
+        or provenance.get("source_format")
+        or source_record.get("source_format")
+    )
+    return str(source_format) if source_format else None
+
+
+def _record_source_record_format(item: dict[str, Any]) -> str | None:
+    sample = item.get("sample_variant") if isinstance(item.get("sample_variant"), dict) else {}
+    provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
+    source_record = provenance.get("source_record") if isinstance(provenance.get("source_record"), dict) else {}
+    source_format = sample.get("source_record_format") or sample.get("format") or source_record.get("format")
+    return str(source_format) if source_format else None
+
+
+def _primary_counter_value(counter: Counter[str]) -> str | None:
+    if not counter:
+        return None
+    return counter.most_common(1)[0][0]
 
 
 def _enrich_candidate_population(
@@ -138,7 +209,12 @@ def _enrich_candidate_population(
     significance = Counter(dict(candidate["clinvar"]["clinical_significance_counts"]))
     review = Counter(dict(candidate["clinvar"]["review_status_counts"]))
     candidate["clinvar_triage_score"] = _clinvar_triage_score(significance, review)
-    candidate["decision_points"] = _candidate_decision_points(candidate["tags"], population_evidence, genotype_support)
+    candidate["decision_points"] = _candidate_decision_points(
+        candidate["tags"],
+        population_evidence,
+        genotype_support,
+        match_provenance=candidate.get("match_provenance") or {},
+    )
 
 
 def _candidate_is_selected(
@@ -521,6 +597,8 @@ def _candidate_decision_points(
     tags: list[str],
     population_evidence: dict[str, Any],
     genotype_support: dict[str, Any],
+    *,
+    match_provenance: dict[str, Any],
 ) -> list[str]:
     decisions = [
         "Decide whether this candidate is worth gathering variant evidence for, based on the user's question and candidate bucket context.",
@@ -539,6 +617,15 @@ def _candidate_decision_points(
         decisions.append("Treat VUS as uncertain and decide whether more evidence is worth collecting.")
     if "clinvar_conflicting" in tags:
         decisions.append("Keep conflicting ClinVar assertions visible and inspect the gathered variant evidence.")
+    match_bases = {
+        str(basis)
+        for basis, _count in (match_provenance.get("match_basis_counts") or [])
+    }
+    if MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE in match_bases:
+        decisions.append(
+            "Treat consumer-array ClinVar hits as allele inference from array genotype strings, "
+            "not exact VCF allele observations; confirm source semantics before clinical use."
+        )
     decisions.append("Use family, segregation, and phased sample data for de novo status, segregation, or cis/trans phase.")
     return decisions
 

@@ -547,7 +547,7 @@ def match_static_clinvar_from_active_genome_index(
             force=force,
         ),
         "static",
-        reason="Exact ClinVar matches should be scanned into a deterministic candidate inventory.",
+        reason="Provenance-marked ClinVar matches should be scanned into a deterministic candidate inventory.",
         commands=["genomi call clinvar.scan_candidates"],
     )
 

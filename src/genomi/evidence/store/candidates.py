@@ -44,6 +44,14 @@ from .candidate_scoring import (
     _ordered_bucket_counts,
     _ordered_candidate_evidence_group_counts,
 )
+from .clinvar_match_provenance import (
+    MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+    MATCH_BASIS_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
+    MATCH_BASIS_MULTIALLELIC_ALT,
+    match_basis_from_record,
+)
 
 
 
@@ -171,11 +179,13 @@ def extract_clinvar_candidates(
         bucket_counts.update(candidate["buckets"])
     clinical_significance: Counter[str] = Counter()
     review_status: Counter[str] = Counter()
+    match_basis_counts: Counter[str] = Counter()
     for group in grouped.values():
         for item in group["records"]:
             clinvar = item.get("clinvar") or {}
             clinical_significance[clinvar.get("clinical_significance") or "missing"] += 1
             review_status[clinvar.get("review_status") or "missing"] += 1
+            match_basis_counts[match_basis_from_record(item)] += 1
     candidate_evidence = _clinvar_candidate_evidence_view(
         emitted_candidates,
         genome_build=genome_build,
@@ -191,7 +201,7 @@ def extract_clinvar_candidates(
         "rule_set_version": CANDIDATE_RULE_SET_VERSION,
         "action": {
             "name": "build-candidate-inventory",
-            "purpose": "Build source-derived candidate inventory from exact ClinVar allele matches so the agent can inspect evidence lenses and decide what facts are missing for the user's question.",
+            "purpose": "Build source-derived candidate inventory from provenance-marked ClinVar matches so the agent can inspect evidence lenses and decide what facts are missing for the user's question.",
             "result_type": "deterministic candidate inventory with selected candidates, all available ClinVar evidence lenses, bucket summaries, and evidence-context guidance",
             "scope": [
                 "builds source-derived candidate evidence lenses",
@@ -216,10 +226,20 @@ def extract_clinvar_candidates(
         "available_evidence_groups": _available_evidence_group_summary(available_evidence_group_counts),
         "summary": {
             "total_match_records": total_match_records,
+            "total_match_variants": len(grouped),
             "total_exact_match_variants": len(grouped),
+            "total_exact_allele_match_variants": _candidate_count_by_match_basis(
+                all_candidates,
+                {MATCH_BASIS_EXACT_ALLELE, MATCH_BASIS_LIFTOVER_EXACT_ALLELE},
+            ),
+            "total_consumer_array_inferred_match_variants": _candidate_count_by_match_basis(
+                all_candidates,
+                {MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE},
+            ),
             "selected_candidate_variants": len(candidates),
             "emitted_candidate_variants": len(emitted_candidates),
             "truncated": len(candidates) > limit,
+            "match_basis_counts": match_basis_counts.most_common(),
             "available_evidence_group_counts": _ordered_candidate_evidence_group_counts(
                 available_evidence_group_counts
             ),
@@ -247,6 +267,8 @@ def extract_clinvar_candidates(
             "User questions are open-ended and belong to the agent's reasoning; evidence lenses are source-derived filters, not intent presets.",
             "candidate_buckets are evidence summary groups, not diagnoses.",
             "clinvar_triage_score is only a ClinVar evidence-strength display aid, not a clinical priority score.",
+            "Use match_basis_counts and each candidate's match_provenance before treating a ClinVar hit as an exact VCF allele observation.",
+            "summary.total_exact_match_variants is retained for legacy consumers; summary.total_match_variants and match_basis_counts describe the provenance-marked inventory.",
             "Population frequency tags are facts for the agent to interpret against user intent; clinvar_triage_score remains a ClinVar evidence-strength display aid.",
             "Missing population evidence means run a population evidence tool if the candidate is worth investigating.",
         ],
@@ -271,6 +293,18 @@ def extract_clinvar_candidates(
     return payload
 
 
+def _candidate_count_by_match_basis(candidates: list[dict[str, Any]], match_bases: set[str]) -> int:
+    count = 0
+    for candidate in candidates:
+        candidate_bases = {
+            str(basis)
+            for basis, _count in ((candidate.get("match_provenance") or {}).get("match_basis_counts") or [])
+        }
+        if candidate_bases & match_bases:
+            count += 1
+    return count
+
+
 def _clinvar_candidate_evidence_view(
     candidates: list[dict[str, Any]],
     *,
@@ -289,7 +323,7 @@ def _clinvar_candidate_evidence_view(
             "variant coordinate for deterministic tie-breaking",
         ],
         "rule": (
-            "Exact ClinVar/sample matches create direct candidate evidence lanes for review. "
+            "Provenance-marked ClinVar/sample matches create direct candidate evidence lanes for review. "
             "The lane ranks review targets; it is not a diagnosis or clinical-priority score."
         ),
     }
@@ -325,7 +359,7 @@ def _clinvar_candidate_matrix_row(candidate: dict[str, Any], *, rank: int) -> di
         source="ClinVar",
         matched_text=_clinvar_candidate_matched_text(candidate),
         source_id=", ".join(str(item) for item in (clinvar.get("clinvar_ids") or [])[:5]) or None,
-        note="candidate is an exact sample allele match to ClinVar records",
+        note=_clinvar_match_lane_note(candidate),
     )
     return {
         "candidate_id": candidate_id,
@@ -346,6 +380,10 @@ def _clinvar_candidate_matrix_row(candidate: dict[str, Any], *, rank: int) -> di
                 "genes": candidate.get("genes") or [],
                 "population_evidence": candidate.get("population_evidence") or {},
                 "genotype_support": candidate.get("genotype_support") or {},
+                "match_provenance": candidate.get("match_provenance") or {},
+                "match_basis_counts": clinvar.get("match_basis_counts") or [],
+                "source_format_counts": clinvar.get("source_format_counts") or [],
+                "source_record_format_counts": clinvar.get("source_record_format_counts") or [],
             }
         ],
         "counter_evidence": _clinvar_counter_evidence(candidate),
@@ -360,6 +398,22 @@ def _variant_candidate_id(variant: dict[str, Any]) -> str:
         ref=variant.get("ref"),
         alt=variant.get("alt"),
     )
+
+
+def _clinvar_match_lane_note(candidate: dict[str, Any]) -> str:
+    match_bases = {
+        str(basis)
+        for basis, _count in ((candidate.get("match_provenance") or {}).get("match_basis_counts") or [])
+    }
+    if MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE in match_bases:
+        return "candidate includes consumer-array allele inference from an observed genotype string; do not describe it as an exact VCF allele match"
+    if MATCH_BASIS_LIFTOVER_EXACT_ALLELE in match_bases:
+        return "candidate is an exact sample allele match after liftover to the ClinVar cache build"
+    if MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT in match_bases:
+        return "candidate is a selected alternate allele from a multiallelic sample record after liftover"
+    if MATCH_BASIS_MULTIALLELIC_ALT in match_bases:
+        return "candidate is a selected alternate allele from a multiallelic sample record"
+    return "candidate is an exact sample allele match to ClinVar records"
 
 
 def _clinvar_candidate_matched_text(candidate: dict[str, Any]) -> str:
@@ -441,7 +495,7 @@ def _candidate_inventory_options(
             {
                 "component": "candidate_inventory",
                 "state": "no_candidates_selected",
-                "evidence_boundary": "No candidates were selected in the chosen ClinVar exact-match inventory lenses.",
+                "evidence_boundary": "No candidates were selected in the chosen ClinVar match inventory lenses.",
                 "evidence_context": evidence_context(
                     "research",
                     reason="No static candidates were selected; any further answer or broader target decision belongs in intent research.",

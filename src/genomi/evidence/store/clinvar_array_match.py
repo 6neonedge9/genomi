@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .clinvar_match_provenance import MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE
+
 
 def clinvar_array_direct_select_sql(
     table_name: str,
@@ -29,6 +31,8 @@ def clinvar_array_direct_select_sql(
     return f"""
             select
                 cast(r.record_rowid as text) || ':' || cv.alt || ':array' as batch_id,
+                '{MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE}' as match_basis,
+                '{MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE}' as match_kind,
                 {sample_chrom_select},
                 {sample_pos_select},
                 r.rsid as sample_rsid,
@@ -41,6 +45,12 @@ def clinvar_array_direct_select_sql(
                 r.genotype as genotype,
                 r.depth as depth,
                 r.genotype_quality as genotype_quality,
+                r.ref as source_record_ref,
+                r.alt as source_record_alt,
+                r.format as source_record_format,
+                r.genotype as source_record_genotype,
+                r.info as source_record_info,
+                null as source_format,
                 cv.chrom as chrom,
                 cv.pos as pos,
                 cv.ref as ref,

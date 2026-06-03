@@ -541,7 +541,7 @@ class ActiveGenomeIndexContractFixtureMixin:
         path.write_text("\n".join(rows) + "\n", encoding="utf-8")
         return path
 
-    def _assert_clinvar_payloads_are_real_alleles(self, matches_path: Path) -> None:
+    def _assert_clinvar_payloads_are_real_alleles(self, matches_path: Path, *, expected_format: str) -> None:
         payloads = [json.loads(line) for line in matches_path.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(len(payloads), EXPECTED_CLINVAR_MATCHED_ALLELES)
         for payload in payloads:
@@ -553,6 +553,20 @@ class ActiveGenomeIndexContractFixtureMixin:
             genotype = str(sample["genotype"] or "")
             if "/" not in genotype and "|" not in genotype:
                 self.assertIn(clinvar["alt"], genotype)
+            if expected_format in {"vcf", "gvcf", "bam", "fastq"}:
+                self.assertEqual(payload["match_basis"], "exact_allele")
+                self.assertEqual(sample["source_record_ref"], sample["ref"])
+                self.assertEqual(sample["source_record_alt"], sample["alt"])
+            else:
+                self.assertEqual(payload["match_basis"], "consumer_array_allele_inference")
+                self.assertEqual(payload["match_kind"], "consumer_array_allele_inference")
+                self.assertEqual(payload["source_format"], expected_format)
+                self.assertEqual(sample["source_format"], expected_format)
+                self.assertEqual(sample["source_record_ref"], "N")
+                self.assertEqual(sample["source_record_alt"], genotype)
+                self.assertEqual(sample["source_record_format"], "GT_ARRAY")
+                self.assertEqual(payload["match_provenance"]["source_record"]["ref"], "N")
+                self.assertEqual(payload["match_provenance"]["source_record"]["alt"], genotype)
 
     def _tiny_prs_thresholds(self):
         return mock.patch.multiple(

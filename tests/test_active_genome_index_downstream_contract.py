@@ -188,7 +188,7 @@ class ActiveGenomeIndexDownstreamContractTests(
         self.assertEqual(clinvar_result["status"], "completed", clinvar_result)
         self.assertEqual(clinvar_result["stats"]["matched_alleles"], EXPECTED_CLINVAR_MATCHED_ALLELES)
         self.assertEqual(clinvar_result["stats"]["written_records"], EXPECTED_CLINVAR_MATCHED_ALLELES)
-        self._assert_clinvar_payloads_are_real_alleles(matches_path)
+        self._assert_clinvar_payloads_are_real_alleles(matches_path, expected_format=expected_format)
 
         scanned = call_operation(
             "clinvar.scan_candidates",
@@ -204,6 +204,15 @@ class ActiveGenomeIndexDownstreamContractTests(
         candidates_by_pos = {int(candidate["variant"]["pos"]): candidate for candidate in scanned["candidate_inventory"]}
         self.assertIn(200, candidates_by_pos)
         self.assertIn("heterozygous_p_lp_context_needed", candidates_by_pos[200]["buckets"])
+        if expected_format in {"vcf", "gvcf", "bam", "fastq"}:
+            self.assertEqual(candidates_by_pos[200]["match_provenance"]["primary_match_basis"], "exact_allele")
+        else:
+            self.assertEqual(
+                candidates_by_pos[200]["match_provenance"]["primary_match_basis"],
+                "consumer_array_allele_inference",
+            )
+            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_ref"], "N")
+            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_format"], "GT_ARRAY")
 
         observed_support = self._genotype_support(chrom="1", pos=100, ref="A", alt="C")
         self.assertEqual(observed_support["sample_observation"]["target_alt_observed"], True)
