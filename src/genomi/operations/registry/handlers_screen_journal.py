@@ -191,6 +191,7 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
             mode=_str(resolved, "mode", "full"),
             output=output,
             variants_all_source=resolved.get("variants_all_source"),
+            clear_panels=resolved.get("clear_panels"),
         )
     except decode_dashboard.DashboardRenderError as exc:
         raise OperationError(exc.code, exc.message) from exc

@@ -473,6 +473,59 @@ def _is_empty(value: Any) -> bool:
     return value in (None, "", [], {})
 
 
+def _explicitly_empty_panels(evidence: JsonObject | None) -> set[str]:
+    """Return panel keys the caller supplied with an empty value.
+
+    In update mode this is distinct from omission: omission preserves the
+    previous panel, while an explicitly empty panel clears it.
+    """
+    if not isinstance(evidence, dict):
+        return set()
+    return {key for key in PANEL_KEYS if key in evidence and _is_empty(evidence[key])}
+
+
+def _normalize_clear_panels(clear_panels: Any) -> set[str]:
+    if clear_panels in (None, "", []):
+        return set()
+    if not isinstance(clear_panels, list):
+        raise DashboardRenderError(
+            "invalid_params",
+            "clear_panels must be a list of dashboard panel names.",
+        )
+    panels: set[str] = set()
+    invalid: list[Any] = []
+    for panel in clear_panels:
+        if isinstance(panel, str) and panel in PANEL_KEYS:
+            panels.add(panel)
+        else:
+            invalid.append(panel)
+    if invalid:
+        raise DashboardRenderError(
+            "invalid_params",
+            "clear_panels contains unknown dashboard panel(s): "
+            f"{', '.join(str(p) for p in invalid)}. "
+            f"Valid panels: {', '.join(PANEL_KEYS)}.",
+        )
+    return panels
+
+
+def _merge_panel_evidence(
+    *,
+    previous: JsonObject,
+    supplied: JsonObject,
+    cleared: set[str],
+) -> JsonObject:
+    merged: JsonObject = {
+        key: previous[key]
+        for key in PANEL_KEYS
+        if key in previous and previous[key] is not None and key not in cleared
+    }
+    for key, value in supplied.items():
+        if key not in cleared:
+            merged[key] = value
+    return merged
+
+
 def _validate_panel(panel: str, normalized: Any) -> None:
     """Raise DashboardRenderError when a normalized panel breaks its schema."""
     schema = _PANEL_SCHEMAS.get(panel)
@@ -509,8 +562,9 @@ def _validate_panel(panel: str, normalized: Any) -> None:
 def _safe_evidence(evidence: JsonObject | None) -> JsonObject:
     """Normalize per-panel evidence and validate each supplied panel.
 
-    Absent or empty panels are skipped (they render as placeholders). A panel
-    supplied with real content is normalized and then validated against
+    Absent or empty panels are skipped (they render as placeholders in a full
+    render; update-mode clear semantics are handled by ``render_dashboard``).
+    A panel supplied with real content is normalized and then validated against
     `_PANEL_SCHEMAS`; a content-bearing panel that normalizes to nothing, or
     that fails its schema, raises `panel_schema_mismatch`. Empty journal input
     is the one tolerated "supplied but nothing" case, since "no entries" is a
@@ -636,13 +690,16 @@ def render_dashboard(
     mode: str = "full",
     output: str | Path,
     variants_all_source: str | Path | None = None,
+    clear_panels: list[str] | None = None,
 ) -> JsonObject:
     """Render or update the Genomi Dashboard artifact.
 
     Parameters
     ----------
     evidence:
-        Panel evidence keyed by panel name. Unknown keys are ignored.
+        Panel evidence keyed by panel name. Unknown keys are ignored. In update
+        mode, omitted panels preserve previous evidence; explicitly empty
+        panels clear previous evidence.
     mode:
         ``"full"`` writes a brand-new dashboard. ``"update"`` reads the
         existing dashboard at ``output``, top-level-merges supplied panels
@@ -654,6 +711,10 @@ def render_dashboard(
         Optional path to a ClinVar matches JSONL file. When supplied and
         ``variants_all`` is not already in ``evidence``, the file is read,
         each row is normalized, and the result is embedded as ``variants_all``.
+    clear_panels:
+        Optional explicit list of panel keys to remove from the rendered
+        evidence. This is mainly for update mode, where omitted panels are
+        otherwise preserved.
     """
 
     if mode not in {"full", "update"}:
@@ -670,24 +731,24 @@ def render_dashboard(
     # Inject variants_all from source file when not already supplied in evidence.
     if variants_all_source:
         ev = dict(evidence) if isinstance(evidence, dict) else {}
-        if not ev.get("variants_all"):
+        if "variants_all" not in ev:
             rows = _load_variants_all_source(variants_all_source)
             if rows:
                 ev["variants_all"] = rows
         evidence = ev
 
+    cleared = _explicitly_empty_panels(evidence) | _normalize_clear_panels(clear_panels)
     supplied = _safe_evidence(evidence)
-    if mode == "update":
-        previous = _safe_evidence(_read_existing_evidence(out_path))
-        merged: JsonObject = {
-            key: previous[key]
-            for key in PANEL_KEYS
-            if key in previous and previous[key] is not None
-        }
-        for key, value in supplied.items():
-            merged[key] = value
-    else:
-        merged = supplied
+    previous = (
+        _safe_evidence(_read_existing_evidence(out_path))
+        if mode == "update"
+        else {}
+    )
+    merged = _merge_panel_evidence(
+        previous=previous,
+        supplied=supplied,
+        cleared=cleared,
+    )
 
     merged["__renderedAt"] = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
 

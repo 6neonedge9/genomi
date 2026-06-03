@@ -25,7 +25,7 @@
         "properties": {
           "evidence": {
             "type": "object",
-            "description": "Dashboard panel evidence keyed by panel name. Missing panels render the 'Not gathered yet' placeholder.",
+            "description": "Dashboard panel evidence keyed by panel name. In full mode, missing or empty panels render the 'Not gathered yet' placeholder. In update mode, omitted panels preserve previous evidence while explicitly empty panels clear stale evidence.",
             "properties": {
               "overview": {
                 "type": "object",
@@ -67,7 +67,16 @@
             "type": "string",
             "enum": ["full", "update"],
             "default": "full",
-            "description": "'full' rewrites the dashboard; 'update' merges supplied panels over the existing inlined evidence."
+            "description": "'full' rewrites the dashboard; 'update' merges supplied panels over the existing inlined evidence and applies explicit panel clears."
+          },
+          "clear_panels": {
+            "type": "array",
+            "description": "Panel names to remove from the dashboard evidence during an update. Omitted panels are preserved; explicitly cleared panels render as placeholders.",
+            "items": {
+              "type": "string",
+              "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal"]
+            },
+            "uniqueItems": true
           },
           "output": {
             "$ref": "#/schema_fragments/properties/local_path",

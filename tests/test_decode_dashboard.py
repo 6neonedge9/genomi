@@ -148,6 +148,87 @@ class RenderDashboardTests(unittest.TestCase):
         # New pgx merged in
         self.assertEqual(parsed["pgx"][0]["gene"], "CYP2C19")
 
+    def test_render_update_empty_panels_clear_stale_list_panels(self) -> None:
+        out = self.tmpdir / "dash.html"
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {"sampleId": "HG-CLEAR", "variantCount": 4500000},
+                "variants": [{"rsid": "rs1", "gene": "G1"}],
+                "pgx": [{"gene": "CYP2C19", "phenotype": "Intermediate"}],
+                "risk": [{"trait": "LDL cholesterol", "percentile": 72}],
+            },
+            mode="full",
+            output=out,
+        )
+
+        result = decode_dashboard.render_dashboard(
+            evidence={"variants": [], "pgx": [], "risk": []},
+            mode="update",
+            output=out,
+        )
+
+        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        self.assertEqual(parsed["overview"]["sampleId"], "HG-CLEAR")
+        for panel in ("variants", "pgx", "risk"):
+            self.assertNotIn(panel, parsed)
+            self.assertIn(panel, result["panels_empty"])
+            self.assertNotIn(panel, result["panels_rendered"])
+
+    def test_render_update_clear_panels_preserves_omitted_panels(self) -> None:
+        out = self.tmpdir / "dash.html"
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {"sampleId": "HG-CLEAR-MARKER", "variantCount": 4500000},
+                "variants": [{"rsid": "rs1", "gene": "G1"}],
+                "risk": [{"trait": "T2D", "percentile": 44}],
+            },
+            mode="full",
+            output=out,
+        )
+
+        result = decode_dashboard.render_dashboard(
+            evidence={},
+            mode="update",
+            output=out,
+            clear_panels=["risk"],
+        )
+
+        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        self.assertEqual(parsed["variants"][0]["rsid"], "rs1")
+        self.assertNotIn("risk", parsed)
+        self.assertIn("risk", result["panels_empty"])
+        self.assertIn("variants", result["panels_rendered"])
+
+    def test_render_update_empty_variants_all_not_refilled_from_source(self) -> None:
+        out = self.tmpdir / "dash.html"
+        source = self.tmpdir / "clinvar.matches.jsonl"
+        source.write_text(
+            json.dumps({
+                "sample_variant": {"id": "rs-source", "chrom": "1", "pos": 10},
+                "clinvar": {"clinical_significance": "risk_factor"},
+            }) + "\n",
+            encoding="utf-8",
+        )
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {"sampleId": "HG-SOURCE-CLEAR", "variantCount": 4500000},
+                "variants_all": [{"rsid": "rs-old", "gene": "OLD"}],
+            },
+            mode="full",
+            output=out,
+        )
+
+        result = decode_dashboard.render_dashboard(
+            evidence={"variants_all": []},
+            mode="update",
+            output=out,
+            variants_all_source=source,
+        )
+
+        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        self.assertNotIn("variants_all", parsed)
+        self.assertIn("variants_all", result["panels_empty"])
+
     def test_normalizes_snake_case_overview(self) -> None:
         """Raw active_genome_index.summarize-style keys map to dashboard schema."""
         out = self.tmpdir / "dash.html"
@@ -469,6 +550,8 @@ class DashboardCatalogTests(unittest.TestCase):
         self.assertIn("decode", TOOL_CATALOG["capabilities"])
         decode_cap = TOOL_CATALOG["capabilities"]["decode"]
         self.assertIn("decode.render_dashboard", decode_cap["entry_operations"])
+        schema_props = TOOL_CATALOG["operations"]["decode.render_dashboard"]["input_schema"]["properties"]
+        self.assertIn("clear_panels", schema_props)
 
 
 if __name__ == "__main__":
