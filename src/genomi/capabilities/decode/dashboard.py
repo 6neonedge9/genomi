@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ...active_genome_index.array_genotypes import called_genotype_tokens
+
 JsonObject = dict[str, Any]
 
 PANEL_KEYS: tuple[str, ...] = (
@@ -247,7 +249,7 @@ def _passthrough(raw: Any) -> Any:
 def _derive_zygosity(genotype: str | None) -> str | None:
     if not genotype:
         return None
-    parts = genotype.replace("|", "/").split("/")
+    parts = called_genotype_tokens(genotype)
     if len(parts) != 2:
         return None
     a, b = parts[0].strip(), parts[1].strip()

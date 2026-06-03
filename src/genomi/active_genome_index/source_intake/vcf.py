@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from .._agi_schema import _upsert_metadata
 from ..canonical import build_canonical_bgzip
 from .agi_store import SOURCE_PARSE_SCHEMA, JsonObject, _init_source_evidence_db
 from .detection import SourceDetection
+from .text_io import open_genomic_binary
 
 
 def _parse_vcf_active_genome_index(
@@ -94,7 +96,13 @@ def _parse_vcf_active_genome_index(
         }
         reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
     else:
-        canonical_result = build_canonical_bgzip(source_path, work_dir, force=force)
+        intake_for_canonical = _materialize_vcf_intake_for_canonical(source_path, detection=detection, work_dir=work_dir, force=force)
+        try:
+            canonical_result = build_canonical_bgzip(intake_for_canonical, work_dir, force=force)
+        finally:
+            if intake_for_canonical != source_path:
+                with contextlib.suppress(FileNotFoundError):
+                    intake_for_canonical.unlink()
         canonical_path = Path(canonical_result["canonical_path"])
         active_genome_index_result = create_active_genome_index(
             canonical_path,
@@ -176,6 +184,34 @@ def _discard_canonical(path: Path, *, keep: Path | None) -> None:
     for stale in (path, Path(str(path) + ".gzi")):
         with contextlib.suppress(FileNotFoundError):
             stale.unlink()
+
+
+def _materialize_vcf_intake_for_canonical(
+    source_path: Path,
+    *,
+    detection: SourceDetection,
+    work_dir: Path,
+    force: bool,
+) -> Path:
+    """Return a VCF-like file path that `build_canonical_bgzip` can read.
+
+    Detection peels zip/tar archives to classify their genomic member. The
+    canonical builder works on bare files, so archive-backed VCF/gVCF sources
+    need the selected member streamed to a temporary plain VCF first. Bare
+    gzip/bzip2/xz VCFs stay on the fast path and are handled by the canonical
+    builder's compression sniffing.
+    """
+    if detection.member_name is None:
+        return source_path
+    extracted = work_dir / "source" / "selected-archive-member.vcf"
+    if extracted.exists() and not force:
+        return extracted
+    extracted.parent.mkdir(parents=True, exist_ok=True)
+    tmp = extracted.with_suffix(extracted.suffix + ".tmp")
+    with open_genomic_binary(source_path, member_name=detection.member_name) as source, tmp.open("wb") as output:
+        shutil.copyfileobj(source, output)
+    tmp.replace(extracted)
+    return extracted
 
 
 def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: int | None) -> JsonObject | None:

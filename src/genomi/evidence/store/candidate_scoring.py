@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from ...active_genome_index.array_genotypes import called_genotype_tokens
 from .constants import (
     ASSOCIATION_CLINSIG,
     BENIGN_CLINSIG,
@@ -496,8 +497,7 @@ def _bucket_order() -> list[str]:
 def _is_heterozygous_genotype(genotype: Any) -> bool:
     if genotype is None:
         return False
-    alleles = str(genotype).replace("|", "/").split("/")
-    called = [allele for allele in alleles if allele not in {"", "."}]
+    called = called_genotype_tokens(genotype)
     return len(called) >= 2 and len(set(called)) > 1
 
 

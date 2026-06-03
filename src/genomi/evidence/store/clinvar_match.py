@@ -28,6 +28,9 @@ from .connection import (
 from .clinvar_query import (
     _query_clinvar_exact_rows,
 )
+from .clinvar_array_match import (
+    clinvar_array_direct_select_sql,
+)
 
 
 
@@ -380,7 +383,7 @@ def _selected_active_genome_index_records_cte_sql(
         return """
             with selected_records as (
                 select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                       sample_index, sample_name, genotype, depth, genotype_quality,
+                       sample_index, sample_name, format, genotype, depth, genotype_quality,
                        sample_chrom_original, sample_pos_original
                 from temp.lifted_selected_records
             )
@@ -388,7 +391,7 @@ def _selected_active_genome_index_records_cte_sql(
     sql = """
             with selected_records as (
                 select rowid as record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                       sample_index, sample_name, genotype, depth, genotype_quality
+                       sample_index, sample_name, format, genotype, depth, genotype_quality
                 from sample_active_genome_index.records
                 where is_variant = 1
         """
@@ -441,6 +444,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
             filter text,
             sample_index integer,
             sample_name text,
+            format text,
             genotype text,
             depth integer,
             genotype_quality integer
@@ -484,6 +488,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["filter"],
                 row["sample_index"],
                 row["sample_name"],
+                row["format"],
                 row["genotype"],
                 row["depth"],
                 row["genotype_quality"],
@@ -496,9 +501,9 @@ def _populate_lifted_selected_active_genome_index_records_table(
             insert into temp.lifted_selected_records (
                 record_rowid, sample_chrom_original, sample_pos_original,
                 chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                sample_index, sample_name, genotype, depth, genotype_quality
+                sample_index, sample_name, format, genotype, depth, genotype_quality
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             insert_buffer,
         )
@@ -562,6 +567,14 @@ def _write_clinvar_active_genome_index_direct_matches(
                     chrom_expression=chrom_expression,
                     extra_where=extra_where,
                     multiallelic=False,
+                    cross_build=cross_build,
+                )
+            )
+            source_selects.append(
+                clinvar_array_direct_select_sql(
+                    table_name,
+                    chrom_expression=chrom_expression,
+                    extra_where=extra_where,
                     cross_build=cross_build,
                 )
             )
@@ -705,8 +718,10 @@ def _clinvar_index_direct_select_sql(
     cross_build: bool = False,
 ) -> str:
     batch_id = "cast(r.record_rowid as text)"
+    sample_ref = "r.ref"
     sample_alt = "r.alt"
     alt_where = "and r.alt not in ('', '.') and instr(r.alt, ',') = 0 and cv.alt = r.alt"
+    ref_where = "and cv.ref = r.ref"
     if multiallelic:
         batch_id = "cast(r.record_rowid as text) || ':' || cv.alt"
         sample_alt = "cv.alt"
@@ -714,7 +729,7 @@ def _clinvar_index_direct_select_sql(
     where = f"""
               and cv.chrom = {chrom_expression}
               and cv.pos = r.pos
-              and cv.ref = r.ref
+              {ref_where}
               and cv.genome_build = ?
         """
     if extra_where is not None:
@@ -738,7 +753,7 @@ def _clinvar_index_direct_select_sql(
                 {sample_chrom_select},
                 {sample_pos_select},
                 r.rsid as sample_rsid,
-                r.ref as sample_ref,
+                {sample_ref} as sample_ref,
                 {sample_alt} as sample_alt,
                 r.qual as sample_qual,
                 r.filter as sample_filter,

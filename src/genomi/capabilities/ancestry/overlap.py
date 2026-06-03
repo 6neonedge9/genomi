@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexReader
 from ...active_genome_index.vcf import parse_sample
 from . import reference_panels, source_context
@@ -180,6 +181,12 @@ def _marker_dosage(connection: sqlite3.Connection, marker: JsonObject) -> float 
         return None
     ref = str(marker["ref"]).upper()
     alt = str(marker["alt"]).upper()
+    for record in records:
+        if int(record["pos"]) != int(marker["pos"]) or not is_array_genotype_record(record):
+            continue
+        array_dosage = count_array_allele(record, target_allele=alt, allowed_alleles=[ref, alt])
+        if array_dosage["status"] == "matched":
+            return float(array_dosage["dosage"])
     exact_records = [
         record for record in records
         if int(record["pos"]) == int(marker["pos"]) and str(record["ref"]).upper() == ref

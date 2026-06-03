@@ -237,12 +237,18 @@ def static_db_lookup(
     }
 
 
-def summarize_static_state(vcf: str | Path, *, evidence_db: str | Path | None = None) -> dict[str, Any]:
+def summarize_static_state(
+    vcf: str | Path,
+    *,
+    evidence_db: str | Path | None = None,
+    active_genome_index_path: str | Path | None = None,
+) -> dict[str, Any]:
     db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf)
+    agi_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "contract": workflow_contract(),
-        "active_genome_index": active_genome_index_summary(default_active_genome_index_path(vcf)) if default_active_genome_index_path(vcf).exists() else None,
+        "active_genome_index": active_genome_index_summary(agi_path) if agi_path.exists() else None,
         "evidence": evidence_summary(db_path) if db_path.exists() else None,
         "outputs": default_static_outputs(vcf),
         "evidence_context": evidence_context(

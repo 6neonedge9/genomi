@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
 from ...runtime.liftover import LiftoverConfigurationError, get_liftover
 
 JsonObject = dict[str, Any]
@@ -71,7 +72,7 @@ def lift_score_variants(
 # two SQLite queries per score variant (~1.2M round-trips for a 600K-variant
 # score); these are replaced with two temp-table joins.
 
-_MINIMAL_COLUMNS = "r.chrom, r.pos, r.end, r.ref, r.alt, r.filter, r.genotype, r.offset, r.sample_index, r.chrom_sort"
+_MINIMAL_COLUMNS = "r.chrom, r.pos, r.end, r.ref, r.alt, r.filter, r.format, r.genotype, r.offset, r.sample_index, r.chrom_sort"
 
 
 def dosage_for_variants(
@@ -228,6 +229,7 @@ def _row_to_record_dict(row: sqlite3.Row) -> JsonObject:
         "alt": alt,
         "alts": [value for value in alt.split(",") if value],
         "filter": row["filter"],
+        "format": row["format"],
         "genotype": row["genotype"],
         "offset": int(row["offset"]),
         "sample_index": int(row["sample_index"] or 0),
@@ -240,10 +242,45 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
     genotype = str(record.get("genotype") or "")
     if not genotype or "." in genotype:
         return _missing(variant, "missing_genotype", record=record)
-    ref = str(record.get("ref") or "").upper()
-    alts = [str(value).upper() for value in record.get("alts") or []]
     effect = str(variant["effect_allele"]).upper()
     other = str(variant.get("other_allele") or "").upper()
+    if is_array_genotype_record(record):
+        allowed = [effect, other] if other else None
+        array_dosage = count_array_allele(record, target_allele=effect, allowed_alleles=allowed)
+        if array_dosage["status"] != "matched":
+            reason = str(array_dosage.get("reason") or "unparseable_genotype")
+            if reason == "array_genotype_allele_outside_allowed_alleles":
+                reason = "genotype_allele_outside_score_alleles"
+            elif reason == "array_allele_model_not_single_base":
+                reason = "score_allele_model_not_supported_by_array_genotype"
+            elif reason == "array_target_allele_not_single_base":
+                reason = "effect_allele_not_supported_by_array_genotype"
+            return _missing(variant, reason, record=record)
+        dosage = float(array_dosage["dosage"])
+        return {
+            "status": "matched",
+            "variant_index": variant["variant_index"],
+            "variant_id": variant.get("variant_id"),
+            "rsid": variant.get("rsid"),
+            "chrom": variant["chrom"],
+            "pos": variant["pos"],
+            "effect_allele": effect,
+            "other_allele": other or None,
+            "effect_weight": float(variant["effect_weight"]),
+            "effect_allele_dosage": dosage,
+            "ploidy": int(array_dosage["ploidy"]),
+            "contribution": dosage * float(variant["effect_weight"]),
+            "record": {
+                "chrom": record.get("chrom"),
+                "pos": record.get("pos"),
+                "ref": record.get("ref"),
+                "alt": record.get("alt"),
+                "genotype": genotype,
+            },
+            "match_type": "consumer_array_letter_count",
+        }
+    ref = str(record.get("ref") or "").upper()
+    alts = [str(value).upper() for value in record.get("alts") or []]
     allele_bases: list[str] = []
     for token in genotype.replace("|", "/").split("/"):
         if token == "0":

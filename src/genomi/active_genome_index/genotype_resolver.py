@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .array_genotypes import called_genotype_tokens, count_array_allele, is_array_genotype_record
 from .active_genome_index import query_region
 
 
@@ -59,6 +60,21 @@ def resolve_locus_genotype_from_records(
     """Resolve one target allele from already-fetched Active Genome Index records."""
 
     records = [_normalize_record(record) for record in records]
+    array_records = [
+        record
+        for record in records
+        if is_array_genotype_record(record)
+        and int(record.get("pos") or 0) == int(pos)
+    ]
+    if array_records:
+        record = _best_record(array_records)
+        return _classify_array_record(
+            record,
+            target_ref=ref,
+            target_alt=alt,
+            records=records,
+        )
+
     exact_alt_records = [
         record
         for record in records
@@ -650,6 +666,71 @@ def _best_record(records: list[dict[str, Any]]) -> dict[str, Any]:
     )[0]
 
 
+def _classify_array_record(
+    record: dict[str, Any],
+    *,
+    target_ref: str,
+    target_alt: str,
+    records: list[dict[str, Any]],
+) -> dict[str, Any]:
+    array_dosage = count_array_allele(record, target_allele=target_alt, allowed_alleles=[target_ref, target_alt])
+    allele_bases = [str(base) for base in array_dosage.get("allele_bases") or []]
+    alt_allele_count = int(array_dosage["dosage"]) if array_dosage["status"] == "matched" else None
+    site_observation = _site_observation(
+        record,
+        matched_by="consumer_array_letter_genotype",
+        allele_bases=allele_bases,
+        alt_allele_count=alt_allele_count,
+        reference_call_supported=False,
+        status="consumer_array_observation",
+        limitation=(
+            "Consumer genotype arrays provide observed allele letters at assayed loci, without sequencing "
+            "depth, genotype quality, or reference-block callability."
+        ),
+        record_type="consumer_array",
+    )
+    if array_dosage["status"] != "matched":
+        reason = str(array_dosage.get("reason") or "unparseable_array_genotype")
+        if reason == "missing_genotype":
+            return _support_payload(
+                "no_call",
+                "genotype_support_no_call",
+                "The consumer-array record exists at this site, but the genotype is missing or no-called.",
+                record=record,
+                alt_allele_count=None,
+                matched_records=records,
+                site_observation=site_observation,
+            )
+        return _support_payload(
+            "unknown",
+            "genotype_support_unknown",
+            "The consumer-array genotype at this site cannot be resolved against the requested single-base ref/alt allele model.",
+            record=record,
+            alt_allele_count=None,
+            matched_records=records,
+            site_observation=site_observation,
+        )
+    if alt_allele_count == 0:
+        return _support_payload(
+            "not_observed",
+            "genotype_support_not_observed",
+            "The consumer-array genotype at this assayed site does not include the requested alternate allele.",
+            record=record,
+            alt_allele_count=0,
+            matched_records=records,
+            site_observation=site_observation,
+        )
+    return _support_payload(
+        "unknown",
+        "genotype_support_unknown",
+        "The requested alternate allele is present in consumer-array genotype data, but array sources do not provide sequencing depth or genotype quality.",
+        record=record,
+        alt_allele_count=alt_allele_count,
+        matched_records=records,
+        site_observation=site_observation,
+    )
+
+
 def _target_alt_count(genotype: str, alts: list[str], target_alt: str) -> int | None:
     if _genotype_is_no_call(genotype):
         return None
@@ -754,8 +835,8 @@ def _record_quality_supported(record: dict[str, Any], *, min_depth: int) -> bool
 def _zygosity(genotype: Any, alt_allele_count: int | None) -> str:
     if alt_allele_count is None:
         return "unknown"
-    alleles = str(genotype or "").replace("|", "/").split("/")
-    ploidy = len([allele for allele in alleles if allele not in {"", "."}])
+    alleles = called_genotype_tokens(genotype)
+    ploidy = len(alleles)
     if alt_allele_count == 0:
         return "reference_or_other_alternate"
     if ploidy and alt_allele_count >= ploidy:

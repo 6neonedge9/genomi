@@ -394,6 +394,38 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(result["effect_allele_dosage"], 0.0)
         self.assertEqual(result["match_type"], "reference_homozygous_inferred")
 
+    def test_array_harmonization_counts_effect_without_other_allele(self) -> None:
+        connection = self._memory_prs_index()
+        self._insert_array_prs_record(connection, pos=100, genotype="AG")
+        variant = self._score_variant(pos=100, effect_allele="G", other_allele="")
+
+        result = prs_harmonize.dosage_for_variant(connection, variant)
+
+        self.assertEqual(result["status"], "matched")
+        self.assertEqual(result["effect_allele_dosage"], 1.0)
+        self.assertEqual(result["match_type"], "consumer_array_letter_count")
+
+    def test_array_harmonization_counts_zero_without_other_allele(self) -> None:
+        connection = self._memory_prs_index()
+        self._insert_array_prs_record(connection, pos=100, genotype="AA")
+        variant = self._score_variant(pos=100, effect_allele="G", other_allele="")
+
+        result = prs_harmonize.dosage_for_variant(connection, variant)
+
+        self.assertEqual(result["status"], "matched")
+        self.assertEqual(result["effect_allele_dosage"], 0.0)
+        self.assertEqual(result["match_type"], "consumer_array_letter_count")
+
+    def test_array_harmonization_rejects_third_allele_with_complete_score_model(self) -> None:
+        connection = self._memory_prs_index()
+        self._insert_array_prs_record(connection, pos=100, genotype="AG")
+        variant = self._score_variant(pos=100, effect_allele="G", other_allele="T")
+
+        result = prs_harmonize.dosage_for_variant(connection, variant)
+
+        self.assertEqual(result["status"], "missing")
+        self.assertEqual(result["reason"], "genotype_allele_outside_score_alleles")
+
     def _write_scoring_file(self) -> Path:
         path = Path(self._home_tmp.name) / "PGS900001_hmPOS_GRCh38.txt"
         path.write_text(
@@ -483,6 +515,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
                 ref text not null,
                 alt text not null,
                 filter text not null,
+                format text,
                 genotype text not null,
                 offset integer not null,
                 sample_index integer not null
@@ -510,10 +543,25 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
     ) -> None:
         connection.execute(
             """
-            insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, genotype, offset, sample_index)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype, offset, sample_index)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("1", 1, pos, pos, ref, alt, "PASS", genotype, pos, 0),
+            ("1", 1, pos, pos, ref, alt, "PASS", "GT", genotype, pos, 0),
+        )
+
+    def _insert_array_prs_record(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        pos: int,
+        genotype: str,
+    ) -> None:
+        connection.execute(
+            """
+            insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype, offset, sample_index)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("1", 1, pos, pos, "N", genotype, "PASS", "GT_ARRAY", genotype, pos, 0),
         )
 
     def _score_variant(self, *, pos: int, effect_allele: str, other_allele: str) -> dict[str, object]:

@@ -56,7 +56,11 @@ def _vcf_summary(params: JsonObject) -> JsonObject:
     # Genome Index on demand, so they must not be blocked by a readiness gate.
     reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading Active Genome Index artifacts", params=params)
     resolved = _with_context(params, db=True)
-    return static_annotation.summarize_static_state(reader.vcf_path, evidence_db=_optional_path(resolved, "db"))
+    return static_annotation.summarize_static_state(
+        reader.vcf_path,
+        evidence_db=_optional_path(resolved, "db"),
+        active_genome_index_path=reader.active_genome_index_path,
+    )
 
 
 def _vcf_qc(params: JsonObject) -> JsonObject:
