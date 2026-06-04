@@ -138,7 +138,7 @@ def _bulk_fetch_records(
             f"""
             select s.chrom as query_chrom, s.pos as query_pos, {_MINIMAL_COLUMNS}
             from _agi_dosage_sites s
-            inner join spans sp on sp.chrom = s.chrom and sp.pos < s.pos and sp.end >= s.pos
+            inner join spans sp on sp.chrom = s.chrom and sp.pos <= s.pos and sp.end >= s.pos
             inner join records r on r.offset = sp.offset and r.sample_index = sp.sample_index
             order by sp.pos desc
             """
@@ -215,7 +215,9 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
         return _missing(variant, "missing_genotype", record=record)
     effect = str(variant["effect_allele"]).upper()
     other = str(variant.get("other_allele") or "").upper()
-    ref = str(record.get("ref") or "").upper()
+    record_is_reference_block = record.get("record_kind") == RECORD_KIND_REFERENCE_BLOCK
+    variant_ref = str(variant.get("reference_allele") or "").upper()
+    ref = variant_ref if record_is_reference_block and variant_ref else str(record.get("ref") or "").upper()
     alts = [str(value).upper() for value in record.get("alts") or []]
     genotype_tokens = genotype.replace("|", "/").split("/")
     allele_bases: list[str] = []
