@@ -174,7 +174,12 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
             "active_genome_index_required",
             "Select or parse an Active Genome Index before rendering the Genomi Dashboard.",
         )
-    open_agi(need=ActiveGenomeIndexNeed.NONE, action="rendering the Genomi Dashboard from Active Genome Index evidence", params=params)
+    reader = open_agi(
+        need=ActiveGenomeIndexNeed.REFERENCE,
+        action="rendering the Genomi Dashboard from Active Genome Index evidence",
+        params=params,
+    )
+    reader.ensure_ready()
 
     output = resolved.get("output")
     if not output:

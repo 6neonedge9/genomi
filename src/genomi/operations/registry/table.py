@@ -227,7 +227,7 @@ OPERATIONS: list[Operation] = [
     Operation('functional_genomics.query_geo', _screen_query_geo),
     Operation('functional_genomics.import_perturbation_table', _screen_import_table_evidence_records),
     Operation('functional_genomics.compare_gene_perturbation', _screen_answer_gene),
-    Operation('decode.render_dashboard', _decode_render_dashboard),
+    Operation('decode.render_dashboard', _decode_render_dashboard, agi_need=_AGI_REFERENCE),
 ]
 
 _OPERATION_BY_NAME = {operation.name: operation for operation in OPERATIONS}

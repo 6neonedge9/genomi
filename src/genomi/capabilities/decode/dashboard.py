@@ -365,10 +365,11 @@ def _normalize_variants_row(raw: Any) -> dict[str, Any] | None:
 
 
 def _normalize_variants(raw: Any) -> list[dict[str, Any]] | None:
-    if not isinstance(raw, list):
-        return None
-    rows = [r for r in (_normalize_variants_row(item) for item in raw) if r]
-    return rows or None
+    return _normalize_required_rows(
+        raw,
+        panel="variants",
+        row_normalizer=_normalize_variants_row,
+    )
 
 
 _NUTRI_DOMAIN_LABELS: dict[str, str] = {
@@ -423,9 +424,31 @@ def _normalize_nutrigenomics_row(raw: Any) -> dict[str, Any] | None:
 
 
 def _normalize_nutrigenomics(raw: Any) -> list[dict[str, Any]] | None:
+    return _normalize_required_rows(
+        raw,
+        panel="nutrigenomics",
+        row_normalizer=_normalize_nutrigenomics_row,
+    )
+
+
+def _normalize_required_rows(
+    raw: Any,
+    *,
+    panel: str,
+    row_normalizer: Any,
+) -> list[dict[str, Any]] | None:
     if not isinstance(raw, list):
         return None
-    rows = [r for r in (_normalize_nutrigenomics_row(item) for item in raw) if r]
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(raw):
+        normalized = row_normalizer(item)
+        if not normalized:
+            raise DashboardRenderError(
+                "panel_schema_mismatch",
+                f"Panel '{panel}' row {index} was supplied but no recognized fields "
+                "mapped to the dashboard schema.",
+            )
+        rows.append(normalized)
     return rows or None
 
 
@@ -455,11 +478,33 @@ _PANEL_SCHEMAS: dict[str, dict[str, Any]] = {
     "ancestry": {"kind": "object", "required": ("dominantAncestry", "neighbors")},
     "variants": {
         "kind": "list",
-        "row_fields": ("rsid", "gene", "clinvarSignificance", "conditionShort"),
+        "row_fields": (
+            "rsid",
+            "gene",
+            "chrom",
+            "pos",
+            "ref",
+            "alt",
+            "zygosity",
+            "clinvarSignificance",
+            "conditionShort",
+            "evidenceQuality",
+        ),
     },
     "variants_all": {
         "kind": "list",
-        "row_fields": ("rsid", "gene", "clinvarSignificance", "conditionShort"),
+        "row_fields": (
+            "rsid",
+            "gene",
+            "chrom",
+            "pos",
+            "ref",
+            "alt",
+            "zygosity",
+            "clinvarSignificance",
+            "conditionShort",
+            "evidenceQuality",
+        ),
     },
     "pgx": {
         "kind": "list",
@@ -577,7 +622,11 @@ def _validate_panel(panel: str, normalized: Any) -> None:
                 )
 
 
-def _safe_evidence(evidence: JsonObject | None) -> JsonObject:
+def _safe_evidence(
+    evidence: JsonObject | None,
+    *,
+    skip_panels: set[str] | None = None,
+) -> JsonObject:
     """Normalize per-panel evidence and validate each supplied panel.
 
     Absent or empty panels are skipped (they render as placeholders in a full
@@ -589,9 +638,12 @@ def _safe_evidence(evidence: JsonObject | None) -> JsonObject:
     normal state.
     """
     payload: JsonObject = {}
+    skipped = skip_panels or set()
     if not isinstance(evidence, dict):
         return payload
     for key in PANEL_KEYS:
+        if key in skipped:
+            continue
         if key not in evidence or _is_empty(evidence[key]):
             continue
         normalizer = _PANEL_NORMALIZERS.get(key, _passthrough)
@@ -786,9 +838,9 @@ def render_dashboard(
         evidence = ev
 
     cleared = _explicitly_empty_panels(evidence) | _normalize_clear_panels(clear_panels)
-    supplied = _safe_evidence(evidence)
+    supplied = _safe_evidence(evidence, skip_panels=cleared)
     previous = (
-        _safe_evidence(_read_existing_evidence(out_path))
+        _safe_evidence(_read_existing_evidence(out_path), skip_panels=cleared)
         if mode == "update"
         else {}
     )
