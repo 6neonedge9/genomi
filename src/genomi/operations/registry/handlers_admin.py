@@ -13,7 +13,7 @@ from ...runtime import host_response, resources
 from ...runtime.libraries import manager as library_manager
 from ...runtime.libraries.manager import inventory as library_inventory
 from ...runtime.libraries.manager import status as library_status
-from ...runtime.paths import genomi_data_root
+from ...runtime.paths import expand_user_path, genomi_data_root
 from ...retrieval import hybrid as retrieval_hybrid
 from ...retrieval import index as retrieval_index
 from ...retrieval import semantic as retrieval_semantic
@@ -30,6 +30,7 @@ from .coerce import (
     _optional_int,
     _optional_path,
     _optional_str,
+    _path,
     _remember_source_result,
     _str,
     defaults_applied_for_call,
@@ -603,15 +604,21 @@ def _reparse_stale_genomes() -> JsonObject:
         if not isinstance(record, dict):
             continue
         agi_path = record.get("agi_path")
-        if not agi_path or not Path(str(agi_path)).exists():
+        resolved_agi_path = expand_user_path(str(agi_path)) if agi_path else None
+        if not resolved_agi_path or not resolved_agi_path.exists():
             continue
         checked += 1
-        stored = _stored_agi_schema(str(agi_path))
+        stored = _stored_agi_schema(str(resolved_agi_path))
         if stored is None or stored >= effective_schema:
             continue
         agi_intake_source_path = record.get("agi_intake_source_path")
+        resolved_agi_intake_source_path = (
+            expand_user_path(str(agi_intake_source_path))
+            if agi_intake_source_path
+            else None
+        )
         agi_intake_source_available = bool(
-            agi_intake_source_path and Path(str(agi_intake_source_path)).exists()
+            resolved_agi_intake_source_path and resolved_agi_intake_source_path.exists()
         )
         entry: JsonObject = {
             "agi_id": agi_id,
@@ -623,7 +630,7 @@ def _reparse_stale_genomes() -> JsonObject:
             continue
         try:
             job = background_jobs.start_operation_job(
-                "genomi.parse_source", {"source": str(agi_intake_source_path), "force": True}
+                "genomi.parse_source", {"source": str(resolved_agi_intake_source_path), "force": True}
             )
             launched.append({**entry, "job_id": job.get("job_id")})
         except Exception as exc:  # pragma: no cover - best effort per genome
@@ -914,7 +921,7 @@ def _genomi_parse_source(params: JsonObject) -> JsonObject:
     source_value = params.get("source")
     if source_value is None or source_value == "":
         raise OperationError("invalid_params", "source is required")
-    source = Path(str(source_value))
+    source = _path(params, "source")
     result = source_intake.parse_source(
         source,
         evidence_db=_optional_path(params, "db"),

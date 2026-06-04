@@ -24,6 +24,33 @@ AGENT_SESSION_ENVS = (
     "CLAUDE_SESSION_ID",
 )
 DEFAULT_CONTEXT_POLICY = "explicit"
+AGI_RECORD_FIELDS = frozenset(
+    {
+        "agi_id",
+        "sample_slug",
+        "status",
+        "agi_intake_source_path",
+        "agi_source_format",
+        "agi_source_kind",
+        "agi_source_member",
+        "project_dir",
+        "work_dir",
+        "evidence_dir",
+        "reference_dir",
+        "evidence_db",
+        "shared_evidence_db",
+        "agi_path",
+        "matches",
+        "candidate_inventory",
+        "agi_comparable_variant_export",
+        "reference_fasta",
+        "genotype_reference_fasta",
+        "genome_build",
+        "outputs",
+        "created_at",
+        "updated_at",
+    }
+)
 DIGITIZATION_CONTRACT: JsonObject = {
     "intake_source_role": "ingestion_source_for_digitization",
     "normal_query_substrate": [
@@ -122,36 +149,14 @@ def _agi_map(container: object) -> JsonObject:
 
 
 def _normalize_agi_record(record: JsonObject, agi_id_hint: str | None = None) -> JsonObject:
-    normalized = dict(record)
-    legacy_keys = [key for key in _legacy_agi_record_keys() if key in normalized]
-    if legacy_keys:
-        raise ValueError(
-            "legacy_active_genome_index_record_keys: "
-            f"{', '.join(sorted(legacy_keys))}; use agi_* persisted context fields"
-        )
+    normalized = {
+        key: value
+        for key, value in record.items()
+        if key in AGI_RECORD_FIELDS
+    }
     agi_id = normalized.get("agi_id") or agi_id_hint or normalized.get("sample_slug")
     normalized["agi_id"] = str(agi_id) if agi_id not in (None, "") else ""
-    normalized.pop("run" + "_id", None)
-    normalized.pop("nickname", None)
-    normalized.pop("default", None)
-    normalized.pop("default_set_at", None)
     return normalized
-
-
-def _legacy_agi_record_keys() -> tuple[str, ...]:
-    return (
-        "source",
-        "source_format",
-        "source_kind",
-        "source_member",
-        "active_vcf",
-        "comparable_vcf",
-        "comparable_variant_export",
-        "selected_vcf",
-        "source_label",
-        "vcf",
-        "vcf_path",
-    )
 
 
 def _normalize_nickname(value: object | None) -> str | None:

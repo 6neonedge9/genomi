@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ...evidence import init_evidence_db
 from ...runtime import context as runtime_context
-from ...runtime.paths import shared_evidence_db_path
+from ...runtime.paths import expand_user_path, shared_evidence_db_path
 from .errors import JsonObject, OperationError
 from .model import _operation_parameter_defaults
 
@@ -13,14 +13,18 @@ def _path(params: JsonObject, key: str) -> Path:
     value = params.get(key)
     if value is None or value == "":
         raise OperationError("invalid_params", f"{key} is required")
-    return Path(str(value))
+    return _expanded_path(value)
 
 
 def _optional_path(params: JsonObject, key: str) -> Path | None:
     value = params.get(key)
     if value is None or value == "":
         return None
-    return Path(str(value))
+    return _expanded_path(value)
+
+
+def _expanded_path(value: object) -> Path:
+    return expand_user_path(str(value))
 
 
 def _str(params: JsonObject, key: str, default: str | None = None) -> str:

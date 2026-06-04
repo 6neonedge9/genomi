@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ...runtime.paths import expand_user_path
 from .agi_store import JsonObject
 from .arrays import (
     parse_consumer_array_source,
@@ -34,7 +35,7 @@ def parse_source(
     max_records: int | None = None,
     parallel_workers: int | None = None,
 ) -> JsonObject:
-    source_path = Path(source)
+    source_path = expand_user_path(source)
     detection = detect_source(source_path)
     if detection.source_format in SUPPORTED_VARIANT_CALLSET_FORMATS:
         result = _parse_vcf_active_genome_index(

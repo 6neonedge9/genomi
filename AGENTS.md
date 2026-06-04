@@ -156,6 +156,16 @@ Edit this section only with explicit owner approval.
    update callers, fixtures, tests, and docs together. Do not keep aliases,
    duplicate fields, compatibility modes, or fallback parsers that let the old
    incorrect behavior keep leaking through.
+   `genomi update` is the supported boundary for moving a machine to the
+   current Genomi contract. After update, a host-agent restart and Genomi MCP
+   server restart must route every Genomi call through the latest contract only.
+   Forget past contracts after that boundary: do not add alternate
+   past-contract code paths, compatibility shims, anti-prompting guidance, or
+   tests that prove a removed/refactored feature is gone. Tests must assert the
+   current positive contract. If update leaves any user-facing surface, parser,
+   profile, generated artifact, or workflow off the current contract, fix the
+   update path or the current writer so the user lands entirely on the current
+   system.
 
 25. Do not anti-prompt around code defects.
    Avoid adding warning prose, prompt instructions, skill text, or schema

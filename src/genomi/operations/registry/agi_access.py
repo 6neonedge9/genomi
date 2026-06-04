@@ -35,6 +35,7 @@ from ...active_genome_index.active_genome_index import (
 )
 from ...active_genome_index._agi_readiness import reference_pending as _reference_pending
 from ...runtime import context as runtime_context
+from ...runtime.paths import expand_user_path
 from .errors import JsonObject, OperationError
 
 def _approval_error(action: str) -> OperationError:
@@ -55,15 +56,15 @@ def _clean_build(value: object) -> str | None:
 def _index_path_for_run(run: JsonObject, params: JsonObject) -> Path | None:
     explicit = params.get("agi_path")
     if explicit not in (None, ""):
-        return Path(str(explicit))
+        return expand_user_path(str(explicit))
     stored = run.get("agi_path")
     if stored:
-        return Path(str(stored))
+        return expand_user_path(str(stored))
     return None
 
 
 def _resolved_path(value: object) -> str:
-    return str(Path(str(value)).expanduser().resolve(strict=False))
+    return str(expand_user_path(str(value)).resolve(strict=False))
 
 
 def _registered_run_for_agi_path(agi_path: object) -> JsonObject | None:
@@ -107,7 +108,7 @@ def open_agi(
                 return None
             raise _approval_error(action)
         return open_reader(
-            Path(str(explicit_path)),
+            expand_user_path(str(explicit_path)),
             need=need,
             genome_build=_clean_build(run.get("genome_build")) or _clean_build(params.get("genome_build")),
         )
@@ -174,7 +175,7 @@ def _resolved_index_path(params: JsonObject | None, *, agi_id: str | None = None
     params = params or {}
     explicit = params.get("agi_path")
     if explicit not in (None, ""):
-        return Path(str(explicit))
+        return expand_user_path(str(explicit))
     named = agi_id or params.get("agi_id")
     if named:
         run = runtime_context.find_agi(str(named))

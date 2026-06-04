@@ -50,9 +50,13 @@ _GENERIC_FILE_SLUGS = {
 
 def genomi_data_root(root: str | Path | None = None) -> Path:
     if root is not None:
-        return Path(root).expanduser()
+        return expand_user_path(root)
     configured = os.environ.get(GENOMI_HOME_ENV)
-    return Path(configured).expanduser() if configured else DEFAULT_GENOMI_HOME
+    return expand_user_path(configured) if configured else DEFAULT_GENOMI_HOME
+
+
+def expand_user_path(value: str | Path) -> Path:
+    return Path(os.path.expandvars(str(value))).expanduser()
 
 
 def genomi_tools_dir(root: str | Path | None = None) -> Path:

@@ -17,6 +17,7 @@ from .normalize import (
 from .agi import (
     _find_agi,
     describe_user,
+    find_agi_by_intake_source,
     infer_agi_record,
 )
 from .storage import (
@@ -96,10 +97,9 @@ def assign_user_genome(
         if not isinstance(run, dict):
             raise KeyError(str(agi_id))
     elif source:
-        run = infer_agi_record(
-            source,
+        existing = find_agi_by_intake_source(source, root=root)
+        if isinstance(existing, dict) and not _has_explicit_agi_materialization(
             agi_source_format=agi_source_format,
-            status="set",
             db=db,
             agi_path=agi_path,
             matches=matches,
@@ -107,11 +107,27 @@ def assign_user_genome(
             reference_fasta=reference_fasta,
             genotype_reference_fasta=genotype_reference_fasta,
             genome_build=genome_build,
-            root=root,
-        )
-        existing = registry.get("agis", {}).get(str(run.get("agi_id") or ""))
-        if isinstance(existing, dict):
-            run = {**existing, **{key: value for key, value in run.items() if value is not None}, "updated_at": _now()}
+        ):
+            run = existing
+        else:
+            run = infer_agi_record(
+                source,
+                agi_source_format=agi_source_format,
+                status="set",
+                db=db,
+                agi_path=agi_path,
+                matches=matches,
+                shared_db=shared_db,
+                reference_fasta=reference_fasta,
+                genotype_reference_fasta=genotype_reference_fasta,
+                genome_build=genome_build,
+                root=root,
+            )
+            existing = registry.get("agis", {}).get(str(run.get("agi_id") or ""))
+            if isinstance(existing, dict):
+                run["created_at"] = existing.get("created_at") or run["created_at"]
+                run["updated_at"] = _now()
+            run = _normalize_agi_record(run)
         registry.setdefault("agis", {})[str(run["agi_id"])] = _normalize_agi_record(run)
     else:
         raise ValueError("agi_id or source is required")
@@ -129,6 +145,10 @@ def assign_user_genome(
             _grant_agi_access(context, target_agi_id, reason="User supplied a genome source path in this session.")
         save_context(context, root)
     return user
+
+
+def _has_explicit_agi_materialization(**values: object) -> bool:
+    return any(value not in (None, "") for value in values.values())
 
 
 def set_default_user(user_id_or_nickname: str, root: str | Path | None = None) -> JsonObject:

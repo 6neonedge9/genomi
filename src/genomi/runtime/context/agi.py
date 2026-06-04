@@ -8,6 +8,7 @@ from ...active_genome_index.active_genome_index import (
 )
 from ..host_response import resolve_active_response_profile
 from ..paths import (
+    expand_user_path,
     run_evidence_db_path_for_source,
     run_evidence_dir_for_source,
     run_output_path,
@@ -128,12 +129,12 @@ def active_agi_record(context: JsonObject | None = None, root: str | Path | None
     registry = load_registry(root)
     active_id = state.get("active_agi_id")
     if active_id:
-        agi = state.get("agis", {}).get(str(active_id))
-        if isinstance(agi, dict):
-            return agi
         registry_agi = registry.get("agis", {}).get(str(active_id))
         if isinstance(registry_agi, dict):
             return registry_agi
+        agi = state.get("agis", {}).get(str(active_id))
+        if isinstance(agi, dict):
+            return agi
     return _default_selected_agi(registry=registry)
 
 
@@ -181,10 +182,9 @@ def set_active_agi_from_source(
     agi_id = str(run["agi_id"])
     previous = context.get("agis", {}).get(agi_id) or load_registry(root).get("agis", {}).get(agi_id)
     if isinstance(previous, dict):
-        merged = {**previous, **{key: value for key, value in run.items() if value is not None}}
-        merged["created_at"] = previous.get("created_at") or run["created_at"]
-        merged["updated_at"] = _now()
-        run = merged
+        run["created_at"] = previous.get("created_at") or run["created_at"]
+        run["updated_at"] = _now()
+    run = _normalize_agi_record(run)
     context.setdefault("agis", {})[agi_id] = run
     context["active_agi_id"] = agi_id
     context["shared_evidence_db"] = run.get("shared_evidence_db") or _path_str(shared_evidence_db_path(root))
@@ -340,9 +340,9 @@ def save_agi_to_registry(run: JsonObject, root: str | Path | None = None) -> Jso
         return run
     previous = registry.get("agis", {}).get(agi_id)
     if isinstance(previous, dict):
-        run = {**previous, **{key: value for key, value in run.items() if value is not None}}
         run["created_at"] = previous.get("created_at") or run.get("created_at") or _now()
         run["updated_at"] = _now()
+        run = _normalize_agi_record(run)
     registry.setdefault("agis", {})[agi_id] = run
     user_id = _find_user_id_for_agi(registry, agi_id)
     if user_id:
@@ -385,7 +385,7 @@ def infer_agi_record(
     genome_build: str | None = None,
     root: str | Path | None = None,
 ) -> JsonObject:
-    agi_intake_path = Path(agi_intake_source_path)
+    agi_intake_path = expand_user_path(agi_intake_source_path)
     outputs = _outputs_from_result(operation_result)
     result = operation_result or {}
     effective_format = _infer_agi_source_format(
@@ -614,6 +614,7 @@ def _find_agi_by_intake_source(
     agi_intake_source: str | Path,
 ) -> JsonObject | None:
     target = _resolved_intake_source_path(agi_intake_source)
+    matches: list[JsonObject] = []
     for container in (context.get("agis"), registry.get("agis")):
         if not isinstance(container, dict):
             continue
@@ -621,12 +622,36 @@ def _find_agi_by_intake_source(
             if not isinstance(run, dict) or not run.get("agi_intake_source_path"):
                 continue
             if _resolved_intake_source_path(run["agi_intake_source_path"]) == target:
-                return run
-    return None
+                matches.append(run)
+    return _preferred_agi_record(matches)
+
+
+def find_agi_by_intake_source(
+    agi_intake_source: str | Path,
+    root: str | Path | None = None,
+) -> JsonObject | None:
+    registry = load_registry(root)
+    context = load_context(root)
+    return _find_agi_by_intake_source(registry, context, agi_intake_source)
+
+
+def _preferred_agi_record(records: list[JsonObject]) -> JsonObject | None:
+    if not records:
+        return None
+
+    def rank(run: JsonObject) -> tuple[int, int, str]:
+        source_format = str(run.get("agi_source_format") or "")
+        return (
+            1 if _is_digitized_agi_record(run) else 0,
+            1 if source_format and source_format != "source" else 0,
+            str(run.get("updated_at") or ""),
+        )
+
+    return max(records, key=rank)
 
 
 def _resolved_intake_source_path(agi_intake_source: str | Path) -> str:
-    return str(Path(agi_intake_source).expanduser().resolve(strict=False))
+    return str(expand_user_path(agi_intake_source).resolve(strict=False))
 
 
 def _find_agi(registry: JsonObject, agi_id_or_nickname: str) -> JsonObject | None:

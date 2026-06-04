@@ -10,10 +10,16 @@ def assign_profile_next_action() -> JsonObject:
             "Give this genome a profile nickname (e.g. a first name or initials), and "
             "should it be the default profile for this machine?"
         ),
+        "operation": "active_genome_index.assign_user_genome",
+        "params": {
+            "nickname": "<profile nickname>",
+            "agi_id": "<active_genome_index.agi_id from this parse result>",
+            "set_default_user": False,
+        },
         "then": (
-            "Record the answer by re-running genomi.parse_source with user_nickname "
-            "(and set_default_user=true if they want it as the default), or via the "
-            "invoke-only active_genome_index.assign_user_genome / set_default_user tools."
+            "For an already-parsed genome, call active_genome_index.assign_user_genome "
+            "with nickname and the parsed agi_id. During a new parse, pass "
+            "user_nickname to genomi.parse_source instead."
         ),
     }
 
