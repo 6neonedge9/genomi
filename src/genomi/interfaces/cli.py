@@ -101,15 +101,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     install_parser = subparsers.add_parser(
         "install",
-        aliases=["update"],
-        help="Update everything: runtime code (git pull when not a packaged distro), all reference libraries, and reparse genomes whose schema changed. `genomi update` is an alias.",
+        help="Install or refresh runtime code (git pull when not a packaged distro), all reference libraries, and reparse genomes whose schema changed.",
     )
     install_parser.add_argument(
         "--libraries",
         default="everything",
         help=(
             "Which reference libraries to materialize. Defaults to 'everything' — "
-            "`genomi install` / `genomi update` updates all of them. Idempotent: "
+            "`genomi install` updates all of them. Idempotent: "
             "only missing libraries download (pass --force to refresh). Name a "
             "purpose or exact library IDs (e.g. common-questions, clinvar-grch38) "
             "to install just that subset."
@@ -152,10 +151,9 @@ def _cmd_serve(args: argparse.Namespace) -> None:
 
 
 def _cmd_install(args: argparse.Namespace) -> dict[str, Any]:
-    # `genomi install` and `genomi update` are the same command. The operation
-    # always updates everything it can (runtime + libraries + reindex +
-    # reparse-stale) — there are no skip flags to pass. The CLI just forwards
-    # the library selection (default everything) and force.
+    # The operation always updates everything it can (runtime + libraries +
+    # reindex + reparse-stale) — there are no skip flags to pass. The CLI just
+    # forwards the library selection (default everything) and force.
     params: dict[str, Any] = {
         "libraries": args.libraries,
         "force": bool(args.force),

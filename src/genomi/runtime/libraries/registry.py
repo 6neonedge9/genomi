@@ -309,6 +309,17 @@ _SPECS: tuple[LibrarySpec, ...] = (
         freshness=Freshness.LIVE,
     ),
     LibrarySpec(
+        id="prs-scoring-file",
+        title="PRS scoring file cache",
+        helps="imports one PGS Catalog or user-supplied scoring file into a local per-score cache for approved Active Genome Index scoring",
+        kind=Kind.PARAMETERIZED,
+        size_class="per score",
+        source=Source(derived_from=("pgs-catalog",)),
+        freshness=Freshness.MANUAL,
+        targets=(_p("reference", "prs"),),
+        required_paths=(),
+    ),
+    LibrarySpec(
         id="pgxdb",
         title="PGxDB pharmacogenomics (live REST API)",
         helps="fetches gene-drug and variant pharmacogenomic records from the PGxDB REST API",
@@ -325,16 +336,6 @@ _SPECS: tuple[LibrarySpec, ...] = (
         size_class="online",
         source=Source(api_base="https://www.fda.gov/drugs/science-and-research-drugs/table-pharmacogenomic-biomarkers-drug-labeling"),
         freshness=Freshness.LIVE,
-    ),
-    # ---- PARAMETERIZED: per-pgs_id PRS scoring-file cache (template) ----
-    LibrarySpec(
-        id="prs-scoring-file",
-        title="PGS Catalog scoring file (per score id)",
-        helps="imports and caches a specific published polygenic score's scoring file, keyed by PGS id and genome build",
-        kind=Kind.PARAMETERIZED,
-        size_class="varies",
-        source=Source(api_base="https://www.pgscatalog.org/rest"),
-        freshness=Freshness.MANUAL,
     ),
 )
 
@@ -373,8 +374,7 @@ def all_ids() -> list[str]:
 
 
 def installable_ids() -> list[str]:
-    """Offline-family ids that `genomi install` materializes (excludes online +
-    the parameterized template)."""
+    """Offline-family ids that `genomi install` materializes."""
     return [spec.id for spec in _SPECS if spec.is_offline and spec.kind.value != "parameterized"]
 
 

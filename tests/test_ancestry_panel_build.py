@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from genomi.capabilities.ancestry import panel_build, source_context
 from genomi.runtime.liftover import liftover_preflight
@@ -69,6 +70,24 @@ def _write_synthetic_panel(panel_dir: Path) -> None:
         json.dumps({"marker_count": len(_SYNTHETIC_GRCH38_MARKERS), "sample_count": 1}),
         encoding="utf-8",
     )
+
+
+class PanelBuildRootTests(unittest.TestCase):
+    def test_liftover_uses_the_same_library_root_as_the_panel(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            grch38_dir = ancestry_reference_panel_dir(source_context.PANEL_ID_GRCH38, root=root)
+            _write_synthetic_panel(grch38_dir)
+
+            class FakeLifter:
+                def lift_position_full(self, chrom: str, pos: int) -> tuple[str, int, str]:
+                    return chrom, pos - 1, "+"
+
+            with mock.patch.object(panel_build, "get_liftover", return_value=FakeLifter()) as get_liftover:
+                result = panel_build.build_grch37_panel_from_grch38(root=root)
+
+            self.assertEqual(result["status"], "completed")
+            get_liftover.assert_called_once_with("GRCh38", "GRCh37", root=root)
 
 
 @unittest.skipUnless(

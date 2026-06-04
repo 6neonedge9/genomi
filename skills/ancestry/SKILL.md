@@ -72,7 +72,7 @@ returns `requires_library_install`, explain that the compact local panel is
 needed for marker overlap and PCA projection, then ask before installing:
 
 ```bash
-python3 scripts/install_for_agents.py --libraries ancestry-1000g-30x-grch38
+genomi install --libraries ancestry-1000g-30x-grch38
 ```
 
 Do not treat a missing panel as evidence about the sample.

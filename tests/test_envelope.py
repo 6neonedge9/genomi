@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from genomi.capabilities.clinvar import materialization as mat
+from genomi.runtime.libraries import materialization as mat
 from genomi.evidence import envelope as env
 
 

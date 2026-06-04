@@ -101,7 +101,7 @@ def overlap_thresholds() -> JsonObject:
 
 def overlap_status(fraction: float) -> str:
     if fraction < LOW_OVERLAP_FRACTION:
-        return "low_overlap"
+        return "insufficient_overlap"
     return "completed"
 
 

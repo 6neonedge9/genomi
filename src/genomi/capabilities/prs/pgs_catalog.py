@@ -60,7 +60,6 @@ def get_score_metadata(pgs_id: str) -> JsonObject:
     except SourceUnavailable as exc:
         return _source_unavailable(exc)
     return {
-        "schema": "genomi-prs-score-metadata-v1",
         "status": "completed",
         "pgs_id": clean_id,
         "metadata": _score_summary(metadata),
@@ -87,7 +86,6 @@ def search_scores(
     if pgs_id:
         exact = get_score_metadata(pgs_id)
         payload = {
-            "schema": "genomi-prs-score-search-v1",
             "status": exact.get("status", "source_unavailable"),
             "query": _query_payload(query=query, trait=trait, pgs_id=pgs_id, efo_id=efo_id, limit=limit),
             "results": [exact["metadata"]] if exact.get("status") == "completed" else [],
@@ -123,7 +121,7 @@ def search_scores(
         )
         if cached is not None:
             return cached
-        return _source_unavailable(exc, schema="genomi-prs-score-search-v1")
+        return _source_unavailable(exc)
 
     refresh_result = refresh_score_search_index(rows)
     search_result = _search_score_rows(
@@ -137,7 +135,6 @@ def search_scores(
     )
     selected = search_result["results"]
     return {
-        "schema": "genomi-prs-score-search-v1",
         "status": "completed",
         "query": _query_payload(query=query, trait=trait, pgs_id=pgs_id, efo_id=efo_id, limit=limit),
         "source": {
@@ -187,7 +184,6 @@ def scoring_file_source_from_metadata(metadata: JsonObject, genome_build: str) -
                 return {
                     "status": "available",
                     "url": positions,
-                    "location": positions,
                     "genome_build": authoritative_build,
                     "requested_genome_build": requested_build,
                     "harmonized": True,
@@ -203,7 +199,6 @@ def scoring_file_source_from_metadata(metadata: JsonObject, genome_build: str) -
             return {
                 "status": "available",
                 "url": direct_url,
-                "location": direct_url,
                 "genome_build": original_build,
                 "requested_genome_build": requested_build,
                 "harmonized": False,
@@ -215,7 +210,6 @@ def scoring_file_source_from_metadata(metadata: JsonObject, genome_build: str) -
             "status": "unavailable",
             "reason": "fallback_build_unproven",
             "url": direct_url,
-            "location": direct_url,
             "genome_build": None,
             "requested_genome_build": requested_build,
             "harmonized": False,
@@ -247,8 +241,8 @@ def fetch_rest_metadata(pgs_id: str) -> JsonObject:
     return _fetch_json(score_rest_url(pgs_id))
 
 
-def source_unavailable_result(exc: SourceUnavailable, *, schema: str) -> JsonObject:
-    return _source_unavailable(exc, schema=schema)
+def source_unavailable_result(exc: SourceUnavailable) -> JsonObject:
+    return _source_unavailable(exc)
 
 
 def _query_payload(**kwargs: object) -> JsonObject:
@@ -423,7 +417,6 @@ def _search_cached_score_index(
         index_path=index_path,
     )
     return {
-        "schema": "genomi-prs-score-search-v1",
         "status": "completed_from_cached_index",
         "query": _query_payload(query=query, trait=trait, efo_id=efo_id, limit=limit),
         "source": {
@@ -602,9 +595,8 @@ def _fetch_text(url: str) -> str:
         raise SourceUnavailable(url, str(exc)) from exc
 
 
-def _source_unavailable(exc: SourceUnavailable, *, schema: str = "genomi-prs-score-metadata-v1") -> JsonObject:
+def _source_unavailable(exc: SourceUnavailable) -> JsonObject:
     return {
-        "schema": schema,
         "status": "source_unavailable",
         "source_status": {"source": exc.source, "error": exc.message},
         "source_urls": source_context.source_urls(),
@@ -616,7 +608,6 @@ def _source_unavailable(exc: SourceUnavailable, *, schema: str = "genomi-prs-sco
 
 def _invalid_input(message: str) -> JsonObject:
     return {
-        "schema": "genomi-prs-score-metadata-v1",
         "status": "invalid_params",
         "message": message,
         "source_urls": source_context.source_urls(),

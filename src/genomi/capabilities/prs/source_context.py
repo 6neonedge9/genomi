@@ -35,7 +35,6 @@ def limitations() -> list[str]:
 
 def build_source_context() -> JsonObject:
     return {
-        "schema": "genomi-prs-source-context-v1",
         "status": "completed",
         "source": {
             "name": "PGS Catalog",

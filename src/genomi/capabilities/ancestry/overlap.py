@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexReader
+from ...evidence import envelope as evidence_envelope
 from . import policy, reference_panels, source_context
 
 JsonObject = dict[str, Any]
@@ -36,7 +37,7 @@ def check_sample_overlap(
         panel=panel,
     )
     sample_qc = genotype_context["sample_qc"]
-    return {
+    result = {
         "schema": "genomi-ancestry-overlap-v1",
         "status": sample_qc["overlap_status"],
         "personal_context": {"uses_personal_dna": True},
@@ -45,6 +46,8 @@ def check_sample_overlap(
         "limitations": source_context.limitations(),
         "next_actions": _overlap_next_actions(sample_qc),
     }
+    result["evidence_envelope"] = _overlap_envelope("ancestry.check_sample_overlap", result)
+    return result
 
 
 def _load_panel_or_missing(
@@ -94,7 +97,7 @@ def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObj
         "install_command": status["install_command"],
         "note": note,
     }
-    return {
+    result = {
         "schema": "genomi-ancestry-overlap-v1",
         "status": "panel_not_installed",
         "personal_context": {"uses_personal_dna": True},
@@ -121,6 +124,8 @@ def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObj
             }
         ],
     }
+    result["evidence_envelope"] = _overlap_envelope("ancestry.check_sample_overlap", result)
+    return result
 
 
 def collect_sample_genotypes(
@@ -331,7 +336,7 @@ def _overlap_next_actions(sample_qc: JsonObject) -> list[JsonObject]:
         ]
     if status == "active_genome_index_incomplete":
         return [{"action": "parse_source", "operation": "genomi.parse_source"}]
-    if status in {"insufficient_overlap", "low_overlap"}:
+    if status == "insufficient_overlap":
         return [{"action": "use_higher_overlap_index", "reason": sample_qc.get("note")}]
     return [{"action": "project_pca", "operation": "ancestry.project_pca"}]
 
@@ -355,6 +360,52 @@ def _reference_panel_summary(panel: JsonObject) -> JsonObject:
         "label_scope": "1000 Genomes reference-panel population labels",
         "source_urls": source_context.source_urls(),
     }
+
+
+def _overlap_envelope(operation: str, result: JsonObject) -> JsonObject:
+    status = str(result.get("status") or "")
+    sample_qc = result.get("sample_qc") if isinstance(result.get("sample_qc"), dict) else {}
+    reference_panel = result.get("reference_panel") if isinstance(result.get("reference_panel"), dict) else {}
+    panel_id = str(reference_panel.get("panel_id") or reference_panels.PANEL_ID)
+    panel_library = str(reference_panel.get("library") or reference_panels.PANEL_LIBRARY)
+    panel_title = str(reference_panel.get("title") or reference_panels.PANEL_TITLE)
+    library_state = "installed" if reference_panel.get("installed", True) else "missing"
+    coverage = evidence_envelope._coverage(
+        libraries=[{"library": panel_library, "state": library_state, "title": panel_title}],
+        consulted_sources=["active_genome_index", panel_library],
+    )
+    observations = {
+        "status": status,
+        "panel_marker_count": sample_qc.get("panel_marker_count"),
+        "usable_marker_count": sample_qc.get("usable_marker_count"),
+        "missing_marker_count": sample_qc.get("missing_marker_count"),
+        "overlap_fraction": sample_qc.get("overlap_fraction"),
+        "marker_overlap_quality": sample_qc.get("marker_overlap_quality"),
+        "projection_allowed": sample_qc.get("projection_allowed"),
+    }
+    if status == "completed":
+        return evidence_envelope.evidence_present(
+            operation=operation,
+            query_scope={"method": "ancestry_marker_overlap", "reference_panel": panel_id},
+            personal_context={"uses_personal_dna": True},
+            coverage=coverage,
+            observations=observations,
+            answer_readiness=evidence_envelope.SCOPED_ANSWER_ONLY,
+            next_actions=result.get("next_actions") if isinstance(result.get("next_actions"), list) else [],
+            notes=[source_context.BOUNDARY_NOTE],
+            guidance=["evidence_present:answer_as_marker_overlap_only"],
+        )
+    return evidence_envelope.not_assessed(
+        operation=operation,
+        reason=sample_qc.get("note") or status,
+        query_scope={"method": "ancestry_marker_overlap", "reference_panel": panel_id},
+        personal_context={"uses_personal_dna": True},
+        coverage=coverage,
+        observations=observations,
+        next_actions=result.get("next_actions") if isinstance(result.get("next_actions"), list) else [],
+        notes=[source_context.BOUNDARY_NOTE],
+        guidance=["not_assessed:do_not_interpret_reference_similarity"],
+    )
 
 
 def _normalize_build(value: str | None) -> str:

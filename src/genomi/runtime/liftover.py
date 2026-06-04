@@ -352,11 +352,16 @@ class LiftOver:
         return LiftRecordResult(lifted=lifted, dropped=dropped)
 
 
-@lru_cache(maxsize=4)
-def get_liftover(source_build: str, target_build: str) -> LiftOver:
+@lru_cache(maxsize=8)
+def get_liftover(
+    source_build: str,
+    target_build: str,
+    *,
+    root: str | Path | None = None,
+) -> LiftOver:
     """Cached accessor; reuses the parsed chain file across callers."""
 
-    return LiftOver(source_build, target_build)
+    return LiftOver(source_build, target_build, root=root)
 
 
 def _ucsc_chrom(chrom: str) -> str:

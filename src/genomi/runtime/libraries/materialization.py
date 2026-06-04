@@ -21,10 +21,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ...runtime.external import utc_now
-from ...runtime.paths import genomi_data_root
+from ..external import utc_now
+from ..paths import genomi_data_root
 
-MANIFEST_SCHEMA = "genomi-library-materialization-manifest-v1"
 MATERIALIZATION_DIR_NAME = "materialization"
 
 # Status values
@@ -177,7 +176,6 @@ def init_manifest(
     target = manifest_path(agi_id=agi_id, library_id=library_id, inputs_hash=digest, root=root)
     now = utc_now()
     manifest = {
-        "schema": MANIFEST_SCHEMA,
         "agi_id": agi_id,
         "library_id": library_id,
         "library_version": version,

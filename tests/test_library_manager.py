@@ -45,19 +45,39 @@ class StatusAndInventoryTests(unittest.TestCase):
         self.assertEqual(status["kind"], "online")
         self.assertEqual(status["required_paths"], [])
 
+    def test_status_parameterized_template_is_not_installed(self) -> None:
+        status = manager.status("prs-scoring-file", root=self.root)
+        self.assertEqual(status["status"], "parameterized_template")
+        self.assertFalse(status["installed"])
+        self.assertEqual(status["install_libraries"], [])
+
+    def test_prs_scoring_file_status_is_parameterized(self) -> None:
+        status = manager.prs_scoring_file_status(
+            score_id="PGS900001",
+            genome_build="GRCh38",
+            root=self.root,
+            validation={"reason": "missing_or_invalid_manifest"},
+        )
+
+        self.assertEqual(status["library"], "PGS900001")
+        self.assertEqual(status["template_library"], "prs-scoring-file")
+        self.assertEqual(status["kind"], "parameterized")
+        self.assertFalse(status["installed"])
+        self.assertEqual(status["status"], "not_installed")
+        self.assertEqual(status["validation"]["reason"], "missing_or_invalid_manifest")
+        self.assertIn("prs.import_scoring_file", status["install_command"])
+
     def test_msigdb_install_command_has_gmt_hint(self) -> None:
         self.assertIn("--msigdb-gmt", manager.status("msigdb-hallmark", root=self.root)["install_command"])
 
     def test_inventory_counts(self) -> None:
         inv = manager.inventory(root=self.root)
-        self.assertEqual(inv["schema"], "genomi-library-inventory-v1")
-        # 18 offline-family (incl. derived + manual) + 4 online = 22; parameterized excluded.
+        # 18 offline-family (incl. derived + manual) + 4 online = 22.
         self.assertEqual(inv["summary"]["library_count"], 22)
         # The 4 online sources count as installed; everything offline is missing here.
         self.assertEqual(inv["summary"]["installed_count"], 4)
         self.assertEqual(inv["summary"]["missing_count"], 18)
         ids = {item["library"] for item in inv["libraries"]}
-        self.assertNotIn("prs-scoring-file", ids)
         self.assertIn("gnomad", ids)
 
     def test_install_command_and_resolve_selection(self) -> None:
@@ -102,6 +122,11 @@ class EnsureTests(unittest.TestCase):
         self.assertEqual(result["status"], "source_unavailable")
         self.assertFalse(result["source_status"]["reachable"])
 
+    def test_ensure_parameterized_template_is_not_available(self) -> None:
+        result = manager.ensure("prs-scoring-file", root=self.root)
+        self.assertEqual(result["status"], "parameterized_template")
+        self.assertFalse(result["installed"])
+
 
 class RefreshTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -135,6 +160,11 @@ class RefreshTests(unittest.TestCase):
         result = manager.refresh("msigdb-hallmark", root=self.root)
         self.assertEqual(result["status"], "manual_source_required")
         self.assertIn("--msigdb-gmt", result["install_command"])
+
+    def test_refresh_parameterized_template_points_to_capability_operation(self) -> None:
+        result = manager.refresh("prs-scoring-file", root=self.root)
+        self.assertEqual(result["status"], "parameterized_template")
+        self.assertIn("prs.import_scoring_file", result["reason"])
 
     def test_refresh_manual_with_source_path_copies(self) -> None:
         source = self.root / "h.all.symbols.gmt"

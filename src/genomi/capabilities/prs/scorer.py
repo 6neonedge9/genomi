@@ -17,7 +17,7 @@ HIGH_OVERLAP_FRACTION = 0.90
 
 
 def check_score_overlap(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     pgs_id: str | None = None,
     score_dir: str | Path | None = None,
@@ -25,7 +25,7 @@ def check_score_overlap(
     skip_ambiguous_palindromic: bool = True,
 ) -> JsonObject:
     collected = collect_score_context(
-        reader,
+        agi_reader,
         pgs_id=pgs_id,
         score_dir=score_dir,
         genome_build=genome_build,
@@ -35,7 +35,6 @@ def check_score_overlap(
     if collected.get("status") != "completed":
         return collected
     result = {
-        "schema": "genomi-prs-overlap-v1",
         "status": collected["sample_qc"]["overlap_status"],
         "personal_context": {"uses_personal_dna": True},
         "polygenic_score": collected["polygenic_score"],
@@ -49,7 +48,7 @@ def check_score_overlap(
 
 
 def calculate_score(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     pgs_id: str | None = None,
     score_dir: str | Path | None = None,
@@ -59,7 +58,7 @@ def calculate_score(
     score_sd: float | None = None,
 ) -> JsonObject:
     collected = collect_score_context(
-        reader,
+        agi_reader,
         pgs_id=pgs_id,
         score_dir=score_dir,
         genome_build=genome_build,
@@ -71,7 +70,6 @@ def calculate_score(
     sample_qc = collected["sample_qc"]
     if not sample_qc["calculation_allowed"]:
         result = {
-            "schema": "genomi-prs-score-v1",
             "status": sample_qc["overlap_status"],
             "personal_context": {"uses_personal_dna": True},
             "polygenic_score": collected["polygenic_score"],
@@ -91,7 +89,6 @@ def calculate_score(
         score_sd=score_sd,
     )
     result = {
-        "schema": "genomi-prs-score-v1",
         "status": "completed",
         "personal_context": {"uses_personal_dna": True},
         "polygenic_score": collected["polygenic_score"],
@@ -107,7 +104,7 @@ def calculate_score(
 
 
 def collect_score_context(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     pgs_id: str | None = None,
     score_dir: str | Path | None = None,
@@ -127,7 +124,7 @@ def collect_score_context(
     score_build = scoring_files.normalize_build(str(manifest.get("genome_build") or normalized_build))
     score_summary = _polygenic_score_summary(cache["score_dir"], manifest)
 
-    agi_path = reader.agi_path
+    agi_path = agi_reader.agi_path
     variants = scoring_files.load_variants(cache["score_dir"])
     original_variant_count = len(variants)
     lift_summary: JsonObject | None = None
@@ -178,7 +175,7 @@ def collect_score_context(
     matched: list[JsonObject] = []
     missing: list[JsonObject] = []
     excluded: list[JsonObject] = list(liftover_excluded)
-    dosages = reader.dosage_for_variants(
+    dosages = agi_reader.dosage_for_variants(
         variants,
         skip_ambiguous_palindromic=skip_ambiguous_palindromic,
     )
@@ -459,7 +456,6 @@ def _liftover_setup_required(
     sample_build: str,
 ) -> JsonObject:
     result = dict(preflight)
-    result["schema"] = "genomi-prs-score-v1"
     result["personal_context"] = {"uses_personal_dna": True}
     result["polygenic_score"] = score
     result["score_genome_build"] = score_build

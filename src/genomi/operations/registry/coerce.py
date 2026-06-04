@@ -152,18 +152,8 @@ def _require_context_value(params: JsonObject, key: str, message: str) -> None:
         raise OperationError("missing_context", message)
 
 
-def _has_supplied_dna_source(params: JsonObject, source_keys: tuple[str, ...] = ("source", "vcf")) -> bool:
-    return any(params.get(key) not in (None, "") for key in source_keys)
-
-
-def _approve_supplied_dna_source(params: JsonObject, source_keys: tuple[str, ...] = ("source", "vcf")) -> None:
-    if _has_supplied_dna_source(params, source_keys):
-        source_value = next((params.get(key) for key in source_keys if params.get(key) not in (None, "")), None)
-        runtime_context.approve_agi_access(source=source_value, reason="User supplied a genome source path in this session.")
-
-
 def _remember_result(
-    vcf: Path,
+    source: Path,
     result: JsonObject,
     *,
     status: str,
@@ -171,7 +161,7 @@ def _remember_result(
     set_default_user: bool = False,
 ) -> JsonObject:
     active = runtime_context.set_active_genome_index(
-        vcf,
+        source,
         operation_result=result,
         status=status,
         user_nickname=user_nickname,
@@ -292,7 +282,7 @@ def _resolved_default_value(operation_name: str, parameter: str, params: JsonObj
     if operation_name == "pharmacogenomics.review_medication" and parameter == "include_active_genome_index":
         return bool(
             params.get("db")
-            or params.get("vcf")
+            or params.get("agi_path")
             or (runtime_context.agi_access_approved() and runtime_context.active_run() is not None)
         )
     if operation_name == "journal.append_entry":
@@ -314,20 +304,45 @@ def _resolved_default_value(operation_name: str, parameter: str, params: JsonObj
             return _SKIP_DEFAULT
         if parameter == "max_matches" and params.get("reference_fasta") in (None, ""):
             return _SKIP_DEFAULT
+    if parameter == "genome_build" and operation_name == "prs.import_scoring_file":
+        return "GRCh38"
     if parameter == "genome_build" and operation_name in {
         "ancestry.check_sample_overlap",
         "ancestry.project_pca",
         "ancestry.estimate_population_context",
-        "prs.import_scoring_file",
         "prs.check_score_overlap",
         "prs.calculate_score",
     }:
-        active = runtime_context.active_run()
-        active_build = str(active.get("genome_build") or "") if active is not None else ""
-        if active is not None and runtime_context.agi_access_approved() and active_build and active_build != "auto":
-            return active.get("genome_build")
-        return "GRCh38"
+        return _default_genome_build_from_approved_agi(params) or "GRCh38"
     return _UNRESOLVED_DEFAULT
+
+
+def _default_genome_build_from_approved_agi(params: JsonObject) -> str | None:
+    explicit_path = params.get("agi_path")
+    if explicit_path not in (None, ""):
+        from .agi_access import _registered_run_for_agi_path
+
+        run = _registered_run_for_agi_path(explicit_path)
+        build = _run_genome_build(run) if isinstance(run, dict) and runtime_context.agi_access_approved(run) else None
+        if build:
+            return build
+
+    named = params.get("agi_id")
+    if named not in (None, ""):
+        run = runtime_context.find_agi(str(named))
+        build = _run_genome_build(run) if isinstance(run, dict) and runtime_context.agi_access_approved(run) else None
+        if build:
+            return build
+
+    active = runtime_context.active_run()
+    if isinstance(active, dict) and runtime_context.agi_access_approved(active):
+        return _run_genome_build(active)
+    return None
+
+
+def _run_genome_build(run: JsonObject | None) -> str | None:
+    build = str((run or {}).get("genome_build") or "").strip()
+    return build if build and build != "auto" else None
 
 
 def _with_defaults_applied(operation_name: str, params: JsonObject, result: object) -> object:

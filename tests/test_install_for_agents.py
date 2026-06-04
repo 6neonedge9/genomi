@@ -265,7 +265,7 @@ class InstallForAgentsTests(unittest.TestCase):
         self.assertEqual(request["status"], "requires_library_install")
         self.assertIn("question", request["ask_user"])
         self.assertIn("ClinVar candidate triage", request["how_it_helps"])
-        self.assertEqual(inventory["schema"], "genomi-library-inventory-v1")
+        self.assertGreaterEqual(inventory["summary"]["library_count"], 1)
         self.assertFalse(ancestry["installed"])
         self.assertIn("reference/ancestry/1000g_30x_grch38/manifest.json", ancestry["required_paths"][0])
         self.assertIn("--libraries ancestry-1000g-30x-grch38", ancestry["install_command"])

@@ -11,6 +11,7 @@ from ...capabilities.prs import pgs_catalog as prs_pgs_catalog
 from ...capabilities.prs import scorer as prs_scorer
 from ...capabilities.prs import scoring_files as prs_scoring_files
 from ...capabilities.prs import source_context as prs_source_context
+from ...evidence import envelope as evidence_envelope
 from ...runtime.libraries import manager as library_manager
 from .agi_access import open_agi
 from .coerce import (
@@ -39,6 +40,9 @@ def _ancestry_build_source_context(_: JsonObject) -> JsonObject:
 def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="checking sample overlap with an ancestry reference panel", params=params)
     genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    unsupported = _unsupported_ancestry_build("ancestry.check_sample_overlap", genome_build)
+    if unsupported is not None:
+        return unsupported
     missing = _ancestry_missing_library(
         "ancestry.check_sample_overlap",
         "checking sample overlap with the 1000 Genomes ancestry PCA panel",
@@ -55,6 +59,9 @@ def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
 def _ancestry_project_pca(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="projecting a sample into ancestry reference-panel PCA space", params=params)
     genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    unsupported = _unsupported_ancestry_build("ancestry.project_pca", genome_build)
+    if unsupported is not None:
+        return unsupported
     missing = _ancestry_missing_library(
         "ancestry.project_pca",
         "projecting a sample into the 1000 Genomes ancestry PCA panel",
@@ -72,6 +79,9 @@ def _ancestry_project_pca(params: JsonObject) -> JsonObject:
 def _ancestry_estimate_population_context(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="estimating qualitative ancestry reference-panel similarity", params=params)
     genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    unsupported = _unsupported_ancestry_build("ancestry.estimate_population_context", genome_build)
+    if unsupported is not None:
+        return unsupported
     missing = _ancestry_missing_library(
         "ancestry.estimate_population_context",
         "estimating qualitative 1000 Genomes reference-panel similarity",
@@ -132,6 +142,41 @@ def _ancestry_missing_library(operation: str, intent: str, genome_build: str) ->
     return request
 
 
+def _unsupported_ancestry_build(operation: str, genome_build: str) -> JsonObject | None:
+    if genome_build in ancestry_policy.SUPPORTED_BUILDS:
+        return None
+    result: JsonObject = {
+        "status": "out_of_scope_for_input",
+        "genome_build": genome_build,
+        "supported_genome_builds": list(ancestry_policy.SUPPORTED_BUILDS),
+        "personal_context": {"uses_personal_dna": True},
+        "next_actions": [
+            {
+                "action": "use_supported_build",
+                "supported_genome_builds": list(ancestry_policy.SUPPORTED_BUILDS),
+            }
+        ],
+    }
+    result["evidence_envelope"] = evidence_envelope.not_assessed(
+        operation=operation,
+        reason="unsupported ancestry genome build",
+        query_scope={
+            "method": "ancestry_reference_panel",
+            "genome_build": genome_build,
+            "supported_genome_builds": list(ancestry_policy.SUPPORTED_BUILDS),
+        },
+        personal_context={"uses_personal_dna": True},
+        observations={
+            "status": "out_of_scope_for_input",
+            "genome_build": genome_build,
+            "supported_genome_builds": list(ancestry_policy.SUPPORTED_BUILDS),
+        },
+        next_actions=result["next_actions"],
+        guidance=["out_of_scope_for_input:use_supported_genome_build"],
+    )
+    return result
+
+
 def _prs_search_scores(params: JsonObject) -> JsonObject:
     return prs_pgs_catalog.search_scores(
         query=_optional_str(params, "query"),
@@ -166,23 +211,23 @@ def _prs_build_source_context(_: JsonObject) -> JsonObject:
 
 
 def _prs_check_score_overlap(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="checking sample overlap with a local polygenic-score file", params=params)
+    agi_reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="checking sample overlap with a local polygenic-score file", params=params)
     return prs_scorer.check_score_overlap(
-        reader,
+        agi_reader,
         pgs_id=_optional_str(params, "pgs_id"),
         score_dir=_optional_path(params, "score_dir"),
-        genome_build=reader.genome_build or "GRCh38",
+        genome_build=agi_reader.genome_build or "GRCh38",
         skip_ambiguous_palindromic=_bool(params, "skip_ambiguous_palindromic", True),
     )
 
 
 def _prs_calculate_score(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="calculating a polygenic score from local Active Genome Index artifacts", params=params)
+    agi_reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="calculating a polygenic score from local Active Genome Index artifacts", params=params)
     return prs_scorer.calculate_score(
-        reader,
+        agi_reader,
         pgs_id=_optional_str(params, "pgs_id"),
         score_dir=_optional_path(params, "score_dir"),
-        genome_build=reader.genome_build or "GRCh38",
+        genome_build=agi_reader.genome_build or "GRCh38",
         skip_ambiguous_palindromic=_bool(params, "skip_ambiguous_palindromic", True),
         score_mean=_optional_float(params, "score_mean"),
         score_sd=_optional_float(params, "score_sd"),

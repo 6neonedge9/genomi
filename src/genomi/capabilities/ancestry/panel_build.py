@@ -62,8 +62,7 @@ def build_grch37_panel_from_grch38(
         raise PanelBuildError(
             f"{source_context.PANEL_LIBRARY_GRCH38} is not installed; "
             f"missing {missing_source[0]}. Install with: "
-            f"python3 scripts/install_for_agents.py --libraries "
-            f"{source_context.PANEL_LIBRARY_GRCH38}"
+            f"genomi install --libraries {source_context.PANEL_LIBRARY_GRCH38}"
         )
 
     target_paths = _expected_panel_paths(target_dir)
@@ -79,12 +78,10 @@ def build_grch37_panel_from_grch38(
             "source_panel_id": source_context.PANEL_ID_GRCH38,
         }
 
-    # The liftover chain files are a system-wide resource keyed off the
-    # default GENOMI_HOME; the ``root`` parameter scopes only the ancestry
-    # panel directories so tests can isolate panel I/O without having to copy
-    # the chain library into a temp tree.
+    # Use the same library root as the panel files. The central library manager
+    # materializes derived-panel dependencies under this root before calling us.
     try:
-        lifter = get_liftover("GRCh38", "GRCh37")
+        lifter = get_liftover("GRCh38", "GRCh37", root=root)
     except LiftoverConfigurationError as exc:
         raise PanelBuildError(
             f"liftover-chains library is required to build the GRCh37 ancestry panel: {exc}"

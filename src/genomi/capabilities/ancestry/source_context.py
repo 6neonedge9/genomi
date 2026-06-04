@@ -41,8 +41,7 @@ def panel_source_for_build(genome_build: str) -> str:
 # The panel is built and distributed by the genomi-ancestry-panel project.
 # Genomi downloads the released tarball at install time and reads the
 # extracted files at query time; it does not run the build itself. The
-# tarball URL is configured at install time (see scripts/install_for_agents.py
-# ANCESTRY_PANEL_TARBALL_URL).
+# tarball URL is configured in the central runtime library registry.
 IGSR_COLLECTION_URL = "https://www.internationalgenome.org/data-portal/data-collections/30x-grch38.html"
 PUBLICATION_URL = "https://doi.org/10.1016/j.cell.2022.08.004"
 

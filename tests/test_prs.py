@@ -17,6 +17,7 @@ from genomi.capabilities.prs import scorer as prs_scorer
 from genomi.capabilities.prs import scoring_files as prs_scoring_files
 from genomi.operations import OperationError, call_operation, list_operations
 from genomi.runtime import context as runtime_context
+from genomi.runtime.libraries import manager as library_manager
 from genomi.runtime.liftover import chain_file_path, liftover_preflight
 
 from _prs_contract_helpers import (
@@ -53,6 +54,15 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         )
         self._env.start()
         self.addCleanup(self._env.stop)
+
+    def _select_approved_agi(self, vcf: Path, *, genome_build: str = "GRCh38") -> None:
+        runtime_context.set_active_genome_index(
+            vcf,
+            status="parsed",
+            agi_path=default_agi_path(vcf),
+            genome_build=genome_build,
+        )
+        runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
 
     def test_public_tools_do_not_require_personal_approval(self) -> None:
         source_context = call_operation("prs.build_source_context")
@@ -186,8 +196,11 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             call_operation("prs.calculate_score", {"pgs_id": "PGS900001"})
         self.assertEqual(raised.exception.code, "active_genome_index_approval_required")
 
-    def test_supplied_source_returns_requires_score_import_with_defaults(self) -> None:
-        result = call_operation("prs.calculate_score", {"source": "sample.vcf", "pgs_id": "PGS900001"})
+    def test_active_agi_returns_requires_score_import_with_defaults(self) -> None:
+        vcf = self._write_indexed_vcf("sample_requires_import.vcf")
+        self._select_approved_agi(vcf)
+
+        result = call_operation("prs.calculate_score", {"pgs_id": "PGS900001"})
 
         self.assertEqual(result["status"], "requires_score_import")
         self.assertTrue(result["personal_context"]["uses_personal_dna"])
@@ -230,23 +243,35 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             {"pgs_id": "PGS900001", "scoring_file": str(scoring_file), "genome_build": "GRCh38"},
         )
         vcf = self._write_indexed_vcf("sample.vcf")
+        self._select_approved_agi(vcf)
 
         self.assertEqual(imported["status"], "completed")
         self.assertEqual(imported["score_cache"]["variant_count"], 4)
         with self._tiny_thresholds():
-            overlap = call_operation("prs.check_score_overlap", {"source": str(vcf), "pgs_id": "PGS900001"})
-            score = call_operation("prs.calculate_score", {"source": str(vcf), "pgs_id": "PGS900001"})
+            overlap = call_operation("prs.check_score_overlap", {"pgs_id": "PGS900001"})
+            score = call_operation("prs.calculate_score", {"pgs_id": "PGS900001"})
 
-        self.assertEqual(overlap["schema"], "genomi-prs-overlap-v1")
         self.assertEqual(overlap["status"], "score_ready")
         self.assertEqual(overlap["sample_qc"]["matched_variant_count"], 4)
         self.assertEqual(overlap["sample_qc"]["missing_variant_count"], 0)
-        self.assertEqual(score["schema"], "genomi-prs-score-v1")
         self.assertEqual(score["status"], "completed")
         self.assertAlmostEqual(score["score_result"]["raw_weighted_score"], 2.0)
         self.assertEqual(score["score_result"]["calibration"]["status"], "not_provided")
         self.assertIn("not an absolute risk", " ".join(score["limitations"]).lower())
         self.assertTrue(score["personal_context"]["uses_personal_dna"])
+
+    def test_import_default_build_reporting_does_not_follow_active_agi(self) -> None:
+        vcf = self._write_indexed_vcf("sample_grch37_context.vcf")
+        self._select_approved_agi(vcf, genome_build="GRCh37")
+
+        result = call_operation(
+            "prs.import_scoring_file",
+            {"pgs_id": "PGS900001", "scoring_file": str(self._write_scoring_file())},
+        )
+
+        defaults = {item["parameter"]: item["value"] for item in result["defaults_applied"]}
+        self.assertEqual(result["genome_build"], "GRCh38")
+        self.assertEqual(defaults["genome_build"], "GRCh38")
 
     def test_catalog_source_choice_prefers_requested_harmonized_build(self) -> None:
         choice = prs_pgs_catalog.scoring_file_source_from_metadata(
@@ -304,12 +329,24 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertTrue(imported["source_choice"]["fallback_used"])
         self.assertFalse(imported["source_choice"]["harmonized"])
         self.assertIn("PGS900001/GRCH37", imported["score_cache"]["score_dir"])
-        for action in imported["next_actions"]:
-            self.assertEqual(action["score_dir"], imported["score_cache"]["score_dir"])
-            self.assertNotIn("genome_build", action)
+        self.assertEqual(
+            imported["next_actions"],
+            [
+                {
+                    "action": "check_score_overlap",
+                    "operation": "prs.check_score_overlap",
+                    "score_dir": imported["score_cache"]["score_dir"],
+                },
+                {
+                    "action": "calculate_score",
+                    "operation": "prs.calculate_score",
+                    "score_dir": imported["score_cache"]["score_dir"],
+                },
+            ],
+        )
         self.assertFalse((self.genomi_home / "reference" / "prs" / "PGS900001" / "GRCH38").exists())
 
-    def test_catalog_direct_fallback_does_not_relabel_sample_build(self) -> None:
+    def test_catalog_direct_fallback_pgs_id_lookup_uses_score_manifest_build(self) -> None:
         scoring_file = self._write_scoring_file(
             filename="PGS900001_original_GRCh37.txt",
             pgs_id="PGS900001",
@@ -345,7 +382,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             "liftover_preflight",
             return_value={"status": "requires_library_install", "missing_library": {"library": "liftover"}},
         ):
-            result = call_operation("prs.calculate_score", {"score_dir": imported["score_cache"]["score_dir"]})
+            result = call_operation("prs.calculate_score", {"pgs_id": "PGS900001"})
 
         self.assertEqual(result["score_genome_build"], "GRCh37")
         self.assertEqual(result["sample_genome_build"], "GRCh38")
@@ -393,7 +430,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             filename="PGS900888_hmPOS_GRCh38.txt",
             pgs_id="PGS900888",
         )
-        target_dir = prs_scoring_files.prs_score_dir("PGS900888", "GRCh38")
+        target_dir = library_manager.prs_scoring_file_dir("PGS900888", "GRCh38")
         target_dir.mkdir(parents=True)
         (target_dir / "manifest.json").write_text('{"status":"incomplete"}\n', encoding="utf-8")
 
@@ -412,7 +449,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             filename="PGS900889_hmPOS_GRCh38.txt",
             pgs_id="PGS900889",
         )
-        target_dir = prs_scoring_files.prs_score_dir("PGS900889", "GRCh38")
+        target_dir = library_manager.prs_scoring_file_dir("PGS900889", "GRCh38")
         target_dir.mkdir(parents=True)
         stale_variant = {
             "variant_id": "rsStale",
@@ -455,7 +492,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(validation["variant_count"], 4)
 
     def test_resolve_score_cache_rejects_wrong_manifest_identity(self) -> None:
-        target_dir = prs_scoring_files.prs_score_dir("PGS900890", "GRCh38")
+        target_dir = library_manager.prs_scoring_file_dir("PGS900890", "GRCh38")
         target_dir.mkdir(parents=True)
         variant = {
             "variant_id": "rs1",
@@ -511,15 +548,40 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             rows = connection.execute("select rsid, effect_weight from score_variants").fetchall()
         self.assertEqual(rows, [("rs1", 0.5)])
 
+    def test_existing_score_cache_publish_rolls_back_directory_on_replace_failure(self) -> None:
+        target_dir = Path(self._home_tmp.name) / "PGS900777" / "GRCh38"
+        staging_dir = Path(self._home_tmp.name) / "staging"
+        target_dir.mkdir(parents=True)
+        staging_dir.mkdir()
+        (target_dir / "manifest.json").write_text('{"pgs_id":"PGS900777","genome_build":"GRCh38"}\n', encoding="utf-8")
+        (target_dir / "variants.sqlite").write_text("old-db", encoding="utf-8")
+        (staging_dir / "manifest.json").write_text('{"pgs_id":"PGS900777","genome_build":"GRCh38"}\n', encoding="utf-8")
+        (staging_dir / "variants.sqlite").write_text("new-db", encoding="utf-8")
+        original_replace = Path.replace
+
+        def fail_staging_publish(self: Path, target: Path) -> Path:
+            if self == staging_dir:
+                raise RuntimeError("simulated publish failure")
+            return original_replace(self, target)
+
+        with mock.patch.object(Path, "replace", fail_staging_publish):
+            with self.assertRaises(RuntimeError):
+                prs_scoring_files._publish_cache(staging_dir, target_dir, force=True)
+
+        self.assertEqual((target_dir / "manifest.json").read_text(encoding="utf-8"), '{"pgs_id":"PGS900777","genome_build":"GRCh38"}\n')
+        self.assertEqual((target_dir / "variants.sqlite").read_text(encoding="utf-8"), "old-db")
+        self.assertTrue(staging_dir.exists())
+
     def test_calibration_uses_only_supplied_parameters(self) -> None:
         scoring_file = self._write_scoring_file()
         call_operation("prs.import_scoring_file", {"pgs_id": "PGS900001", "scoring_file": str(scoring_file)})
         vcf = self._write_indexed_vcf("sample_calibrated.vcf")
+        self._select_approved_agi(vcf)
 
         with self._tiny_thresholds():
             result = call_operation(
                 "prs.calculate_score",
-                {"source": str(vcf), "pgs_id": "PGS900001", "score_mean": 1.0, "score_sd": 0.5},
+                {"pgs_id": "PGS900001", "score_mean": 1.0, "score_sd": 0.5},
             )
 
         self.assertEqual(result["status"], "completed")
@@ -736,9 +798,10 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         scoring_file = self._write_scoring_file()
         call_operation("prs.import_scoring_file", {"pgs_id": "PGS900001", "scoring_file": str(scoring_file)})
         vcf = self._write_indexed_vcf("sample_partial.vcf", include_positions={100})
+        self._select_approved_agi(vcf)
 
         with self._tiny_thresholds(min_variants=2, min_fraction=0.75):
-            result = call_operation("prs.calculate_score", {"source": str(vcf), "pgs_id": "PGS900001"})
+            result = call_operation("prs.calculate_score", {"pgs_id": "PGS900001"})
 
         self.assertEqual(result["status"], "insufficient_overlap")
         self.assertIsNone(result["score_result"])

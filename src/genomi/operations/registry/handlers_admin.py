@@ -36,15 +36,9 @@ from .coerce import (
 )
 from .errors import JsonObject, OperationError
 
-# Gate for the runtime git pull. The pull is the default on `genomi update`;
-# distributions that are not git-bound set this to suppress it (they update via
-# their own package manager).
+# Gate for the runtime git pull. The pull is the default on `genomi install`;
+# distributions that are not git-bound set this to suppress it.
 SKIP_GIT_PULL_ENV = "GENOMI_SKIP_RUNTIME_GIT_PULL"
-# Legacy: GENOMI_RUNTIME_UPDATE used to hold a custom update command. That
-# behavior is retired, but its presence still signals "this runtime updates
-# itself another way", so we honor it as a skip rather than start pulling under
-# an existing non-git install.
-LEGACY_RUNTIME_UPDATE_ENV = "GENOMI_RUNTIME_UPDATE"
 
 
 _ACTIVE_GENOME_INDEX_SKILL = "skills/active-genome-index/SKILL.md"
@@ -212,7 +206,7 @@ def _genomi_set_response_profile(params: JsonObject) -> JsonObject:
 
 
 def _genomi_install(params: JsonObject) -> JsonObject:
-    # `genomi install` / `genomi update` always update everything that can be
+    # `genomi install` always updates everything that can be
     # updated: runtime code, reference libraries, retrieval indexes, and a
     # background reparse of every stale genome. There are deliberately no
     # per-step skip flags — exposing them only invited a host agent to
@@ -220,7 +214,7 @@ def _genomi_install(params: JsonObject) -> JsonObject:
     # real gate is the env var GENOMI_SKIP_RUNTIME_GIT_PULL, for distributions
     # that update the runtime outside git.
     # `libraries` selects WHICH reference libraries to materialize. It defaults
-    # to "everything" — a bare install/update installs them all — and otherwise
+    # to "everything" — a bare install installs them all — and otherwise
     # names a targeted subset (e.g. clinvar-grch38) for the on-demand
     # "install this missing library" prompts surfaced across the capabilities.
     # It is not a skip lever: install always runs, reindex always follows, and
@@ -257,7 +251,7 @@ def _genomi_install(params: JsonObject) -> JsonObject:
 
     # After the runtime may have changed (git pull), reparse genomes whose stored
     # index schema is older than the on-disk schema. Each reparse runs as a
-    # background job (fresh subprocess at the new schema), so update returns
+    # background job (fresh subprocess at the new schema), so install returns
     # immediately with job ids to poll rather than blocking on full rebuilds.
     reparse_result = _reparse_stale_genomes()
 
@@ -356,19 +350,16 @@ def _git_pull_suppressed_by() -> str | None:
     """The env disabling the runtime git pull, or None to allow it."""
     if _env_truthy(SKIP_GIT_PULL_ENV):
         return SKIP_GIT_PULL_ENV
-    if (os.environ.get(LEGACY_RUNTIME_UPDATE_ENV) or "").strip():
-        return LEGACY_RUNTIME_UPDATE_ENV
     return None
 
 
 def _runtime_update_step() -> JsonObject:
     """Update the runtime code via git pull, unless gated off.
 
-    The git pull is the runtime update mechanism: `genomi install` / `genomi
-    update` pulls the checkout the runtime lives in. GENOMI_SKIP_RUNTIME_GIT_PULL
-    suppresses it for distributions that are not git-bound (they update via
-    their package manager); the pull is also a no-op when the runtime is not a
-    git checkout.
+    The git pull is the runtime update mechanism: `genomi install` pulls the
+    checkout the runtime lives in. GENOMI_SKIP_RUNTIME_GIT_PULL suppresses it
+    for distributions that are not git-bound; the pull is also a no-op when the
+    runtime is not a git checkout.
     """
     base: JsonObject = {"provider": "git", "gate_env": SKIP_GIT_PULL_ENV}
     suppressed_by = _git_pull_suppressed_by()
@@ -499,7 +490,7 @@ def _sync_runtime_dependencies(repo: Path, *, before: str | None, after: str | N
     with no pip and no uv, an exotic package manager, …) it reports
     ``action_required`` with the changed manifests and a tool-neutral hint —
     it never guesses a command for an environment it can't drive, and never
-    aborts the wider update (the pulled code is already in place).
+    aborts the wider install (the pulled code is already in place).
     """
     interpreter = sys.executable
     base: JsonObject = {"interpreter": interpreter}
@@ -566,23 +557,9 @@ def _effective_runtime_schema() -> int:
 
 
 def _stored_agi_schema(agi_path: str) -> int | None:
-    from ...active_genome_index.active_genome_index import connect_existing
+    from ...active_genome_index.active_genome_index import stored_schema_version
 
-    try:
-        with connect_existing(agi_path) as connection:
-            row = connection.execute("select value from metadata where key = 'schema_version'").fetchone()
-    except Exception:
-        return None
-    if not row or row[0] is None:
-        return None
-    raw = row[0]
-    try:
-        return int(json.loads(raw))
-    except (ValueError, TypeError, json.JSONDecodeError):
-        try:
-            return int(raw)
-        except (ValueError, TypeError):
-            return None
+    return stored_schema_version(agi_path)
 
 
 def _reparse_stale_genomes() -> JsonObject:
@@ -591,7 +568,7 @@ def _reparse_stale_genomes() -> JsonObject:
 
     Reparse jobs run via the standard background machinery (a fresh job-worker
     subprocess that builds at the current on-disk schema). start_operation_job
-    dedups on source, so re-running update attaches to an in-flight reparse
+    dedups on source, so re-running install attaches to an in-flight reparse
     rather than starting a second one. A genome whose source is gone cannot be
     rebuilt — it is reported, not launched."""
     from ...runtime import background_jobs
@@ -613,20 +590,21 @@ def _reparse_stale_genomes() -> JsonObject:
         if stored is None or stored >= effective_schema:
             continue
         source = record.get("source")
+        source_available = bool(source and Path(str(source)).exists())
         entry: JsonObject = {
             "agi_id": agi_id,
             "nickname": record.get("nickname"),
             "stored_schema": stored,
-            "source": str(source) if source else None,
+            "source_available": source_available,
         }
-        if not source or not Path(str(source)).exists():
+        if not source_available:
             skipped.append({**entry, "reason": "source_unavailable"})
             continue
         try:
             job = background_jobs.start_operation_job(
                 "genomi.parse_source", {"source": str(source), "force": True}
             )
-            launched.append({**entry, "job_id": job.get("job_id"), "job_path": job.get("job_path")})
+            launched.append({**entry, "job_id": job.get("job_id")})
         except Exception as exc:  # pragma: no cover - best effort per genome
             skipped.append({**entry, "reason": f"launch_failed: {exc}"})
     return {

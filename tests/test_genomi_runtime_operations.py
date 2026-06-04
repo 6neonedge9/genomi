@@ -23,7 +23,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
     def test_resources_check_libraries_reports_missing_install_command(self) -> None:
         result = call_operation("genomi.check_libraries", {"libraries": ["clinvar-grch38"]})
 
-        self.assertEqual(result["schema"], "genomi-library-inventory-v1")
+        self.assertEqual(len(result["libraries"]), 1)
         self.assertEqual(result["libraries"][0]["library"], "clinvar-grch38")
         self.assertIn("install_command", result["libraries"][0])
         self.assertIn("--libraries clinvar-grch38", result["libraries"][0]["install_command"])

@@ -211,12 +211,6 @@
       "input_schema": {
         "type": "object",
         "properties": {
-          "source": {
-            "$ref": "#/schema_fragments/properties/local_path"
-          },
-          "vcf": {
-            "$ref": "#/schema_fragments/properties/local_path"
-          },
           "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
@@ -240,7 +234,7 @@
       "skill": "skills/prs/SKILL.md",
       "area": "polygenic_score",
       "requires": [
-        "approved_active_genome_index_or_supplied_source",
+        "approved_active_genome_index",
         "pgs_id_or_score_dir"
       ],
       "produces": [
@@ -250,8 +244,6 @@
         "evidence_envelope"
       ],
       "context_optional": [
-        "source",
-        "vcf",
         "agi_path",
         "pgs_id",
         "score_dir",
@@ -262,7 +254,7 @@
       "mutating": false,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths",
+        "active_genome_index",
         "local_public_score_cache"
       ],
       "discovery_role": "focused_tool"
@@ -274,12 +266,6 @@
       "input_schema": {
         "type": "object",
         "properties": {
-          "source": {
-            "$ref": "#/schema_fragments/properties/local_path"
-          },
-          "vcf": {
-            "$ref": "#/schema_fragments/properties/local_path"
-          },
           "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
@@ -309,7 +295,7 @@
       "skill": "skills/prs/SKILL.md",
       "area": "polygenic_score",
       "requires": [
-        "approved_active_genome_index_or_supplied_source",
+        "approved_active_genome_index",
         "pgs_id_or_score_dir",
         "sufficient_score_overlap"
       ],
@@ -321,8 +307,6 @@
         "evidence_envelope"
       ],
       "context_optional": [
-        "source",
-        "vcf",
         "agi_path",
         "pgs_id",
         "score_dir",
@@ -335,7 +319,7 @@
       "mutating": false,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths",
+        "active_genome_index",
         "local_public_score_cache"
       ],
       "discovery_role": "entry_tool"

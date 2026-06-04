@@ -161,6 +161,27 @@ class AncestryCapabilityTests(unittest.TestCase):
 
         self.assertEqual(panels["status"], "completed")
         self.assertFalse(panels["panels"][0]["installed"])
+        self.assertEqual(
+            set(panels["panels"][0]),
+            {
+                "panel_id",
+                "title",
+                "library",
+                "installed",
+                "status",
+                "genome_build",
+                "method",
+                "documented_source_sample_count",
+                "phase3_unrelated_sample_count",
+                "sample_count",
+                "marker_count",
+                "component_count",
+                "source_urls",
+                "label_definitions",
+                "limitations",
+                "install_command",
+            },
+        )
         self.assertIn("internationalgenome.org", panels["panels"][0]["source_urls"]["igsr_collection"])
         self.assertEqual(source_context["status"], "completed")
         self.assertEqual(
@@ -190,15 +211,14 @@ class AncestryCapabilityTests(unittest.TestCase):
             call_operation("ancestry.estimate_population_context")
         self.assertEqual(raised.exception.code, "active_genome_index_approval_required")
 
-    def test_private_tools_return_missing_library_after_supplied_source_approval(self) -> None:
-        result = call_operation("ancestry.estimate_population_context", {"source": "sample.vcf"})
+    def test_private_tools_require_approval_for_unregistered_explicit_agi_path(self) -> None:
+        with self.assertRaises(OperationError) as raised:
+            call_operation(
+                "ancestry.estimate_population_context",
+                {"agi_path": str(Path(self._home_tmp.name) / "sample.sqlite")},
+            )
 
-        self.assertEqual(result["status"], "requires_library_install")
-        self.assertEqual(result["missing_library"]["library"], "ancestry-1000g-30x-grch38")
-        self.assertIn("--libraries ancestry-1000g-30x-grch38", result["missing_library"]["install_command"])
-        defaults = {item["parameter"]: item for item in result["defaults_applied"]}
-        self.assertEqual(defaults["genome_build"]["value"], "GRCh38")
-        self.assertEqual(defaults["nearest_reference_count"]["value"], 10)
+        self.assertEqual(raised.exception.code, "active_genome_index_approval_required")
 
     def test_discovery_registers_all_ancestry_handlers(self) -> None:
         tools = {tool["name"]: tool for tool in list_operations(capability="ancestry")}
@@ -224,7 +244,10 @@ class AncestryCapabilityTests(unittest.TestCase):
         vcf = self._write_indexed_vcf("sample_full.vcf", markers, usable_count=8)
 
         with self._tiny_thresholds():
-            result = call_operation("ancestry.estimate_population_context", {"source": str(vcf)})
+            result = call_operation(
+                "ancestry.estimate_population_context",
+                {"agi_path": str(default_agi_path(vcf))},
+            )
 
         self.assertEqual(result["schema"], "genomi-ancestry-population-context-v1")
         self.assertEqual(result["status"], "completed")
@@ -249,9 +272,9 @@ class AncestryCapabilityTests(unittest.TestCase):
         vcf = self._write_indexed_vcf("sample_low.vcf", markers, usable_count=1)
 
         with self._tiny_thresholds():
-            result = call_operation("ancestry.project_pca", {"source": str(vcf)})
+            result = call_operation("ancestry.project_pca", {"agi_path": str(default_agi_path(vcf))})
 
-        self.assertEqual(result["status"], "low_overlap")
+        self.assertEqual(result["status"], "insufficient_overlap")
         self.assertFalse(result["sample_qc"]["projection_allowed"])
         self.assertIsNone(result["pca_projection"])
         self.assertEqual(result["sample_qc"]["usable_marker_count"], 1)
@@ -267,11 +290,16 @@ class AncestryCapabilityTests(unittest.TestCase):
             "query_region",
             side_effect=AssertionError("ancestry overlap must not query one marker at a time"),
         ):
-            result = call_operation("ancestry.check_sample_overlap", {"source": str(vcf)})
+            result = call_operation("ancestry.check_sample_overlap", {"agi_path": str(default_agi_path(vcf))})
 
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["sample_qc"]["usable_marker_count"], 20)
         self.assertEqual(result["sample_qc"]["missing_marker_count"], 0)
+        envelope = result["evidence_envelope"]
+        self.assertEqual(envelope["finding_state"], "evidence_present")
+        self.assertTrue(envelope["personal_context"]["uses_personal_dna"])
+        self.assertEqual(envelope["coverage"]["consulted_sources"], ["active_genome_index", "ancestry-1000g-30x-grch38"])
+        self.assertEqual(envelope["observations"]["usable_marker_count"], 20)
 
     def test_grch37_sample_without_grch37_panel_prompts_install(self) -> None:
         # Only the GRCh38 synthetic panel is installed. A GRCh37 sample must
@@ -327,6 +355,7 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertEqual(result["reference_panel"]["panel_id"], "1000g_30x_grch37")
         self.assertEqual(result["reference_panel"]["genome_build"], "GRCh37")
         self.assertEqual(result["reference_panel"]["library"], "ancestry-1000g-30x-grch37")
+        self.assertEqual(result["evidence_envelope"]["coverage"]["libraries"][0]["library"], "ancestry-1000g-30x-grch37")
 
     def test_ancestry_build_aliases_use_matching_panel_policy(self) -> None:
         markers = self._install_synthetic_panel(marker_count=8, genome_build="GRCh37")
@@ -373,10 +402,27 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertEqual(result["sample_qc"]["usable_marker_count"], 1)
         self.assertEqual(result["sample_qc"]["missing_marker_count"], 1)
         self.assertEqual(result["sample_qc"]["missing_marker_reasons"], {"missing_genotype": 1})
+        self.assertEqual(result["evidence_envelope"]["observations"]["usable_marker_count"], 1)
         self.assertEqual(
             result["sample_qc"]["missing_marker_examples"][0],
             {"marker_id": "m0", "reason": "missing_genotype", "detail": [{"reason": "missing_genotype", "basis": "consumer_array"}]},
         )
+
+    def test_unsupported_ancestry_build_is_out_of_scope(self) -> None:
+        markers = self._install_synthetic_panel(marker_count=8)
+        vcf = self._write_indexed_vcf("sample_unsupported_build.vcf", markers, usable_count=8)
+
+        result = call_operation(
+            "ancestry.check_sample_overlap",
+            {"agi_path": str(default_agi_path(vcf)), "genome_build": "CHM13"},
+        )
+
+        self.assertEqual(result["status"], "out_of_scope_for_input")
+        self.assertEqual(result["supported_genome_builds"], list(ancestry_policy.SUPPORTED_BUILDS))
+        envelope = result["evidence_envelope"]
+        self.assertEqual(envelope["finding_state"], "not_assessed")
+        self.assertEqual(envelope["observations"]["genome_build"], "CHM13")
+        self.assertEqual(envelope["observations"]["supported_genome_builds"], list(ancestry_policy.SUPPORTED_BUILDS))
 
     def _install_synthetic_panel(
         self, *, marker_count: int, genome_build: str = "GRCh38"
@@ -432,6 +478,13 @@ class AncestryCapabilityTests(unittest.TestCase):
             )
         vcf.write_text("\n".join(lines) + "\n", encoding="utf-8")
         create_active_genome_index(vcf, parallel_workers=1, reuse_existing=False)
+        runtime_context.set_active_genome_index(
+            vcf,
+            status="parsed",
+            agi_path=default_agi_path(vcf),
+            genome_build="GRCh38",
+        )
+        runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
         return vcf
 
     def _tiny_thresholds(self):

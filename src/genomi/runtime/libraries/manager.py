@@ -26,7 +26,7 @@ from typing import Any
 
 from .. import source_fetch
 from ..external import file_metadata, read_manifest, utc_now, write_manifest
-from ..paths import genomi_data_root
+from ..paths import genomi_data_root, prs_score_dir
 from . import registry
 from .spec import Freshness, Kind, LibrarySpec, Transform
 from . import transforms
@@ -75,6 +75,105 @@ def _manifest_path(target: Path) -> Path:
     return target.with_name(target.name + ".genomi-manifest.json")
 
 
+def parameterized_library_id(template_id: str, key: str) -> str:
+    if template_id == "prs-scoring-file":
+        return str(key).strip().upper() or "local_prs_score_cache"
+    spec = registry.get(template_id)
+    if spec.kind is not Kind.PARAMETERIZED:
+        raise ValueError(f"{template_id} is not a parameterized library")
+    return str(key).strip() or template_id
+
+
+def prs_scoring_file_dir(score_id: str, genome_build: str = "GRCh38", *, root: str | Path | None = None) -> Path:
+    registry.get("prs-scoring-file")
+    return prs_score_dir(score_id, genome_build, root=root)
+
+
+def prs_scoring_file_status(
+    *,
+    score_id: str | None,
+    genome_build: str,
+    score_dir: str | Path | None = None,
+    installed: bool | None = None,
+    validation: dict[str, Any] | None = None,
+    root: str | Path | None = None,
+) -> dict[str, Any]:
+    spec = registry.get("prs-scoring-file")
+    clean_score = str(score_id or "").strip().upper()
+    directory = Path(score_dir).expanduser() if score_dir else prs_scoring_file_dir(clean_score or "unknown", genome_build, root=root)
+    manifest_path = directory / "manifest.json"
+    variants_db = directory / "variants.sqlite"
+    required_paths = [manifest_path, variants_db]
+    existing_paths = [path for path in required_paths if path.exists()]
+    installed_value = bool(installed) if installed is not None else len(existing_paths) == len(required_paths)
+    library_id = parameterized_library_id(spec.id, clean_score) if clean_score else "local_prs_score_cache"
+    command = _prs_scoring_file_import_command(clean_score, genome_build) if clean_score else ""
+    return {
+        "library": library_id,
+        "template_library": spec.id,
+        "title": f"PGS Catalog score {clean_score}" if clean_score else spec.title,
+        "kind": spec.kind.value,
+        "installed": installed_value,
+        "status": "installed" if installed_value else "not_installed",
+        "genome_build": genome_build,
+        "score_dir": str(directory),
+        "manifest_path": str(manifest_path),
+        "variants_db": str(variants_db),
+        "required_paths": [str(path) for path in required_paths],
+        "existing_paths": [str(path) for path in existing_paths],
+        "missing_paths": [str(path) for path in required_paths if not path.exists()],
+        "validation": validation or {},
+        "install_libraries": [spec.id],
+        "install_command": command,
+        "helps": spec.helps,
+    }
+
+
+def prs_scoring_file_missing_request(
+    *,
+    score_id: str | None,
+    genome_build: str,
+    score_dir: str | Path | None = None,
+    validation: dict[str, Any] | None = None,
+    root: str | Path | None = None,
+) -> dict[str, Any]:
+    status_payload = prs_scoring_file_status(
+        score_id=score_id,
+        genome_build=genome_build,
+        score_dir=score_dir,
+        installed=False,
+        validation=validation,
+        root=root,
+    )
+    return {
+        "missing_library": status_payload,
+        "ask_user": _prs_scoring_file_ask_user(status_payload),
+    }
+
+
+def download_prs_scoring_file(url: str, target: str | Path, *, user_agent: str | None = None) -> None:
+    spec = registry.get("prs-scoring-file")
+    target_path = Path(target)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    request = urllib.request.Request(url, headers={"User-Agent": user_agent or _user_agent(spec)})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        target_path.write_bytes(response.read())
+
+
+def _prs_scoring_file_import_command(score_id: str, genome_build: str) -> str:
+    params = {"pgs_id": score_id or "<PGS_ID>", "genome_build": genome_build}
+    return f"genomi call prs.import_scoring_file --params '{json.dumps(params, separators=(',', ':'))}'"
+
+
+def _prs_scoring_file_ask_user(status_payload: dict[str, Any]) -> dict[str, str]:
+    score_id = str(status_payload.get("library") or "")
+    return {
+        "question": f"{status_payload['title']} is not in the local score cache. Import it from PGS Catalog now?",
+        "install_command": str(status_payload.get("install_command") or ""),
+        "decline_effect": "Skip PRS calculation for this score; do not treat the missing local score file as negative risk evidence.",
+    }
+
+
 # --------------------------------------------------------------------------- #
 # status / inventory
 # --------------------------------------------------------------------------- #
@@ -91,6 +190,17 @@ def status(library_id: str, *, root: str | Path | None = None) -> dict[str, Any]
         "install_command": _install_command_for_spec(spec),
         "helps": spec.helps,
     }
+    if spec.kind is Kind.PARAMETERIZED:
+        return {
+            **base,
+            "installed": False,
+            "status": "parameterized_template",
+            "required_paths": [],
+            "existing_paths": [],
+            "missing_paths": [],
+            "install_libraries": [],
+            "install_command": "",
+        }
     if spec.is_online:
         return {
             **base,
@@ -121,7 +231,6 @@ def _inventory_ids() -> list[str]:
 def inventory(*, root: str | Path | None = None) -> dict[str, Any]:
     statuses = [status(library_id, root=root) for library_id in _inventory_ids()]
     return {
-        "schema": "genomi-library-inventory-v1",
         "genomi_home": str(genomi_data_root(root)),
         "libraries": statuses,
         "summary": {
@@ -187,6 +296,8 @@ def ensure(
     - Online → a reachability probe → ``available`` or ``source_unavailable``.
     """
     spec = registry.get(library_id)
+    if spec.kind is Kind.PARAMETERIZED:
+        return status(library_id, root=root)
     if spec.is_online:
         return _probe_online(spec)
     st = status(library_id, root=root)
@@ -250,6 +361,11 @@ def refresh(
     ``downloaded`` | ``completed`` | ``skipped`` | ``manual_source_required``).
     """
     spec = registry.get(library_id)
+    if spec.kind is Kind.PARAMETERIZED:
+        return {
+            **status(library_id, root=root),
+            "reason": "Parameterized libraries are materialized through the owning capability operation, such as prs.import_scoring_file.",
+        }
     if spec.is_online:
         return {"status": "skipped", "library": spec.id, "reason": "online source; nothing to download"}
     freshness = spec.freshness

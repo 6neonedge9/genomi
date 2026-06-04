@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ...runtime.paths import prs_score_dir
+from ...runtime.libraries import manager as library_manager
 from ...runtime.sqlite_support import connect_sqlite
 from . import pgs_catalog, source_context
 
@@ -44,7 +44,6 @@ def import_scoring_file(
         source_path = Path(scoring_file).expanduser()
         if not source_path.exists():
             return {
-                "schema": "genomi-prs-score-import-v1",
                 "status": "source_unavailable",
                 "message": f"Local scoring file not found: {source_path}",
                 "source_status": {"source": str(source_path), "error": "file_not_found"},
@@ -57,7 +56,7 @@ def import_scoring_file(
         try:
             rest_metadata = pgs_catalog.fetch_rest_metadata(clean_pgs_id)
         except pgs_catalog.SourceUnavailable as exc:
-            return pgs_catalog.source_unavailable_result(exc, schema="genomi-prs-score-import-v1")
+            return pgs_catalog.source_unavailable_result(exc)
         source_choice = pgs_catalog.scoring_file_source_from_metadata(rest_metadata, requested_build)
         if source_choice.get("status") != "available":
             return _catalog_source_unavailable(clean_pgs_id, requested_build, source_choice)
@@ -66,14 +65,13 @@ def import_scoring_file(
 
     if not scoring_file and not source_url:
         return {
-            "schema": "genomi-prs-score-import-v1",
             "status": "invalid_params",
             "message": "Provide pgs_id, scoring_file, or scoring_url.",
             "source_urls": source_context.source_urls(),
         }
 
     if clean_pgs_id:
-        known_dir = prs_score_dir(clean_pgs_id, authoritative_build)
+        known_dir = library_manager.prs_scoring_file_dir(clean_pgs_id, authoritative_build)
         if validate_score_cache(known_dir, expected_pgs_id=clean_pgs_id, expected_genome_build=authoritative_build)["valid"] and not force:
             return _already_imported(known_dir, requested_genome_build=requested_build, source_choice=source_choice)
 
@@ -93,7 +91,6 @@ def import_scoring_file(
                 _download_source(source_url, cached_source)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 return {
-                    "schema": "genomi-prs-score-import-v1",
                     "status": "source_unavailable",
                     "pgs_id": clean_pgs_id or inferred_id,
                     "genome_build": authoritative_build,
@@ -107,7 +104,6 @@ def import_scoring_file(
             parsed = parse_scoring_file(cached_source)
         except (OSError, ValueError, UnicodeError) as exc:
             return {
-                "schema": "genomi-prs-score-import-v1",
                 "status": "invalid_scoring_file",
                 "pgs_id": clean_pgs_id or inferred_id,
                 "genome_build": authoritative_build,
@@ -123,7 +119,6 @@ def import_scoring_file(
         identity = _resolve_score_id(clean_pgs_id, str(parsed.get("pgs_id") or ""), inferred_id)
         if identity.get("status") != "completed":
             return {
-                "schema": "genomi-prs-score-import-v1",
                 "status": "invalid_scoring_file",
                 "pgs_id": clean_pgs_id or parsed.get("pgs_id") or inferred_id,
                 "genome_build": authoritative_build,
@@ -137,7 +132,6 @@ def import_scoring_file(
         score_id = str(identity["pgs_id"])
         if not parsed["variants"]:
             return {
-                "schema": "genomi-prs-score-import-v1",
                 "status": "invalid_scoring_file",
                 "pgs_id": score_id,
                 "genome_build": authoritative_build,
@@ -149,7 +143,7 @@ def import_scoring_file(
                 "limitations": source_context.limitations(),
                 "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
             }
-        out_dir = prs_score_dir(score_id, authoritative_build)
+        out_dir = library_manager.prs_scoring_file_dir(score_id, authoritative_build)
         if validate_score_cache(out_dir, expected_pgs_id=score_id, expected_genome_build=authoritative_build)["valid"] and not force:
             return _already_imported(out_dir, requested_genome_build=requested_build, source_choice=source_choice)
 
@@ -175,7 +169,6 @@ def import_scoring_file(
             shutil.rmtree(staging_dir, ignore_errors=True)
 
     return {
-        "schema": "genomi-prs-score-import-v1",
         "status": "completed",
         "pgs_id": score_id,
         "genome_build": authoritative_build,
@@ -200,7 +193,6 @@ def _catalog_source_unavailable(pgs_id: str, requested_build: str, source_choice
             "but its original genome build was not proven by supported catalog metadata."
         )
     return {
-        "schema": "genomi-prs-score-import-v1",
         "status": "source_unavailable",
         "pgs_id": pgs_id,
         "genome_build": requested_build,
@@ -216,7 +208,6 @@ def _local_source_choice(source_path: Path, genome_build: str) -> JsonObject:
     return {
         "status": "available",
         "path": str(source_path),
-        "location": str(source_path),
         "genome_build": genome_build,
         "requested_genome_build": genome_build,
         "harmonized": False,
@@ -230,7 +221,6 @@ def _explicit_url_source_choice(source_url: str, genome_build: str) -> JsonObjec
     return {
         "status": "available",
         "url": source_url,
-        "location": source_url,
         "genome_build": genome_build,
         "requested_genome_build": genome_build,
         "harmonized": False,
@@ -338,7 +328,7 @@ def _score_variants_row_count(db_path: Path) -> int:
 
 
 def _new_staging_dir(genome_build: str) -> Path:
-    parent = prs_score_dir("placeholder", genome_build).parents[1]
+    parent = library_manager.prs_scoring_file_dir("placeholder", genome_build).parents[1]
     parent.mkdir(parents=True, exist_ok=True)
     return Path(tempfile.mkdtemp(prefix=".import-", dir=parent))
 
@@ -371,44 +361,29 @@ def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
             and not force
         ):
             return "already_exists"
-        _publish_files_into_existing_cache(staging_dir, target_dir)
-        shutil.rmtree(staging_dir, ignore_errors=True)
+        _replace_cache_directory(staging_dir, target_dir)
         return "published"
     staging_dir.replace(target_dir)
     return "published"
 
 
-def _publish_files_into_existing_cache(staging_dir: Path, target_dir: Path) -> None:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    manifest = staging_dir / MANIFEST_NAME
-    for path in sorted(staging_dir.iterdir()):
-        if path.name == MANIFEST_NAME:
-            continue
-        _replace_file(path, target_dir / path.name)
-    _replace_file(manifest, target_dir / MANIFEST_NAME)
-
-
-def _replace_file(source: Path, target: Path) -> None:
-    handle = tempfile.NamedTemporaryFile(
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-        dir=target.parent,
-        delete=False,
-    )
-    tmp = Path(handle.name)
+def _replace_cache_directory(staging_dir: Path, target_dir: Path) -> None:
+    backup_dir = Path(tempfile.mkdtemp(prefix=f".{target_dir.name}.old-", dir=target_dir.parent))
+    backup_dir.rmdir()
+    target_dir.replace(backup_dir)
     try:
-        with handle:
-            with source.open("rb") as src:
-                shutil.copyfileobj(src, handle)
-        shutil.copystat(source, tmp)
-        tmp.replace(target)
-    finally:
-        if tmp.exists():
-            tmp.unlink()
+        staging_dir.replace(target_dir)
+    except Exception:
+        if target_dir.exists():
+            shutil.rmtree(target_dir, ignore_errors=True)
+        backup_dir.replace(target_dir)
+        raise
+    else:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def list_imported_scores(root: str | Path | None = None) -> JsonObject:
-    base = prs_score_dir("placeholder", "GRCh38", root=root).parents[1]
+    base = library_manager.prs_scoring_file_dir("placeholder", "GRCh38", root=root).parents[1]
     records: list[JsonObject] = []
     if base.exists():
         for manifest in sorted(base.glob("*/*/manifest.json")):
@@ -416,7 +391,6 @@ def list_imported_scores(root: str | Path | None = None) -> JsonObject:
             if payload:
                 records.append(_cache_summary(manifest.parent, payload))
     return {
-        "schema": "genomi-prs-score-cache-list-v1",
         "status": "completed",
         "score_count": len(records),
         "scores": records,
@@ -430,18 +404,23 @@ def resolve_score_cache(
     score_dir: str | Path | None = None,
     genome_build: str = "GRCh38",
 ) -> JsonObject:
+    normalized_build = normalize_build(genome_build)
     if score_dir:
         directory = Path(score_dir).expanduser()
     else:
         clean = pgs_catalog.normalize_pgs_id(pgs_id)
         if not clean:
             return _requires_score_import(pgs_id=pgs_id, genome_build=genome_build)
-        directory = prs_score_dir(clean, normalize_build(genome_build))
+        directory = _score_cache_dir_for_id(clean, normalized_build)
     clean_expected = pgs_catalog.normalize_pgs_id(pgs_id)
     validation = validate_score_cache(
         directory,
         expected_pgs_id=clean_expected or None,
-        expected_genome_build=normalize_build(genome_build) if not score_dir or pgs_id else None,
+        expected_genome_build=(
+            normalized_build
+            if not score_dir and directory.name.upper() == normalized_build.upper()
+            else None
+        ),
     )
     if not validation["valid"]:
         return _requires_score_import(pgs_id=pgs_id, genome_build=genome_build, score_dir=directory)
@@ -454,6 +433,27 @@ def resolve_score_cache(
     }
 
 
+def _score_cache_dir_for_id(pgs_id: str, genome_build: str) -> Path:
+    requested_dir = library_manager.prs_scoring_file_dir(pgs_id, genome_build)
+    if validate_score_cache(
+        requested_dir,
+        expected_pgs_id=pgs_id,
+        expected_genome_build=genome_build,
+    )["valid"]:
+        return requested_dir
+
+    score_root = requested_dir.parent
+    valid_dirs: list[Path] = []
+    if score_root.exists():
+        for manifest in sorted(score_root.glob("*/manifest.json")):
+            score_dir = manifest.parent
+            if validate_score_cache(score_dir, expected_pgs_id=pgs_id)["valid"]:
+                valid_dirs.append(score_dir)
+    if len(valid_dirs) == 1:
+        return valid_dirs[0]
+    return requested_dir
+
+
 def score_cache_status(
     *,
     pgs_id: str | None,
@@ -462,7 +462,7 @@ def score_cache_status(
 ) -> JsonObject:
     clean = pgs_catalog.normalize_pgs_id(pgs_id)
     normalized_build = normalize_build(genome_build)
-    directory = Path(score_dir).expanduser() if score_dir else prs_score_dir(clean or str(pgs_id or "unknown"), normalized_build)
+    directory = Path(score_dir).expanduser() if score_dir else library_manager.prs_scoring_file_dir(clean or str(pgs_id or "unknown"), normalized_build)
     validation = validate_score_cache(
         directory,
         expected_pgs_id=clean or None,
@@ -471,22 +471,13 @@ def score_cache_status(
     manifest = validation.get("manifest") if isinstance(validation.get("manifest"), dict) else read_manifest(directory)
     installed = bool(validation["valid"])
     score_id = clean or str(pgs_id or manifest.get("pgs_id") or "").strip()
-    title = f"PGS Catalog score {score_id}" if score_id else "PGS Catalog score"
-    command = import_scoring_file_command(score_id, normalized_build) if score_id else ""
-    helps = "Imports the public scoring file into Genomi's local PRS score cache so the approved local genome can be scored without uploading private genotypes."
-    return {
-        "library": score_id or "local_prs_score_cache",
-        "title": title,
-        "installed": installed,
-        "status": "installed" if installed else "not_installed",
-        "genome_build": normalized_build,
-        "score_dir": str(directory),
-        "manifest_path": str(manifest_path(directory)),
-        "variants_db": str(variants_db_path(directory)),
-        "validation": {key: value for key, value in validation.items() if key != "manifest"},
-        "install_command": command,
-        "helps": helps,
-    }
+    return library_manager.prs_scoring_file_status(
+        score_id=score_id,
+        genome_build=normalized_build,
+        score_dir=directory,
+        installed=installed,
+        validation={key: value for key, value in validation.items() if key != "manifest"},
+    )
 
 
 def load_variants(score_dir: str | Path) -> list[JsonObject]:
@@ -663,14 +654,14 @@ def _requires_score_import(
     status = score_cache_status(pgs_id=pgs_id, genome_build=genome_build, score_dir=score_dir)
     normalized_build = str(status["genome_build"])
     score_id = str(status["library"]) if status.get("library") != "local_prs_score_cache" else str(pgs_id or "").strip()
+    missing_request = library_manager.prs_scoring_file_missing_request(
+        score_id=score_id or None,
+        genome_build=normalized_build,
+        score_dir=score_dir,
+        validation=status.get("validation") if isinstance(status.get("validation"), dict) else None,
+    )
+    status = missing_request["missing_library"]
     command = str(status.get("install_command") or "")
-    ask_user: JsonObject | None = None
-    if score_id:
-        ask_user = {
-            "question": f"{status['title']} is not in the local score cache. Import it from PGS Catalog now?",
-            "install_command": command,
-            "decline_effect": "Skip PRS calculation for this score; do not treat the missing local score file as negative risk evidence.",
-        }
     next_actions: list[JsonObject] = []
     if score_id:
         next_actions.append(
@@ -685,7 +676,6 @@ def _requires_score_import(
     else:
         next_actions.append({"action": "choose_pgs_id_or_supply_score_dir"})
     result: JsonObject = {
-        "schema": "genomi-prs-score-required-v1",
         "status": "requires_score_import",
         "pgs_id": score_id or pgs_id,
         "genome_build": normalized_build,
@@ -705,14 +695,17 @@ def _requires_score_import(
         "limitations": source_context.limitations(),
         "next_actions": next_actions,
     }
-    if ask_user:
-        result["ask_user"] = ask_user
+    if score_id:
+        result["ask_user"] = missing_request["ask_user"]
     return result
 
 
 def import_scoring_file_command(pgs_id: str, genome_build: str) -> str:
-    params = {"pgs_id": pgs_catalog.normalize_pgs_id(pgs_id) or str(pgs_id), "genome_build": normalize_build(genome_build)}
-    return f"genomi call prs.import_scoring_file --params '{json.dumps(params, separators=(',', ':'))}'"
+    status = library_manager.prs_scoring_file_status(
+        score_id=pgs_catalog.normalize_pgs_id(pgs_id) or str(pgs_id),
+        genome_build=normalize_build(genome_build),
+    )
+    return str(status["install_command"])
 
 
 def _variant_from_row(row: JsonObject, *, line_number: int) -> JsonObject:
@@ -806,7 +799,6 @@ def _already_imported(
 ) -> JsonObject:
     manifest = read_manifest(score_dir)
     result = {
-        "schema": "genomi-prs-score-import-v1",
         "status": "already_installed",
         "pgs_id": manifest.get("pgs_id"),
         "genome_build": manifest.get("genome_build"),
@@ -828,9 +820,7 @@ def _copy_source(source: Path, target: Path) -> Path:
 
 
 def _download_source(url: str, target: Path) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=120) as response:
-        target.write_bytes(response.read())
+    library_manager.download_prs_scoring_file(url, target, user_agent=USER_AGENT)
 
 
 def _unlink_if_exists(path: Path) -> None:

@@ -27,13 +27,11 @@ class LibraryRegistryTests(unittest.TestCase):
             for member in members:
                 self.assertIn(member, known, f"purpose {purpose} references unknown id {member}")
 
-    def test_everything_excludes_manual_online_and_parameterized(self) -> None:
+    def test_everything_excludes_manual_and_online(self) -> None:
         everything = set(registry.purposes()["everything"])
-        # 17 installable offline-family libraries, no manual/online/parameterized.
+        # 17 installable offline-family libraries, no manual or online-only sources.
         self.assertEqual(len(everything), 17)
-        self.assertNotIn("msigdb-hallmark", everything)  # manual
-        self.assertNotIn("gnomad", everything)  # online
-        self.assertNotIn("prs-scoring-file", everything)  # parameterized template
+        self.assertEqual({registry.get(item).kind for item in everything}, {Kind.OFFLINE, Kind.DERIVED})
 
     def test_paths_are_relative_and_resolve_under_a_temp_home(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,6 +65,11 @@ class LibraryRegistryTests(unittest.TestCase):
         spec = registry.get("ancestry-1000g-30x-grch37")
         self.assertIs(spec.kind, Kind.DERIVED)
         self.assertEqual(spec.source.derived_from, ("ancestry-1000g-30x-grch38", "liftover-chains"))
+
+    def test_prs_scoring_file_is_parameterized(self) -> None:
+        spec = registry.get("prs-scoring-file")
+        self.assertIs(spec.kind, Kind.PARAMETERIZED)
+        self.assertEqual(spec.source.derived_from, ("pgs-catalog",))
 
     def test_resolve_selection_purpose_ids_and_errors(self) -> None:
         self.assertEqual(registry.resolve_selection("common-questions"), ["clinvar-grch38", "hpo", "gencc"])
