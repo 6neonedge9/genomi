@@ -153,7 +153,7 @@ Retrieve curated single-marker records for a declared nutrigenomic domain, filte
 
 **Example prompts**: What does Genomi have on folate_metabolism markers? Retrieve established-tier iron_storage records.
 
-**Result semantics**: Uses schema genomi-nutrigenomics-marker-records-v1. Each record carries variant identifiers, established_effect with GWAS Catalog chain-out, evidence_tier, resolvable source citations, established_caveats, and out_of_scope_claims. The agent must surface out_of_scope_claims as disclaimers rather than paraphrase around them.
+**Result semantics**: Each record carries variant identifiers, established_effect with GWAS Catalog chain-out, evidence_tier, resolvable source citations, established_caveats, and out_of_scope_claims. The agent must surface out_of_scope_claims as disclaimers rather than paraphrase around them.
 
 ### nutrigenomics.retrieve_variant_records
 
@@ -167,4 +167,4 @@ Retrieve any nutrigenomic catalogue records referencing a specific rsID.
 
 **Example prompts**: What does Genomi say about rs1801133 nutrigenomically? Are there nutrigenomic records for rs429358?
 
-**Result semantics**: Uses schema genomi-nutrigenomics-marker-records-v1. Returns one or more curated records referencing the variant. coverage_status='in_scope_empty' when the variant is not in the catalogue; absence is not evidence of negligible effect.
+**Result semantics**: Returns one or more curated records referencing the variant. coverage_status='in_scope_empty' when the variant is not in the catalogue; absence is not evidence of negligible effect.

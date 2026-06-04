@@ -21,7 +21,6 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_json=_fake_fetch_json,
         )
 
-        self.assertEqual(result["schema"], "genomi-pathway-member-genes-v1")
         self.assertEqual(result["coverage_status"], "data_returned")
         self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["pathway"]["id"], "R-HSA-70635")
@@ -96,7 +95,6 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_bytes=_fake_fetch_bytes,
         )
 
-        self.assertEqual(result["schema"], "genomi-cell-type-canonical-markers-v1")
         self.assertEqual(result["coverage_status"], "data_returned")
         self.assertEqual(result["cell_type"]["source"], "hpa")
         self.assertEqual([marker["gene_symbol"] for marker in result["markers"]], ["ABCB4", "ABCC2"])
@@ -175,7 +173,6 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 encode_ccre_bed=bed,
             )
 
-        self.assertEqual(result["schema"], "genomi-region-feature-annotation-v1")
         self.assertEqual(result["coverage_status"], "data_returned")
         self.assertEqual(result["classification"]["distance_to_nearest_TSS"], 150)
         self.assertEqual({feature["source"] for feature in result["features"]}, {"GENCODE", "ENCODE cCRE"})

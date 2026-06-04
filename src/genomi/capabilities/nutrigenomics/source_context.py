@@ -11,7 +11,6 @@ from typing import Any
 
 CAPABILITY_ID = "nutrigenomics"
 CAPABILITY_TITLE = "Nutrigenomic Single-Marker Evidence"
-SCHEMA_VERSION = "genomi-nutrigenomics-marker-records-v1"
 
 BOUNDARY_NOTE = (
     "The output is curated single-marker evidence for declared nutrient-metabolism, "
@@ -169,7 +168,6 @@ def build_source_context() -> dict[str, Any]:
     return {
         "capability": CAPABILITY_ID,
         "title": CAPABILITY_TITLE,
-        "schema": SCHEMA_VERSION,
         "source_urls": source_urls(),
         "label_definitions": label_definitions(),
         "declared_domains": list(DOMAIN_DEFINITIONS.keys()),

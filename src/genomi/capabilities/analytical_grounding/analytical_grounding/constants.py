@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from .. import entity_relationships
 
-PATHWAY_MEMBER_GENES_SCHEMA_VERSION = "genomi-pathway-member-genes-v1"
-CELL_TYPE_MARKERS_SCHEMA_VERSION = "genomi-cell-type-canonical-markers-v1"
-REGION_FEATURE_ANNOTATION_SCHEMA_VERSION = "genomi-region-feature-annotation-v1"
-
 REACTOME_CONTENT_SERVICE_BASE = entity_relationships.REACTOME_CONTENT_SERVICE_BASE
 KEGG_REST_API_BASE = entity_relationships.KEGG_REST_API_BASE
 HPA_API_BASE = entity_relationships.HPA_API_BASE

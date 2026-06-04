@@ -8,7 +8,6 @@ from ....retrieval import semantic as retrieval_semantic
 from .. import entity_relationships
 from .cell_markers import _retrieve_hpa_cell_type_markers, _retrieve_table_cell_type_markers
 from .constants import (
-    CELL_TYPE_MARKERS_SCHEMA_VERSION,
     HPA_API_BASE,
     HPA_TSV_DOWNLOAD_BASE,
     KEGG_REST_API_BASE,
@@ -16,7 +15,6 @@ from .constants import (
     NOT_INTEGRATED_PATHWAY_SOURCES,
     NOT_INTEGRATED_REGION_SOURCES,
     REACTOME_CONTENT_SERVICE_BASE,
-    REGION_FEATURE_ANNOTATION_SCHEMA_VERSION,
     SUPPORTED_CELL_MARKER_SOURCES,
 )
 from .helpers import (
@@ -219,7 +217,7 @@ def retrieve_canonical_markers(
             library = _cell_marker_library_for_source(source_key)
             if library:
                 return _library_install_response(
-                    schema=CELL_TYPE_MARKERS_SCHEMA_VERSION,
+                    response_kind="cell_marker",
                     query=query,
                     capability=_cell_marker_capability_contract(),
                     library=library,
@@ -313,7 +311,7 @@ def retrieve_region_feature_annotation(
         if not explicit_gencode and not explicit_encode:
             interval = query.get("region") or f"{query.get('chrom')}:{query.get('start')}-{query.get('end')}"
             return _library_install_response(
-                schema=REGION_FEATURE_ANNOTATION_SCHEMA_VERSION,
+                response_kind="region",
                 query={**query, "assembly": assembly_label},
                 capability=_region_capability_contract(),
                 library=f"gencode-{assembly_label.lower()}",
@@ -381,7 +379,6 @@ def retrieve_region_feature_annotation(
     coverage_status = "data_returned" if features or nearest_tss else "in_scope_empty"
     status = "feature_annotations_found" if coverage_status == "data_returned" else "no_feature_annotations"
     response: dict[str, Any] = {
-        "schema": REGION_FEATURE_ANNOTATION_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,

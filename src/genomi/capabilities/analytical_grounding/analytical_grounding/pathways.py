@@ -7,7 +7,6 @@ from typing import Any
 from .. import entity_relationships
 from .constants import (
     NOT_INTEGRATED_PATHWAY_SOURCES,
-    PATHWAY_MEMBER_GENES_SCHEMA_VERSION,
 )
 from .helpers import (
     _clean_text,
@@ -157,7 +156,7 @@ def _retrieve_msigdb_hallmark_members(
 ) -> dict[str, Any]:
     if not gmt_path and not gmt_url:
         return _library_install_response(
-            schema=PATHWAY_MEMBER_GENES_SCHEMA_VERSION,
+            response_kind="pathway",
             query=query,
             capability=_pathway_capability_contract(),
             library="msigdb-hallmark",

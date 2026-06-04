@@ -39,7 +39,6 @@ class NutrigenomicsOperationTests(unittest.TestCase):
         result = operations.list_domains()
         self.assertEqual(result["coverage_status"], "data_returned")
         self.assertEqual(result["capability"], "nutrigenomics")
-        self.assertEqual(result["schema"], source_context.SCHEMA_VERSION)
         domain_ids = {d["domain_id"] for d in result["domains"]}
         self.assertEqual(domain_ids, set(source_context.DOMAIN_DEFINITIONS))
         self.assertIn("personalized_diet_match", result["out_of_scope_by_construction"])

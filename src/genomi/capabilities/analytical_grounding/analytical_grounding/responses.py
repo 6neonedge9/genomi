@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from .constants import (
-    CELL_TYPE_MARKERS_SCHEMA_VERSION,
     NOT_INTEGRATED_CELL_MARKER_SOURCES,
     NOT_INTEGRATED_PATHWAY_SOURCES,
     NOT_INTEGRATED_REGION_SOURCES,
-    PATHWAY_MEMBER_GENES_SCHEMA_VERSION,
-    REGION_FEATURE_ANNOTATION_SCHEMA_VERSION,
     SUPPORTED_CELL_MARKER_SOURCES,
     SUPPORTED_PATHWAY_SOURCES,
     SUPPORTED_REGION_ASSEMBLIES,
@@ -34,7 +31,6 @@ def _pathway_response(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "schema": PATHWAY_MEMBER_GENES_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,
@@ -63,7 +59,6 @@ def _pathway_empty(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "schema": PATHWAY_MEMBER_GENES_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,
@@ -89,7 +84,6 @@ def _cell_marker_response(
 ) -> dict[str, Any]:
     deduped = _dedupe_markers(markers)
     return {
-        "schema": CELL_TYPE_MARKERS_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,
@@ -118,7 +112,6 @@ def _cell_marker_empty(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "schema": CELL_TYPE_MARKERS_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,
@@ -135,7 +128,6 @@ def _cell_marker_empty(
 
 def _region_empty(*, status: str, coverage_status: str, query: dict[str, Any], empty_reason: str, source_coverage: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
-        "schema": REGION_FEATURE_ANNOTATION_SCHEMA_VERSION,
         "coverage_status": coverage_status,
         "coverage_state": coverage_status,
         "status": status,
@@ -158,7 +150,7 @@ def _region_empty(*, status: str, coverage_status: str, query: dict[str, Any], e
 
 def _library_install_response(
     *,
-    schema: str,
+    response_kind: Literal["pathway", "cell_marker", "region"],
     query: dict[str, Any],
     capability: dict[str, Any],
     library: str,
@@ -174,7 +166,6 @@ def _library_install_response(
     extra_libraries = [manager.status(name) for name in (additional_missing_libraries or [])]
     payload: dict[str, Any] = {
         **request,
-        "schema": schema,
         "coverage_status": "out_of_scope_for_input",
         "coverage_state": "out_of_scope_for_input",
         "agent_decision_required": True,
@@ -188,11 +179,11 @@ def _library_install_response(
         ),
         "additional_missing_libraries": extra_libraries,
     }
-    if schema == PATHWAY_MEMBER_GENES_SCHEMA_VERSION:
+    if response_kind == "pathway":
         payload.update({"members": [], "resolved_pathways": [], "resolution_candidates": []})
-    elif schema == CELL_TYPE_MARKERS_SCHEMA_VERSION:
+    elif response_kind == "cell_marker":
         payload.update({"markers": [], "resolved_cell_types": [], "resolution_candidates": []})
-    elif schema == REGION_FEATURE_ANNOTATION_SCHEMA_VERSION:
+    elif response_kind == "region":
         payload.update(
             {
                 "features": [],

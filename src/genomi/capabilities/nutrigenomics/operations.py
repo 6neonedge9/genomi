@@ -20,7 +20,6 @@ def list_domains() -> JsonObject:
     """Return the declared nutrigenomic domains plus evidence-tier summaries."""
     return {
         "capability": source_context.CAPABILITY_ID,
-        "schema": source_context.SCHEMA_VERSION,
         "domains": catalog.domain_summary(),
         "out_of_scope_by_construction": list(source_context.OUT_OF_SCOPE_BY_CONSTRUCTION),
         "boundary_note": source_context.BOUNDARY_NOTE,
@@ -89,7 +88,6 @@ def retrieve_domain_markers(
     if not records:
         response = {
             "capability": source_context.CAPABILITY_ID,
-            "schema": source_context.SCHEMA_VERSION,
             "domain": {"id": domain_id, **definition},
             "min_evidence_tier_applied": tier,
             "markers": [],
@@ -104,7 +102,6 @@ def retrieve_domain_markers(
 
     response = {
         "capability": source_context.CAPABILITY_ID,
-        "schema": source_context.SCHEMA_VERSION,
         "domain": {"id": domain_id, **definition},
         "min_evidence_tier_applied": tier,
         "markers": records,
@@ -142,7 +139,6 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
     if not records:
         return {
             "capability": source_context.CAPABILITY_ID,
-            "schema": source_context.SCHEMA_VERSION,
             "variant": {"rsid": cleaned},
             "records": [],
             "coverage_status": "in_scope_empty",
@@ -156,7 +152,6 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
 
     return {
         "capability": source_context.CAPABILITY_ID,
-        "schema": source_context.SCHEMA_VERSION,
         "variant": {"rsid": cleaned},
         "records": records,
         "coverage_status": "data_returned",
@@ -173,7 +168,6 @@ def _empty(
 ) -> JsonObject:
     response: JsonObject = {
         "capability": source_context.CAPABILITY_ID,
-        "schema": source_context.SCHEMA_VERSION,
         "status": status,
         "coverage_status": coverage_status,
         "empty_reason": empty_reason,
