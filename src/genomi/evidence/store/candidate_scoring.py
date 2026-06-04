@@ -103,10 +103,16 @@ def _build_candidate(
             "observed_alleles": sample.get("observed_alleles"),
             "source_record_ref": sample.get("source_record_ref"),
             "source_record_alt": sample.get("source_record_alt"),
-            "source_record_format": sample.get("source_record_format") or sample.get("format"),
+            "source_record_format": sample.get("source_record_format"),
             "source_record_record_kind": sample.get("source_record_record_kind"),
             "source_record_observed_alleles": sample.get("source_record_observed_alleles"),
             "source_record_info": sample.get("source_record_info"),
+            "agi_record_ref": sample.get("agi_record_ref"),
+            "agi_record_alt": sample.get("agi_record_alt"),
+            "agi_record_format": sample.get("agi_record_format"),
+            "agi_record_record_kind": sample.get("agi_record_record_kind"),
+            "agi_record_observed_alleles": sample.get("agi_record_observed_alleles"),
+            "agi_record_info": sample.get("agi_record_info"),
         },
         "genes": genes,
         "clinvar": {
@@ -118,6 +124,7 @@ def _build_candidate(
             "match_basis_counts": match_provenance["match_basis_counts"],
             "source_format_counts": match_provenance["source_format_counts"],
             "source_record_format_counts": match_provenance["source_record_format_counts"],
+            "agi_record_format_counts": match_provenance["agi_record_format_counts"],
         },
         "match_provenance": match_provenance,
         "genotype_support": genotype_support,
@@ -143,6 +150,9 @@ def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]
     source_record_formats: Counter[str] = Counter(
         source_format for item in records if (source_format := _record_source_record_format(item))
     )
+    agi_record_formats: Counter[str] = Counter(
+        source_format for item in records if (source_format := _record_agi_record_format(item))
+    )
     primary_match_basis = _primary_counter_value(match_basis)
     if primary_match_basis is None:
         raise ValueError("ClinVar candidate group has no match_basis records")
@@ -152,16 +162,18 @@ def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]
         "match_basis_counts": match_basis.most_common(),
         "source_format_counts": source_formats.most_common(),
         "source_record_format_counts": source_record_formats.most_common(),
+        "agi_record_format_counts": agi_record_formats.most_common(),
     }
 
 
 def _record_source_format(item: dict[str, Any]) -> str | None:
-    sample = item.get("sample_variant") if isinstance(item.get("sample_variant"), dict) else {}
     provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
     source_record = provenance.get("source_record") if isinstance(provenance.get("source_record"), dict) else {}
+    agi_record = provenance.get("agi_record") if isinstance(provenance.get("agi_record"), dict) else {}
     source_format = (
         provenance.get("source_format")
         or source_record.get("source_format")
+        or agi_record.get("source_format")
     )
     return str(source_format) if source_format else None
 
@@ -170,7 +182,15 @@ def _record_source_record_format(item: dict[str, Any]) -> str | None:
     sample = item.get("sample_variant") if isinstance(item.get("sample_variant"), dict) else {}
     provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
     source_record = provenance.get("source_record") if isinstance(provenance.get("source_record"), dict) else {}
-    source_format = sample.get("source_record_format") or sample.get("format") or source_record.get("format")
+    source_format = sample.get("source_record_format") or source_record.get("format")
+    return str(source_format) if source_format else None
+
+
+def _record_agi_record_format(item: dict[str, Any]) -> str | None:
+    sample = item.get("sample_variant") if isinstance(item.get("sample_variant"), dict) else {}
+    provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
+    agi_record = provenance.get("agi_record") if isinstance(provenance.get("agi_record"), dict) else {}
+    source_format = sample.get("agi_record_format") or agi_record.get("format")
     return str(source_format) if source_format else None
 
 

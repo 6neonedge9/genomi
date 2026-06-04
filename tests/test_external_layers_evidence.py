@@ -465,7 +465,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             self.assertIn('"chrom": "chr1"', agi_output.read_text(encoding="utf-8").splitlines()[0])
             active_payload = json.loads(agi_output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(active_payload["match_provenance"]["match_basis"], "exact_allele")
-            self.assertEqual(active_payload["sample_variant"]["source_record_ref"], active_payload["sample_variant"]["ref"])
+            self.assertEqual(active_payload["sample_variant"]["agi_record_ref"], active_payload["sample_variant"]["ref"])
 
             incomplete_active_genome_index = Path(tmp) / "incomplete-active-genome-index.sqlite"
             with sqlite3.connect(incomplete_active_genome_index) as connection:
@@ -543,12 +543,12 @@ class EvidenceImportTests(EvidenceImportTestBase):
                             "source_format": "23andme",
                             "record_kind": "array_call",
                             "observed_alleles": ["T", "G"],
-                            "source_record_ref": ".",
-                            "source_record_alt": ".",
-                            "source_record_format": "GT_ARRAY",
-                            "source_record_record_kind": "array_call",
-                            "source_record_observed_alleles": ["T", "G"],
-                            "source_record_info": ".",
+                            "agi_record_ref": ".",
+                            "agi_record_alt": ".",
+                            "agi_record_format": "GT_ARRAY",
+                            "agi_record_record_kind": "array_call",
+                            "agi_record_observed_alleles": ["T", "G"],
+                            "agi_record_info": ".",
                         },
                         "clinvar": {
                             "chrom": "1",
@@ -587,9 +587,9 @@ class EvidenceImportTests(EvidenceImportTestBase):
         self.assertEqual(variant["ref"], ".")
         self.assertEqual(variant["alt"], ".")
         self.assertEqual(variant["observed_alleles"], ["T", "G"])
-        self.assertEqual(variant["source_record_record_kind"], "array_call")
-        self.assertEqual(variant["source_record_observed_alleles"], ["T", "G"])
-        self.assertEqual(variant["source_record_info"], ".")
+        self.assertEqual(variant["agi_record_record_kind"], "array_call")
+        self.assertEqual(variant["agi_record_observed_alleles"], ["T", "G"])
+        self.assertEqual(variant["agi_record_info"], ".")
 
     def test_clinvar_match_report_marks_multiallelic_source_alt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

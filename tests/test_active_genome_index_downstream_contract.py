@@ -542,10 +542,10 @@ class ActiveGenomeIndexDownstreamContractTests(
                 candidates_by_pos[200]["match_provenance"]["primary_match_basis"],
                 "consumer_array_allele_inference",
             )
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_ref"], ".")
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_alt"], ".")
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_format"], "GT_ARRAY")
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_info"], ".")
+            self.assertEqual(candidates_by_pos[200]["variant"]["agi_record_ref"], ".")
+            self.assertEqual(candidates_by_pos[200]["variant"]["agi_record_alt"], ".")
+            self.assertEqual(candidates_by_pos[200]["variant"]["agi_record_format"], "GT_ARRAY")
+            self.assertEqual(candidates_by_pos[200]["variant"]["agi_record_info"], ".")
             self.assertEqual(candidates_by_pos[200]["variant"]["record_kind"], "array_call")
             self.assertEqual(candidates_by_pos[200]["variant"]["ref"], ".")
             self.assertEqual(candidates_by_pos[200]["variant"]["alt"], ".")
@@ -553,9 +553,9 @@ class ActiveGenomeIndexDownstreamContractTests(
                 candidates_by_pos[200]["candidate_allele"],
                 {"chrom": "1", "pos": 200, "ref": "T", "alt": "G"},
             )
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_record_kind"], "array_call")
+            self.assertEqual(candidates_by_pos[200]["variant"]["agi_record_record_kind"], "array_call")
             self.assertEqual(
-                candidates_by_pos[200]["variant"]["source_record_observed_alleles"],
+                candidates_by_pos[200]["variant"]["agi_record_observed_alleles"],
                 candidates_by_pos[200]["variant"]["observed_alleles"],
             )
 

@@ -414,6 +414,7 @@ def _clinvar_candidate_matrix_row(candidate: dict[str, Any], *, rank: int) -> di
                 "match_basis_counts": clinvar.get("match_basis_counts") or [],
                 "source_format_counts": clinvar.get("source_format_counts") or [],
                 "source_record_format_counts": clinvar.get("source_record_format_counts") or [],
+                "agi_record_format_counts": clinvar.get("agi_record_format_counts") or [],
             }
         ],
         "counter_evidence": _clinvar_counter_evidence(candidate),

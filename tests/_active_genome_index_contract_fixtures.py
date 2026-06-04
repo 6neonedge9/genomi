@@ -701,33 +701,33 @@ class ActiveGenomeIndexContractFixtureMixin:
         for payload in payloads:
             sample = payload["sample_variant"]
             clinvar = payload["clinvar"]
-            provenance_source = payload["match_provenance"]["source_record"]
+            provenance_agi_record = payload["match_provenance"]["agi_record"]
             match_basis = payload["match_provenance"]["match_basis"]
             genotype = str(sample["genotype"] or "")
             self.assertEqual(sorted(payload), ["clinvar", "match_provenance", "sample_variant"])
-            self.assertIn("source_record_info", sample)
-            self.assertEqual(provenance_source["info"], sample["source_record_info"])
+            self.assertIn("agi_record_info", sample)
+            self.assertEqual(provenance_agi_record["info"], sample["agi_record_info"])
             if "/" not in genotype and "|" not in genotype:
                 self.assertIn(clinvar["alt"], genotype)
             if expected_format in {"vcf", "gvcf", "bam", "fastq"}:
                 self.assertEqual(sample["ref"], clinvar["ref"])
                 self.assertEqual(sample["alt"], clinvar["alt"])
                 self.assertEqual(match_basis, "exact_allele")
-                self.assertEqual(sample["source_record_ref"], sample["ref"])
-                self.assertEqual(sample["source_record_alt"], sample["alt"])
+                self.assertEqual(sample["agi_record_ref"], sample["ref"])
+                self.assertEqual(sample["agi_record_alt"], sample["alt"])
                 self.assertEqual(sample["record_kind"], "variant_call")
-                self.assertEqual(provenance_source["record_kind"], "variant_call")
+                self.assertEqual(provenance_agi_record["record_kind"], "variant_call")
             else:
                 self.assertEqual(match_basis, "consumer_array_allele_inference")
                 self.assertEqual(payload["match_provenance"]["source_format"], expected_format)
-                self.assertEqual(provenance_source["source_format"], expected_format)
+                self.assertEqual(provenance_agi_record["source_format"], expected_format)
                 self.assertEqual(sample["record_kind"], "array_call")
                 self.assertEqual(sample["ref"], ".")
                 self.assertEqual(sample["alt"], ".")
                 self.assertEqual(sample["observed_alleles"], list(genotype))
-                self.assertEqual(sample["source_record_ref"], ".")
-                self.assertEqual(sample["source_record_alt"], ".")
-                self.assertEqual(sample["source_record_format"], "GT_ARRAY")
+                self.assertEqual(sample["agi_record_ref"], ".")
+                self.assertEqual(sample["agi_record_alt"], ".")
+                self.assertEqual(sample["agi_record_format"], "GT_ARRAY")
                 self.assertEqual(
                     payload["match_provenance"]["inferred_clinvar_allele"],
                     {
@@ -737,11 +737,11 @@ class ActiveGenomeIndexContractFixtureMixin:
                         "alt": clinvar["alt"],
                     },
                 )
-                self.assertEqual(provenance_source["ref"], ".")
-                self.assertEqual(provenance_source["alt"], ".")
-                self.assertEqual(provenance_source["genotype"], genotype)
-                self.assertEqual(provenance_source["record_kind"], "array_call")
-                self.assertEqual(provenance_source["observed_alleles"], list(genotype))
+                self.assertEqual(provenance_agi_record["ref"], ".")
+                self.assertEqual(provenance_agi_record["alt"], ".")
+                self.assertEqual(provenance_agi_record["genotype"], genotype)
+                self.assertEqual(provenance_agi_record["record_kind"], "array_call")
+                self.assertEqual(provenance_agi_record["observed_alleles"], list(genotype))
 
     def _tiny_prs_thresholds(self):
         return mock.patch.multiple(

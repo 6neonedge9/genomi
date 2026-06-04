@@ -64,9 +64,9 @@ _SELECTED_AGI_RECORD_COLUMN_NAMES = (
     "clinvar_match_mode",
     "clinvar_match_alt",
 )
-_SOURCE_AGI_RECORD_COLUMN_NAMES = _SELECTED_AGI_RECORD_COLUMN_NAMES[:-3]
+_AGI_RECORD_COLUMN_NAMES = _SELECTED_AGI_RECORD_COLUMN_NAMES[:-3]
 _SELECTED_AGI_RECORD_COLUMNS = ", ".join(_SELECTED_AGI_RECORD_COLUMN_NAMES)
-_SOURCE_AGI_RECORD_COLUMNS = ", ".join(_SOURCE_AGI_RECORD_COLUMN_NAMES)
+_AGI_RECORD_COLUMNS = ", ".join(_AGI_RECORD_COLUMN_NAMES)
 
 
 def _selected_agi_record_columns(alias: str | None = None) -> str:
@@ -376,7 +376,7 @@ def match_clinvar_variants_from_active_genome_index(
             f"""
             {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records)}
             select
-                (select count(*) from selected_source_records) as scanned_records,
+                (select count(*) from selected_agi_records) as scanned_records,
                 (select count(distinct clinvar_batch_id) from selected_records) as queried_alleles
             """,
             selection_params,
@@ -456,12 +456,12 @@ def _selected_active_genome_index_records_cte_sql(
                 from temp.lifted_selected_records
             )
         """
-    source_cte = _source_active_genome_index_records_cte_sql(max_records=max_records)
+    agi_cte = _active_genome_index_agi_records_cte_sql(max_records=max_records)
     sql = """
-            with """ + source_cte + """,
-            selected_source_records as (
+            with """ + agi_cte + """,
+            selected_agi_records as (
                 select *
-                from source_records
+                from agi_records
                 where 1 = 1
         """
     if pass_only:
@@ -471,18 +471,18 @@ def _selected_active_genome_index_records_cte_sql(
             selected_records as (
                 select """ + _selected_agi_record_columns("a") + """
                 from temp.selected_active_genome_index_records as a
-                join selected_source_records as s
+                join selected_agi_records as s
                   on s.record_rowid = a.record_rowid
             )
         """
     return sql
 
 
-def _source_active_genome_index_records_cte_sql(*, max_records: int | None) -> str:
+def _active_genome_index_agi_records_cte_sql(*, max_records: int | None) -> str:
     sql = """
-            source_records as (
-                select """ + _SOURCE_AGI_RECORD_COLUMNS + """
-                from temp.selected_active_genome_index_source_records
+            agi_records as (
+                select """ + _AGI_RECORD_COLUMNS + """
+                from temp.selected_active_genome_index_agi_records
                 where record_kind in ('variant_call', 'array_call')
         """
     if max_records is not None:
@@ -503,9 +503,9 @@ def _count_selected_non_pass_records(
     selection_params = (max_records,) if max_records is not None else ()
     row = connection.execute(
         f"""
-        with {_source_active_genome_index_records_cte_sql(max_records=max_records)}
+        with {_active_genome_index_agi_records_cte_sql(max_records=max_records)}
         select count(*) as skipped_non_pass
-        from source_records
+        from agi_records
         where filter not in ('PASS', '.')
         """,
         selection_params,
@@ -845,13 +845,13 @@ def _clinvar_index_direct_select_sql(
                 r.genotype as genotype,
                 r.depth as depth,
                 r.genotype_quality as genotype_quality,
-                r.ref as source_record_ref,
-                r.alt as source_record_alt,
-                r.format as source_record_format,
-                r.genotype as source_record_genotype,
-                r.record_kind as source_record_kind,
-                r.observed_alleles as source_record_observed_alleles,
-                r.info as source_record_info,
+                r.ref as agi_record_ref,
+                r.alt as agi_record_alt,
+                r.format as agi_record_format,
+                r.genotype as agi_record_genotype,
+                r.record_kind as agi_record_kind,
+                r.observed_alleles as agi_record_observed_alleles,
+                r.info as agi_record_info,
                 null as source_format,
                 cv.chrom as chrom,
                 cv.pos as pos,

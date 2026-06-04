@@ -23,22 +23,33 @@ def build_clinvar_match_payload(
     match_basis: str,
     source_format: str | None = None,
     source_record: dict[str, Any] | None = None,
+    agi_record: dict[str, Any] | None = None,
     inferred_clinvar_allele: dict[str, Any] | None = None,
     liftover: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     basis = _require_match_basis(match_basis)
     sample = dict(sample_variant)
     source = dict(source_record or {})
-    source_format = source_format or source.get("source_format")
-    _copy_source_record_field(sample, source, "ref")
-    _copy_source_record_field(sample, source, "alt")
-    _copy_source_record_field(sample, source, "format")
-    _copy_source_record_field(sample, source, "genotype")
-    _copy_source_record_field(sample, source, "record_kind")
-    _copy_source_record_field(sample, source, "observed_alleles")
-    _copy_source_record_field(sample, source, "info")
+    agi = dict(agi_record or {})
+    source_format = source_format or source.get("source_format") or agi.get("source_format")
+    _copy_prefixed_record_field(sample, source, "source_record", "ref")
+    _copy_prefixed_record_field(sample, source, "source_record", "alt")
+    _copy_prefixed_record_field(sample, source, "source_record", "format")
+    _copy_prefixed_record_field(sample, source, "source_record", "genotype")
+    _copy_prefixed_record_field(sample, source, "source_record", "record_kind")
+    _copy_prefixed_record_field(sample, source, "source_record", "observed_alleles")
+    _copy_prefixed_record_field(sample, source, "source_record", "info")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "ref")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "alt")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "format")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "genotype")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "record_kind")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "observed_alleles")
+    _copy_prefixed_record_field(sample, agi, "agi_record", "info")
     if source.get("format") is not None:
         sample["format"] = source["format"]
+    if agi.get("format") is not None:
+        sample["format"] = agi["format"]
 
     provenance: dict[str, Any] = {
         "match_basis": basis,
@@ -68,6 +79,23 @@ def build_clinvar_match_payload(
                 "source_format",
             )
             if source.get(key) is not None
+        }
+    if agi:
+        provenance["agi_record"] = {
+            key: agi.get(key)
+            for key in (
+                "chrom",
+                "pos",
+                "ref",
+                "alt",
+                "format",
+                "genotype",
+                "record_kind",
+                "observed_alleles",
+                "info",
+                "source_format",
+            )
+            if agi.get(key) is not None
         }
     if inferred_clinvar_allele is not None:
         provenance["inferred_clinvar_allele"] = inferred_clinvar_allele
@@ -124,18 +152,18 @@ def _write_clinvar_match_rows(
         source_format = (
             _row_value(row, row_keys, "source_format")
             or default_source_format
-            or _source_format_from_info(_row_value(row, row_keys, "source_record_info"))
+            or _source_format_from_info(_row_value(row, row_keys, "agi_record_info"))
         )
-        source_record = {
+        agi_record = {
             "chrom": row["sample_chrom"],
             "pos": int(row["sample_pos"]),
-            "ref": _row_value(row, row_keys, "source_record_ref") or row["sample_ref"],
-            "alt": _row_value(row, row_keys, "source_record_alt") or row["sample_alt"],
-            "format": _row_value(row, row_keys, "source_record_format"),
-            "genotype": _row_value(row, row_keys, "source_record_genotype") or row["genotype"],
-            "record_kind": _row_value(row, row_keys, "source_record_kind"),
-            "observed_alleles": _json_list_or_none(_row_value(row, row_keys, "source_record_observed_alleles")),
-            "info": _row_value(row, row_keys, "source_record_info"),
+            "ref": _row_value(row, row_keys, "agi_record_ref") or row["sample_ref"],
+            "alt": _row_value(row, row_keys, "agi_record_alt") or row["sample_alt"],
+            "format": _row_value(row, row_keys, "agi_record_format"),
+            "genotype": _row_value(row, row_keys, "agi_record_genotype") or row["genotype"],
+            "record_kind": _row_value(row, row_keys, "agi_record_kind"),
+            "observed_alleles": _json_list_or_none(_row_value(row, row_keys, "agi_record_observed_alleles")),
+            "info": _row_value(row, row_keys, "agi_record_info"),
             "source_format": source_format,
         }
         sample_variant: dict[str, Any] = {
@@ -152,10 +180,10 @@ def _write_clinvar_match_rows(
             "depth": row["depth"],
             "genotype_quality": row["genotype_quality"],
         }
-        if source_record.get("record_kind") is not None:
-            sample_variant["record_kind"] = source_record["record_kind"]
-        if source_record.get("observed_alleles") is not None:
-            sample_variant["observed_alleles"] = source_record["observed_alleles"]
+        if agi_record.get("record_kind") is not None:
+            sample_variant["record_kind"] = agi_record["record_kind"]
+        if agi_record.get("observed_alleles") is not None:
+            sample_variant["observed_alleles"] = agi_record["observed_alleles"]
         if sample_build is not None:
             sample_variant["genome_build"] = sample_build
         inferred_clinvar_allele = _inferred_clinvar_allele(row, row_keys)
@@ -178,7 +206,7 @@ def _write_clinvar_match_rows(
             clinvar={field: row[field] for field in clinvar_fields},
             match_basis=_row_value(row, row_keys, "match_basis"),
             source_format=source_format,
-            source_record=source_record,
+            agi_record=agi_record,
             inferred_clinvar_allele=inferred_clinvar_allele,
             liftover=liftover,
         )
@@ -191,10 +219,10 @@ def _write_clinvar_match_rows(
     }
 
 
-def _copy_source_record_field(sample: dict[str, Any], source: dict[str, Any], field: str) -> None:
-    value = source.get(field)
+def _copy_prefixed_record_field(sample: dict[str, Any], record: dict[str, Any], prefix: str, field: str) -> None:
+    value = record.get(field)
     if value is not None:
-        sample[f"source_record_{field}"] = value
+        sample[f"{prefix}_{field}"] = value
 
 
 def _require_match_basis(value: str | None) -> str:

@@ -24,15 +24,15 @@ def stage_clinvar_match_records(
     """Materialize the AGI rows ClinVar matching may read into temp tables."""
 
     reader.ensure_ready()
-    alias = "_agi_clinvar_source"
+    alias = "_agi_clinvar_records"
     reader.attach_to(connection, alias)
     try:
         _ensure_ready_for_clinvar_match(connection, alias, reader.agi_path)
         connection.executescript(
             """
-            drop table if exists temp.selected_active_genome_index_source_records;
+            drop table if exists temp.selected_active_genome_index_agi_records;
             drop table if exists temp.selected_active_genome_index_records;
-            create temp table selected_active_genome_index_source_records (
+            create temp table selected_active_genome_index_agi_records (
                 record_rowid integer not null,
                 chrom text not null,
                 chrom_sort integer,
@@ -75,14 +75,14 @@ def stage_clinvar_match_records(
                 clinvar_match_mode text not null,
                 clinvar_match_alt text not null
             );
-            create index selected_active_genome_index_source_records_order_idx
-                on selected_active_genome_index_source_records(chrom_sort, pos, record_rowid, sample_index);
+            create index selected_active_genome_index_agi_records_order_idx
+                on selected_active_genome_index_agi_records(chrom_sort, pos, record_rowid, sample_index);
             create index selected_active_genome_index_records_locus_idx
                 on selected_active_genome_index_records(chrom, pos);
             """
         )
         sql = f"""
-            insert into temp.selected_active_genome_index_source_records (
+            insert into temp.selected_active_genome_index_agi_records (
                 record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                 info, sample_index, sample_name, format, genotype, depth,
                 genotype_quality, record_kind, observed_alleles
@@ -116,7 +116,7 @@ def stage_clinvar_match_records(
                        else ?
                    end as clinvar_match_mode,
                    upper(observed.value) as clinvar_match_alt
-            from temp.selected_active_genome_index_source_records as r
+            from temp.selected_active_genome_index_agi_records as r
             join json_each(r.observed_alleles) as observed
             where r.record_kind = ?
               and r.alt not in ('', '.')
@@ -145,7 +145,7 @@ def stage_clinvar_match_records(
                        as clinvar_batch_id,
                    ? as clinvar_match_mode,
                    upper(observed.value) as clinvar_match_alt
-            from temp.selected_active_genome_index_source_records as r
+            from temp.selected_active_genome_index_agi_records as r
             join json_each(r.observed_alleles) as observed
             where r.record_kind = ?
               and upper(observed.value) in ('A', 'C', 'G', 'T')
