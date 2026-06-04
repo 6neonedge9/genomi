@@ -14,8 +14,9 @@ from ...evidence import envelope as _env
 from ...runtime.external import utc_now
 from ...runtime.libraries import registry as library_registry
 
-FDA_BIOMARKERS_URL = library_registry.get("fda-pgx").source.api_base or ""
-FDA_ASSOCIATIONS_URL = "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations"
+_FDA_PGX_LIBRARY = library_registry.get("fda-pgx")
+FDA_BIOMARKERS_URL = _FDA_PGX_LIBRARY.source.api_base or ""
+FDA_ASSOCIATIONS_URL = _FDA_PGX_LIBRARY.source.urls[0]
 FDA_TIMEOUT_SECONDS = 20
 FDA_MAX_LIMIT = 50
 FDA_MAX_RAW_TEXT_CHARS = 600

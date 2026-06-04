@@ -81,6 +81,18 @@ class LibraryRegistryTests(unittest.TestCase):
         self.assertEqual(spec.required_paths, spec.targets)
         self.assertIn("pgs-catalog-score-metadata", registry.purposes()["common-questions"])
 
+    def test_fda_pgx_declares_both_live_tables(self) -> None:
+        spec = registry.get("fda-pgx")
+        self.assertIs(spec.kind, Kind.ONLINE)
+        self.assertEqual(
+            spec.source.api_base,
+            "https://www.fda.gov/drugs/science-and-research-drugs/table-pharmacogenomic-biomarkers-drug-labeling",
+        )
+        self.assertEqual(
+            spec.source.urls,
+            ("https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",),
+        )
+
     def test_resolve_selection_purpose_ids_and_errors(self) -> None:
         self.assertEqual(
             registry.resolve_selection("common-questions"),

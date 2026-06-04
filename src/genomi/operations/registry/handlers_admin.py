@@ -315,6 +315,13 @@ def _refresh_public_retrieval_indexes() -> tuple[list[JsonObject], list[JsonObje
     errors: list[JsonObject] = []
     try:
         refreshed.append(prs_pgs_catalog.refresh_score_search_index())
+    except prs_pgs_catalog.ScoreMetadataUnavailable as exc:
+        errors.append({
+            "source": "pgs_scores",
+            "status": str(exc.payload.get("status") or "requires_library_install"),
+            "missing_library": exc.payload.get("missing_library"),
+            "ask_user": exc.payload.get("ask_user"),
+        })
     except prs_pgs_catalog.SourceUnavailable as exc:
         errors.append({
             "source": "pgs_scores",

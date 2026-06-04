@@ -361,7 +361,10 @@ _SPECS: tuple[LibrarySpec, ...] = (
         helps="reads the FDA pharmacogenomic biomarker and pharmacogenetic-association tables from fda.gov",
         kind=Kind.ONLINE,
         size_class="online",
-        source=Source(api_base="https://www.fda.gov/drugs/science-and-research-drugs/table-pharmacogenomic-biomarkers-drug-labeling"),
+        source=Source(
+            api_base="https://www.fda.gov/drugs/science-and-research-drugs/table-pharmacogenomic-biomarkers-drug-labeling",
+            urls=("https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",),
+        ),
         freshness=Freshness.LIVE,
     ),
 )
