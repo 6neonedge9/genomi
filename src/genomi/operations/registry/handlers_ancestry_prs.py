@@ -43,6 +43,9 @@ def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
     unsupported = _unsupported_ancestry_build("ancestry.check_sample_overlap", genome_build)
     if unsupported is not None:
         return unsupported
+    mismatch = _ancestry_build_mismatch("ancestry.check_sample_overlap", reader, params, genome_build)
+    if mismatch is not None:
+        return mismatch
     missing = _ancestry_missing_library(
         "ancestry.check_sample_overlap",
         "checking sample overlap with the 1000 Genomes ancestry PCA panel",
@@ -62,6 +65,9 @@ def _ancestry_project_pca(params: JsonObject) -> JsonObject:
     unsupported = _unsupported_ancestry_build("ancestry.project_pca", genome_build)
     if unsupported is not None:
         return unsupported
+    mismatch = _ancestry_build_mismatch("ancestry.project_pca", reader, params, genome_build)
+    if mismatch is not None:
+        return mismatch
     missing = _ancestry_missing_library(
         "ancestry.project_pca",
         "projecting a sample into the 1000 Genomes ancestry PCA panel",
@@ -82,6 +88,9 @@ def _ancestry_estimate_population_context(params: JsonObject) -> JsonObject:
     unsupported = _unsupported_ancestry_build("ancestry.estimate_population_context", genome_build)
     if unsupported is not None:
         return unsupported
+    mismatch = _ancestry_build_mismatch("ancestry.estimate_population_context", reader, params, genome_build)
+    if mismatch is not None:
+        return mismatch
     missing = _ancestry_missing_library(
         "ancestry.estimate_population_context",
         "estimating qualitative 1000 Genomes reference-panel similarity",
@@ -173,6 +182,50 @@ def _unsupported_ancestry_build(operation: str, genome_build: str) -> JsonObject
         },
         next_actions=result["next_actions"],
         guidance=["out_of_scope_for_input:use_supported_genome_build"],
+    )
+    return result
+
+
+def _ancestry_build_mismatch(
+    operation: str,
+    reader: ActiveGenomeIndexReader,
+    params: JsonObject,
+    requested_build: str,
+) -> JsonObject | None:
+    if params.get("genome_build") in (None, "") or not reader.genome_build:
+        return None
+    agi_build = ancestry_policy.normalize_build(reader.genome_build)
+    if agi_build not in ancestry_policy.SUPPORTED_BUILDS or agi_build == requested_build:
+        return None
+    result: JsonObject = {
+        "status": "out_of_scope_for_input",
+        "requested_genome_build": requested_build,
+        "active_genome_index_genome_build": agi_build,
+        "supported_genome_builds": list(ancestry_policy.SUPPORTED_BUILDS),
+        "personal_context": {"uses_personal_dna": True},
+        "next_actions": [
+            {
+                "action": "use_active_genome_index_build",
+                "genome_build": agi_build,
+            }
+        ],
+    }
+    result["evidence_envelope"] = evidence_envelope.not_assessed(
+        operation=operation,
+        reason="requested genome build conflicts with Active Genome Index metadata",
+        query_scope={
+            "method": "ancestry_reference_panel",
+            "requested_genome_build": requested_build,
+            "active_genome_index_genome_build": agi_build,
+        },
+        personal_context={"uses_personal_dna": True},
+        observations={
+            "status": "out_of_scope_for_input",
+            "requested_genome_build": requested_build,
+            "active_genome_index_genome_build": agi_build,
+        },
+        next_actions=result["next_actions"],
+        guidance=["out_of_scope_for_input:use_active_genome_index_genome_build"],
     )
     return result
 

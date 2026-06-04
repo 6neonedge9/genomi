@@ -300,6 +300,32 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertEqual(envelope["coverage"]["consulted_sources"], ["active_genome_index", "ancestry-1000g-30x-grch38"])
         self.assertEqual(envelope["observations"]["usable_marker_count"], 20)
 
+    def test_reference_block_span_uses_panel_marker_reference_allele(self) -> None:
+        markers = [
+            {"marker_id": "m0", "chrom": "1", "pos": 1000, "ref": "A", "alt": "C"},
+            {"marker_id": "m1", "chrom": "1", "pos": 2000, "ref": "G", "alt": "C"},
+        ]
+        samples = [
+            {"sample_id": "EUR1", "population": "CEU", "superpopulation": "EUR", "sex": ""},
+            {"sample_id": "EUR2", "population": "CEU", "superpopulation": "EUR", "sex": ""},
+            {"sample_id": "AFR1", "population": "YRI", "superpopulation": "AFR", "sex": ""},
+            {"sample_id": "AFR2", "population": "YRI", "superpopulation": "AFR", "sex": ""},
+        ]
+        _write_synthetic_panel(
+            reference_panels.panel_dir(),
+            samples=samples,
+            markers=markers,
+            genotype_rows=[[0.0, 0.0, 2.0, 2.0] for _ in markers],
+            component_count=2,
+        )
+        vcf = self._write_reference_block_vcf("sample_reference_span.vcf")
+
+        result = call_operation("ancestry.check_sample_overlap", {"agi_path": str(default_agi_path(vcf))})
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["sample_qc"]["usable_marker_count"], 2)
+        self.assertEqual(result["sample_qc"]["missing_marker_count"], 0)
+
     def test_grch37_sample_without_grch37_panel_prompts_install(self) -> None:
         # Only the GRCh38 synthetic panel is installed. A GRCh37 sample must
         # surface the GRCh37-panel install prompt rather than crashing or
@@ -373,6 +399,31 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["sample_qc"]["genome_build"], "GRCh37")
         self.assertEqual(result["reference_panel"]["library"], "ancestry-1000g-30x-grch37")
+
+    def test_explicit_build_conflict_with_agi_build_is_rejected(self) -> None:
+        markers = self._install_synthetic_panel(marker_count=1)
+        vcf = self._write_indexed_vcf("sample_build_conflict.vcf", markers, usable_count=1)
+        runtime_context.set_active_genome_index(
+            vcf,
+            status="parsed",
+            agi_path=default_agi_path(vcf),
+            genome_build="GRCh37",
+        )
+        runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
+
+        result = call_operation(
+            "ancestry.check_sample_overlap",
+            {"agi_path": str(default_agi_path(vcf)), "genome_build": "GRCh38"},
+        )
+
+        self.assertEqual(result["status"], "out_of_scope_for_input")
+        self.assertEqual(result["requested_genome_build"], "GRCh38")
+        self.assertEqual(result["active_genome_index_genome_build"], "GRCh37")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
+        self.assertEqual(
+            result["evidence_envelope"]["guidance"],
+            ["out_of_scope_for_input:use_active_genome_index_genome_build"],
+        )
 
     def test_consumer_array_no_call_reason_is_preserved_in_overlap_qc(self) -> None:
         markers = self._install_synthetic_panel(marker_count=2, genome_build="GRCh37")
@@ -476,6 +527,31 @@ class AncestryCapabilityTests(unittest.TestCase):
                 )
             )
         vcf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        create_active_genome_index(vcf, parallel_workers=1, reuse_existing=False)
+        runtime_context.set_active_genome_index(
+            vcf,
+            status="parsed",
+            agi_path=default_agi_path(vcf),
+            genome_build="GRCh38",
+        )
+        runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
+        return vcf
+
+    def _write_reference_block_vcf(self, name: str) -> Path:
+        vcf = Path(self._home_tmp.name) / name
+        vcf.write_text(
+            "\n".join(
+                [
+                    "##fileformat=VCFv4.2",
+                    '##INFO=<ID=END,Number=1,Type=Integer,Description="End position">',
+                    '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                    "1\t1000\t.\tA\t.\t.\tPASS\tEND=2000\tGT\t0/0",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         create_active_genome_index(vcf, parallel_workers=1, reuse_existing=False)
         runtime_context.set_active_genome_index(
             vcf,

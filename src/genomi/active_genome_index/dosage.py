@@ -5,7 +5,7 @@ import sqlite3
 from typing import Any
 
 from .array_genotypes import count_array_allele, is_array_genotype_record
-from .record_kinds import RECORD_KIND_ARRAY_NO_CALL, RECORD_KIND_NO_CALL
+from .record_kinds import RECORD_KIND_ARRAY_NO_CALL, RECORD_KIND_NO_CALL, RECORD_KIND_REFERENCE_BLOCK
 
 JsonObject = dict[str, Any]
 
@@ -217,8 +217,9 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
     other = str(variant.get("other_allele") or "").upper()
     ref = str(record.get("ref") or "").upper()
     alts = [str(value).upper() for value in record.get("alts") or []]
+    genotype_tokens = genotype.replace("|", "/").split("/")
     allele_bases: list[str] = []
-    for token in genotype.replace("|", "/").split("/"):
+    for token in genotype_tokens:
         if token == "0":
             allele_bases.append(ref)
             continue
@@ -228,6 +229,16 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
             return _missing(variant, "unparseable_genotype", record=record)
     if not allele_bases:
         return _missing(variant, "empty_genotype", record=record)
+    if _is_spanning_reference_block(record, variant, genotype_tokens):
+        reference_allele = str(variant.get("reference_allele") or "").upper()
+        if reference_allele:
+            return _matched(
+                variant,
+                effect_allele_dosage=float(len(allele_bases) if effect == reference_allele else 0),
+                ploidy=len(allele_bases),
+                record=record,
+                match_type="reference_homozygous_inferred",
+            )
     effect_in_record = effect in {ref, *alts}
     other_in_record = other and other in {ref, *alts}
     if other:
@@ -287,6 +298,17 @@ def _chrom_candidates(chrom: str) -> list[str]:
     if chrom.startswith("chr"):
         return [chrom, chrom[3:]]
     return [chrom, f"chr{chrom}"]
+
+
+def _is_spanning_reference_block(record: JsonObject, variant: JsonObject, genotype_tokens: list[str]) -> bool:
+    if record.get("record_kind") != RECORD_KIND_REFERENCE_BLOCK:
+        return False
+    try:
+        if int(record.get("pos") or -1) == int(variant["pos"]):
+            return False
+    except (TypeError, ValueError):
+        return False
+    return all(token == "0" for token in genotype_tokens)
 
 
 def _missing(variant: JsonObject, reason: str, *, record: JsonObject | None = None) -> JsonObject:

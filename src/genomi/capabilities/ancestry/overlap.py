@@ -206,6 +206,7 @@ def _marker_dosage_results(reader: ActiveGenomeIndexReader, markers: list[JsonOb
             "rsid": marker.get("marker_id"),
             "chrom": marker["chrom"],
             "pos": int(marker["pos"]),
+            "reference_allele": str(marker["ref"]).upper(),
             "effect_allele": str(marker["alt"]).upper(),
             "other_allele": str(marker["ref"]).upper(),
             "effect_weight": 1.0,

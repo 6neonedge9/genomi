@@ -109,7 +109,7 @@ def open_agi(
         return open_reader(
             Path(str(explicit_path)),
             need=need,
-            genome_build=_clean_build(params.get("genome_build")) or _clean_build(run.get("genome_build")),
+            genome_build=_clean_build(run.get("genome_build")) or _clean_build(params.get("genome_build")),
         )
     named = agi_id or params.get("agi_id")
 
