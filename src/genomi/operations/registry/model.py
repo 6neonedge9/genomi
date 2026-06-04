@@ -225,7 +225,7 @@ _DISPLAY_TITLE_OVERRIDES: dict[str, str] = {
     "pharmacogenomics.import_pharmcat_artifacts": "Using Genomi to import PharmCAT artifacts",
     "pharmacogenomics.validate_outside_call_tsv": "Using Genomi to validate an outside-call TSV",
     "pharmacogenomics.prepare_outside_call_tsv": "Using Genomi to prepare an outside-call TSV",
-    "pharmacogenomics.preflight_pharmcat": "Using Genomi to preflight a PharmCAT VCF",
+    "pharmacogenomics.preflight_pharmcat": "Using Genomi to preflight PharmCAT AGI input",
     "decode.render_dashboard": "Using Genomi to render the dashboard",
 }
 

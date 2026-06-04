@@ -111,11 +111,11 @@ def capability_inventory(*, check_pharmcat: bool = False, pharmcat_timeout_secon
                 "traceability": "pharmacogenomics.describe_gene_requirements returns source document URLs for PharmCAT gene handling and outside-call requirements.",
             },
             "broad_vcf_pgx_calling": {
-                "purpose": "Broad VCF/gVCF-derived diplotype, phenotype, and recommendation artifacts.",
+                "purpose": "Broad AGI-derived PharmCAT diplotype, phenotype, and recommendation artifacts.",
                 "operations": ["pharmacogenomics.preflight_pharmcat", "pharmacogenomics.prepare_outside_call_tsv", "pharmacogenomics.validate_outside_call_tsv", "pharmacogenomics.import_pharmcat_artifacts", "pharmacogenomics.check_pharmcat", "pharmacogenomics.run_pharmcat"],
                 "runtime_status": pharmcat_status,
                 "artifact_evidence": ["report JSON", "report HTML", "calls-only TSV", "match JSON", "phenotype JSON"],
-                "traceability": "pharmacogenomics.preflight_pharmcat returns VCF structure facts; pharmacogenomics.import_pharmcat_artifacts parses existing artifacts; pharmacogenomics.run_pharmcat returns command provenance, version probe, input content hash, artifact list, parsed calls, and record_research_payloads.",
+                "traceability": "pharmacogenomics.preflight_pharmcat returns AGI-derived PharmCAT input facts; pharmacogenomics.import_pharmcat_artifacts parses existing artifacts; pharmacogenomics.run_pharmcat returns command provenance, version probe, input content hash, artifact list, parsed calls, and record_research_payloads.",
             },
         },
         "evidence_frames": [

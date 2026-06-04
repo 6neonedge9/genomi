@@ -431,6 +431,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "genotype": "0/1",
                         "ref": "G",
                         "alt": "A",
+                        "observed_alleles": ["G", "A"],
                         "source_format": "vcf",
                         "chrom": "10",
                         "pos": 94761900,
@@ -654,6 +655,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "genotype": "0/1",
                         "ref": "G",
                         "alt": "A",
+                        "observed_alleles": ["G", "A"],
                         "source_format": "vcf",
                     }
                 ],

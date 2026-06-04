@@ -210,11 +210,11 @@
     "pharmacogenomics.preflight_pharmcat": {
       "capability": "pharmacogenomics",
       "namespace": "pharmacogenomics",
-      "description": "Inspect VCF structure for broad PharmCAT PGx calling without running PharmCAT or writing artifacts.",
+      "description": "Inspect selected Active Genome Index structure for broad PharmCAT PGx calling without running PharmCAT or writing artifacts.",
       "input_schema": {
         "type": "object",
         "properties": {
-          "vcf": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           }
         },
@@ -224,22 +224,22 @@
       "skill": "skills/pharmacogenomics/SKILL.md",
       "area": "pharmacogenomics",
       "requires": [
-        "active_genome_index_or_source_param"
+        "approved_active_genome_index"
       ],
       "produces": [
         "pharmcat_input_preflight",
         "sample_column_summary",
-        "vcf_format_summary"
+        "pharmcat_format_summary"
       ],
       "context_optional": [
-        "vcf"
+        "agi_path"
       ],
       "privacy_scope": "local_private",
       "operation_scope": "read",
       "mutating": false,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths"
+        "active_genome_index"
       ],
       "discovery_role": "focused_tool"
     },
@@ -275,7 +275,7 @@
       "mutating": false,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths"
+        "local_private_artifact"
       ],
       "discovery_role": "focused_tool"
     },
@@ -327,7 +327,7 @@
       "mutating": false,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths"
+        "local_private_artifacts"
       ],
       "discovery_role": "focused_tool"
     },
@@ -381,18 +381,18 @@
       "mutating": true,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths"
+        "local_private_artifact"
       ],
       "discovery_role": "focused_tool"
     },
     "pharmacogenomics.run_pharmcat": {
       "capability": "pharmacogenomics",
       "namespace": "pharmacogenomics",
-      "description": "Run a local PharmCAT installation for broad VCF-based PGx diplotype, phenotype, and recommendation artifacts.",
+      "description": "Run a local PharmCAT installation from an approved Active Genome Index for broad PGx diplotype, phenotype, and recommendation artifacts.",
       "input_schema": {
         "type": "object",
         "properties": {
-          "vcf": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "output_dir": {
@@ -466,7 +466,7 @@
       "skill": "skills/pharmacogenomics/SKILL.md",
       "area": "pharmacogenomics",
       "requires": [
-        "active_genome_index_or_source_param",
+        "approved_active_genome_index",
         "local_pharmcat_installation"
       ],
       "produces": [
@@ -475,9 +475,7 @@
         "sample_phenotype_evidence",
         "pgx_recommendation_artifacts"
       ],
-      "context_optional": [
-        "vcf"
-      ],
+      "context_optional": [],
       "optional_libraries": [
         "pharmcat"
       ],
@@ -487,14 +485,14 @@
       "mutating": true,
       "external_io": [],
       "data_access": [
-        "active_genome_index_or_supplied_private_paths"
+        "active_genome_index"
       ],
       "discovery_role": "focused_tool"
     },
     "pharmacogenomics.check_pharmcat": {
       "capability": "pharmacogenomics",
       "namespace": "pharmacogenomics",
-      "description": "Check local PharmCAT availability and version provenance for broad VCF-based PGx calling.",
+      "description": "Check local PharmCAT availability and version provenance for broad PGx calling from an AGI-derived PharmCAT input.",
       "input_schema": {
         "type": "object",
         "properties": {

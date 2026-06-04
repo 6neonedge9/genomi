@@ -71,13 +71,13 @@ or pharmacogene sample evidence.
   and SV/CNV-sensitive genes. Use `refresh_sources=true` only when you need a
   live comparison against the official PharmCAT Genes & Drugs page.
 - `pharmacogenomics.check_pharmcat`: check local PharmCAT availability.
-- `pharmacogenomics.preflight_pharmcat`: inspect whether a VCF/gVCF is suitable
-  for broad PharmCAT calling before running it.
+- `pharmacogenomics.preflight_pharmcat`: inspect whether the selected Active
+  Genome Index can provide a suitable PharmCAT input before running it.
 - `pharmacogenomics.prepare_outside_call_tsv` and
   `pharmacogenomics.validate_outside_call_tsv`: prepare or validate specialized
   outside-call evidence for PharmCAT.
-- `pharmacogenomics.run_pharmcat`: run broad PharmCAT calling and return
-  provenance plus parsed artifacts.
+- `pharmacogenomics.run_pharmcat`: run broad PharmCAT calling from the selected
+  Active Genome Index and return provenance plus parsed artifacts.
 - `pharmacogenomics.import_pharmcat_artifacts`: import existing PharmCAT JSON,
   TSV, matcher, phenotype, missing-position, or output-directory artifacts.
 
@@ -106,7 +106,7 @@ unexamined is a host-agent failure mode.
 
 ### pharmacogenomics.check_pharmcat
 
-Check local PharmCAT availability and version provenance for broad VCF-based PGx calling.
+Check local PharmCAT availability and version provenance for broad PGx calling from an AGI-derived PharmCAT input.
 
 **Use when**: The agent needs to know whether broad PharmCAT PGx calling is available before running pharmacogenomics.run_pharmcat.
 
@@ -166,13 +166,13 @@ Import existing PharmCAT report JSON, calls-only TSV, matcher JSON, phenotype JS
 
 ### pharmacogenomics.preflight_pharmcat
 
-Inspect VCF structure for broad PharmCAT PGx calling without running PharmCAT or writing artifacts.
+Inspect selected Active Genome Index structure for broad PharmCAT PGx calling without running PharmCAT or writing artifacts.
 
-**Use when**: The agent needs read-only VCF structure, sample-column, genotype-field, or header evidence before broad PharmCAT PGx calling.
+**Use when**: The agent needs read-only Active Genome Index structure, sample-column, genotype-field, or header evidence before broad PharmCAT PGx calling.
 
-**Why necessary**: Broad PharmCAT runs need VCF suitability checks before execution or artifact interpretation.
+**Why necessary**: Broad PharmCAT runs need input suitability checks before execution or artifact interpretation.
 
-**Result semantics**: Returns local VCF preflight facts without exposing the raw intake path; PharmCAT coverage sufficiency is judged from execution artifacts, especially missing PGx position review.
+**Result semantics**: Returns local AGI-derived preflight facts without exposing the raw AGI path; PharmCAT coverage sufficiency is judged from execution artifacts, especially missing PGx position review.
 
 ### pharmacogenomics.prepare_outside_call_tsv
 
@@ -200,9 +200,9 @@ Review medication pharmacogenomic evidence by combining ClinPGx guideline/label 
 
 ### pharmacogenomics.run_pharmcat
 
-Run a local PharmCAT installation for broad VCF-based PGx diplotype, phenotype, and recommendation artifacts.
+Run a local PharmCAT installation from an approved Active Genome Index for broad PGx diplotype, phenotype, and recommendation artifacts.
 
-**Use when**: Runs local PharmCAT to generate broad VCF-based PGx diplotype, phenotype, and recommendation artifacts.
+**Use when**: Runs local PharmCAT from the selected Active Genome Index to generate broad PGx diplotype, phenotype, and recommendation artifacts.
 
 **Why necessary**: Broad PGx diplotype and recommendation artifacts require a specialized external caller.
 

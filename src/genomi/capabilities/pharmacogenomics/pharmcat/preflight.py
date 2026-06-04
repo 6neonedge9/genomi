@@ -6,28 +6,26 @@ from typing import Any
 
 from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
-    default_agi_path,
     open_reader,
 )
 from ._common import JsonObject, _size
 
 
 def _input_preflight(
-    vcf_path: Path,
+    agi_path: str | Path,
     *,
-    agi_path: str | Path | None = None,
     scan_records: int = 100,
 ) -> JsonObject:
     # Self-sufficient: read the header and a record sample from the structured
     # Active Genome Index alone — never the intake or the canonical bgzip.
-    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    agi_path = Path(agi_path).expanduser()
     if not agi_path.exists():
         return {
             "schema": "genomi-pharmcat-input-preflight-v1",
             "status": "requires_active_genome_index",
-            "input": {"hidden_intake_source": True, "size_bytes": _size(vcf_path)},
+            "input": {"hidden_agi_path": True},
             "warnings": [
-                "No Active Genome Index for this intake source; run genomi.parse_source first so PharmCAT preflight can read the Active Genome Index.",
+                "No Active Genome Index is available; run genomi.parse_source first so PharmCAT preflight can read AGI records.",
             ],
         }
     stats: dict[str, int] = {
@@ -73,7 +71,7 @@ def _input_preflight(
         return {
             "schema": "genomi-pharmcat-input-preflight-v1",
             "status": "header_unavailable" if header is None else "scan_unavailable",
-            "input": {"hidden_intake_source": True, "size_bytes": _size(vcf_path)},
+            "input": {"hidden_agi_path": True, "size_bytes": _size(agi_path)},
             "header": _header_preflight(header) if header is not None else None,
             "warnings": [str(exc)],
         }
@@ -96,10 +94,8 @@ def _input_preflight(
         "schema": "genomi-pharmcat-input-preflight-v1",
         "status": "completed",
         "input": {
-            "hidden_intake_source": True,
-            "size_bytes": _size(vcf_path),
-            "suffix": _vcf_suffix(vcf_path),
-            "compressed": any(str(vcf_path).lower().endswith(suffix) for suffix in (".gz", ".bgz")),
+            "hidden_agi_path": True,
+            "size_bytes": _size(agi_path),
         },
         "header": _header_preflight(header),
         "scan_record_limit": scan_records,
@@ -218,11 +214,3 @@ def _contig_style(contigs: list[str]) -> str:
     if chr_prefixed == 0:
         return "bare"
     return "mixed"
-
-
-def _vcf_suffix(path: Path) -> str:
-    name = path.name.lower()
-    for suffix in (".g.vcf.gz", ".gvcf.gz", ".vcf.gz", ".vcf.bgz", ".g.vcf", ".gvcf", ".vcf"):
-        if name.endswith(suffix):
-            return suffix
-    return path.suffix

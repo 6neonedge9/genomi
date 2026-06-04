@@ -102,7 +102,7 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
         else runtime_context.active_run() is not None
     )
     personal_context_requested = (
-        any(params.get(key) for key in ("agi_path", "agi_path", "db", "matches"))
+        any(params.get(key) for key in ("agi_path", "db", "matches"))
         or include_active_requested
         or _bool(params, "include_known_active_genome_indexes", False)
     )
@@ -149,16 +149,9 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
 
 
 def _pgx_pharmcat(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading raw or parsed Active Genome Index artifacts", params=params)
+    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading parsed Active Genome Index artifacts", params=params)
     resolved = dict(params)
-    vcf = resolved.get("vcf") or reader.canonical_vcf_path()
-    if not vcf:
-        raise OperationError(
-            "explicit_vcf_required",
-            "pharmacogenomics.run_pharmcat requires an explicit PharmCAT-compatible VCF artifact.",
-        )
     return pharmcat.run_pharmcat(
-        vcf=vcf,
         agi_path=reader.agi_path,
         output_dir=resolved.get("output_dir"),
         base_filename=resolved.get("base_filename"),
@@ -183,14 +176,8 @@ def _pgx_pharmcat(params: JsonObject) -> JsonObject:
 
 
 def _pgx_pharmcat_preflight(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading raw or parsed Active Genome Index artifacts", params=params)
-    vcf = params.get("vcf") or reader.canonical_vcf_path()
-    if not vcf:
-        raise OperationError(
-            "explicit_vcf_required",
-            "pharmacogenomics.preflight_pharmcat requires an explicit PharmCAT-compatible VCF artifact.",
-        )
-    return pharmcat.pharmcat_preflight(vcf=vcf, agi_path=reader.agi_path)
+    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading parsed Active Genome Index artifacts", params=params)
+    return pharmcat.pharmcat_preflight(agi_path=reader.agi_path)
 
 
 def _pgx_pharmcat_import(params: JsonObject) -> JsonObject:

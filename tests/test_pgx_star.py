@@ -30,9 +30,9 @@ class PGxStarAlleleTests(unittest.TestCase):
     def test_cyp2c19_common_markers_infer_intermediate_metabolizer(self) -> None:
         def fake_lookup(*, rsid, **_kwargs):
             records = {
-                "rs4244285": {"genotype": "0/1", "ref": "G", "alt": "A"},
-                "rs4986893": {"genotype": "0/0", "ref": "G", "alt": "A"},
-                "rs12248560": {"genotype": "0/0", "ref": "C", "alt": "T"},
+                "rs4244285": {"genotype": "0/1", "ref": "G", "alt": "A", "observed_alleles": ["G", "A"]},
+                "rs4986893": {"genotype": "0/0", "ref": "G", "alt": "A", "observed_alleles": ["G", "G"]},
+                "rs12248560": {"genotype": "0/0", "ref": "C", "alt": "T", "observed_alleles": ["C", "C"]},
             }
             return {
                 "sample_context": {
@@ -116,19 +116,39 @@ class PGxStarAlleleTests(unittest.TestCase):
         self.assertEqual(result["marker_calls"][0]["evidence_status"], "not_observed_in_active_genome_index")
         self.assertEqual(result["called_star_alleles"], [])
 
+    def test_numeric_genotype_without_agi_observation_is_not_called(self) -> None:
+        def fake_lookup(*, rsid, **_kwargs):
+            records = {
+                "rs4244285": {"genotype": "0/1", "ref": "G", "alt": "A"},
+                "rs4986893": {"genotype": "0/0", "ref": "G", "alt": "A"},
+                "rs12248560": {"genotype": "0/0", "ref": "C", "alt": "T"},
+            }
+            return {
+                "sample_context": {"count": 1, "matches": [records[rsid]]},
+                "public_context": {},
+                "warnings": [],
+            }
+
+        with patch("genomi.capabilities.pharmacogenomics.pgx_star.variant_lookup.lookup_variant", side_effect=fake_lookup):
+            result = call_star_alleles(gene="cyp2c19")
+
+        self.assertEqual(result["marker_calls"][0]["effect_allele_count"], 0)
+        self.assertEqual(result["marker_calls"][0]["evidence_status"], "not_observed_in_active_genome_index")
+        self.assertEqual(result["called_star_alleles"], [])
+
     def test_called_star_alleles_preserve_genotype_support_status(self) -> None:
         def fake_lookup(*, rsid, **_kwargs):
             records = {
                 "rs4244285": {
-                    "sample_context": {"count": 1, "matches": [{"genotype": "0/1", "ref": "G", "alt": "A"}]},
+                    "sample_context": {"count": 1, "matches": [{"genotype": "0/1", "ref": "G", "alt": "A", "observed_alleles": ["G", "A"]}]},
                     "support_context": {
                         "genotype_support": [
                             {"support_status": "supported", "evidence_class": "exact_locus_genotype"}
                         ]
                     },
                 },
-                "rs4986893": {"sample_context": {"count": 1, "matches": [{"genotype": "GG", "ref": "G", "alt": "A"}]}},
-                "rs12248560": {"sample_context": {"count": 1, "matches": [{"genotype": "CC", "ref": "C", "alt": "T"}]}},
+                "rs4986893": {"sample_context": {"count": 1, "matches": [{"genotype": "GG", "ref": "G", "alt": "A", "observed_alleles": ["G", "G"]}]}},
+                "rs12248560": {"sample_context": {"count": 1, "matches": [{"genotype": "CC", "ref": "C", "alt": "T", "observed_alleles": ["C", "C"]}]}},
             }
             return {**records[rsid], "public_context": {}, "warnings": []}
 

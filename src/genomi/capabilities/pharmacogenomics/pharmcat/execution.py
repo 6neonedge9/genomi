@@ -3,12 +3,11 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 from ....active_genome_index.export import export_variants
-from ....active_genome_index.active_genome_index import default_agi_path
-from ....runtime.paths import run_work_dir, vcf_content_hash
+from ....active_genome_index.active_genome_index import active_genome_index_summary
+from ....runtime.libraries import manager as library_manager
 from .. import pgx_outside_calls
 from ._common import (
     JsonObject,
@@ -16,6 +15,7 @@ from ._common import (
     PHARMCAT_RUN_SCHEMA,
     PHARMCAT_STATUS_SCHEMA,
     _clean_base_filename,
+    _file_sha256,
     _tail,
     sqlite_error_cls,
 )
@@ -45,6 +45,24 @@ def pharmcat_status(
         java_command=java_command,
     )
     version = _version_probe(selected, timeout_seconds=timeout_seconds)
+    managed_install = _managed_pharmcat_install_request(
+        selected=selected,
+        mode=mode,
+        pipeline_command=pipeline_command,
+        pharmcat_jar=pharmcat_jar,
+    )
+    if managed_install is not None:
+        return {
+            "schema": PHARMCAT_STATUS_SCHEMA,
+            "ok": False,
+            **managed_install,
+            "availability": selected,
+            "version_probe": version,
+            "traceability": {
+                "source_tool": "PharmCAT",
+                "definition_and_guideline_sources": PHARMCAT_DOCS,
+            },
+        }
     available = selected.get("mode") != "unavailable"
     version_ok = version.get("status") in {"completed", "skipped"}
     status = "available" if available else "tool_unavailable"
@@ -61,63 +79,23 @@ def pharmcat_status(
     }
 
 
-def pharmcat_preflight(*, vcf: str | Path, agi_path: str | Path | None = None) -> JsonObject:
-    """Inspect VCF structure needed for broad PharmCAT PGx calling without running PharmCAT."""
+def pharmcat_preflight(*, agi_path: str | Path) -> JsonObject:
+    """Inspect AGI records against broad PharmCAT PGx input requirements."""
 
-    vcf_path = Path(vcf).expanduser()
-    if not vcf_path.exists():
+    agi = Path(agi_path).expanduser()
+    if not agi.exists():
         return {
             "schema": "genomi-pharmcat-preflight-v1",
             "ok": False,
-            "status": "missing_vcf",
-            "input": {"hidden_intake_source": True},
-            "message": "Select an Active Genome Index or provide a genome source path.",
+            "status": "missing_active_genome_index",
+            "input": {"hidden_agi_path": True},
+            "message": "Select or parse an Active Genome Index before running PharmCAT.",
             "traceability": {
                 "source_tool": "PharmCAT",
                 "definition_and_guideline_sources": PHARMCAT_DOCS,
             },
         }
-    if agi_path is not None:
-        with tempfile.TemporaryDirectory(prefix="genomi-pharmcat-preflight-") as tmp:
-            out_dir = Path(tmp)
-            prepared = _prepare_pharmcat_input(
-                vcf_path=vcf_path,
-                agi_path=agi_path,
-                out_dir=out_dir,
-                base_filename="preflight",
-                input_preflight={"status": "skipped_agi_export_preflight"},
-                selected_mode="preflight",
-                dry_run=False,
-            )
-            surfaced = _surface_vcf_normalization(prepared)
-            if not prepared.get("remediated") or not prepared.get("input_path"):
-                return {
-                    "schema": "genomi-pharmcat-preflight-v1",
-                    "ok": False,
-                    "status": prepared.get("status") or "active_genome_index_input_unavailable",
-                    "input_preflight": {"status": "skipped_input_unavailable"},
-                    "vcf_normalization": surfaced,
-                    "traceability": {
-                        "source_tool": "PharmCAT",
-                        "definition_and_guideline_sources": PHARMCAT_DOCS,
-                    },
-                }
-            preflight = _input_preflight(
-                Path(str(prepared["input_path"])),
-                agi_path=agi_path,
-            )
-            return {
-                "schema": "genomi-pharmcat-preflight-v1",
-                "ok": preflight.get("status") == "completed",
-                "status": preflight.get("status") or "unknown",
-                "input_preflight": preflight,
-                "vcf_normalization": surfaced,
-                "traceability": {
-                    "source_tool": "PharmCAT",
-                    "definition_and_guideline_sources": PHARMCAT_DOCS,
-                },
-            }
-    preflight = _input_preflight(vcf_path)
+    preflight = _input_preflight(agi)
     return {
         "schema": "genomi-pharmcat-preflight-v1",
         "ok": preflight.get("status") == "completed",
@@ -132,8 +110,7 @@ def pharmcat_preflight(*, vcf: str | Path, agi_path: str | Path | None = None) -
 
 def run_pharmcat(
     *,
-    vcf: str | Path,
-    agi_path: str | Path | None = None,
+    agi_path: str | Path,
     output_dir: str | Path | None = None,
     base_filename: str | None = None,
     mode: str = "auto",
@@ -154,23 +131,23 @@ def run_pharmcat(
     dry_run: bool = False,
     timeout_seconds: int = 7200,
 ) -> JsonObject:
-    """Run a local PharmCAT installation against a VCF and summarize artifacts."""
+    """Run a local PharmCAT installation against a selected Active Genome Index."""
 
-    vcf_path = Path(vcf).expanduser()
-    if not vcf_path.exists():
+    agi = Path(agi_path).expanduser()
+    if not agi.exists():
         return {
             **_base_result(
                 ok=False,
-                status="missing_vcf",
-                vcf_path=vcf_path,
+                status="missing_active_genome_index",
+                agi_path=agi,
                 output_dir=output_dir,
                 base_filename=base_filename,
-                message="Select an Active Genome Index or provide a genome source path.",
+                message="Select or parse an Active Genome Index before running PharmCAT.",
             ),
         }
 
-    out_dir = Path(output_dir).expanduser() if output_dir else run_work_dir(vcf_path) / "pharmcat"
-    base = _selected_base_filename(base_filename, vcf_path)
+    out_dir = Path(output_dir).expanduser() if output_dir else _default_output_dir(agi)
+    base = _selected_base_filename(base_filename, agi)
     selected = _select_execution_mode(
         mode=mode,
         pipeline_command=pipeline_command,
@@ -189,51 +166,82 @@ def run_pharmcat(
     # genomic data.
     if outside_call_file and not outside_call_validation.get("ok"):
         return {
-            **_base_result(ok=False, status="invalid_outside_call_file", vcf_path=vcf_path, output_dir=out_dir, base_filename=base),
+            **_base_result(ok=False, status="invalid_outside_call_file", agi_path=agi, output_dir=out_dir, base_filename=base),
             "outside_call_validation": outside_call_validation,
             "warnings": list(outside_call_validation.get("warnings") or []),
         }
+    if outside_call_file and selected.get("mode") == "pipeline":
+        return {
+            **_base_result(
+                ok=False,
+                status="outside_call_file_not_supported_in_pipeline_mode",
+                agi_path=agi,
+                output_dir=out_dir,
+                base_filename=base,
+                message=(
+                    "The selected PharmCAT pipeline command cannot receive an explicit outside_call_file. "
+                    "Use jar mode for explicit outside calls, or place pipeline-discovered outside-call files "
+                    "beside the PharmCAT input outside this operation."
+                ),
+            ),
+            "outside_call_validation": outside_call_validation,
+            "availability": selected,
+            "execution": {"version_probe": version},
+        }
     if selected.get("mode") in {"unavailable", None}:
-        return _unavailable_result(
-            vcf_path=vcf_path,
+        managed_install = _managed_pharmcat_install_request(
+            selected=selected,
+            mode=mode,
+            pipeline_command=pipeline_command,
+            pharmcat_jar=pharmcat_jar,
+        )
+        if managed_install is not None:
+            return {
+                **_base_result(
+                    ok=False,
+                    status=managed_install["status"],
+                    agi_path=agi,
+                    output_dir=out_dir,
+                    base_filename=base,
+                ),
+                **managed_install,
+                "input_preflight": {"schema": "genomi-pharmcat-input-preflight-v1", "status": "skipped_missing_library"},
+                "outside_call_validation": outside_call_validation,
+                "pharmcat_input": {"status": "skipped_missing_library", "path_hidden": True},
+                "availability": selected,
+                "execution": {"version_probe": version},
+            }
+        return _explicit_pharmcat_unavailable_result(
+            agi_path=agi,
             output_dir=out_dir,
             base_filename=base,
             selected=selected,
-            sample=sample,
-            sample_file=sample_file,
-            sample_metadata=sample_metadata,
             input_preflight={"schema": "genomi-pharmcat-input-preflight-v1", "status": "skipped_tool_unavailable"},
             outside_call_validation=outside_call_validation,
-            vcf_normalization={"status": "skipped_tool_unavailable", "intake_path_hidden": True},
+            version=version,
         )
 
-    input_preflight = _input_preflight(vcf_path, agi_path=agi_path)
-    vcf_normalization = _prepare_pharmcat_input(
-        vcf_path=vcf_path,
-        agi_path=agi_path,
+    input_preflight = _input_preflight(agi)
+    pharmcat_input = _prepare_pharmcat_input(
+        agi_path=agi,
         out_dir=out_dir,
         base_filename=base,
-        input_preflight=input_preflight,
-        selected_mode=selected.get("mode"),
         dry_run=dry_run,
     )
-    surfaced_vcf_normalization = _surface_vcf_normalization(vcf_normalization)
-    # Genomi contract: never read the raw intake post-parse. If the Active
-    # Active Genome Index export failed or no Active Genome Index exists, surface a
-    # structured error instead of silently falling back to the user's intake VCF.
-    if not vcf_normalization.get("remediated") or not vcf_normalization.get("input_path"):
-        prep_status = str(vcf_normalization.get("status") or "active_genome_index_input_unavailable")
+    surfaced_pharmcat_input = _surface_pharmcat_input(pharmcat_input)
+    if not pharmcat_input.get("remediated") or not pharmcat_input.get("input_path"):
+        prep_status = str(pharmcat_input.get("status") or "active_genome_index_input_unavailable")
         return {
-            **_base_result(ok=False, status=prep_status, vcf_path=vcf_path, output_dir=out_dir, base_filename=base),
+            **_base_result(ok=False, status=prep_status, agi_path=agi, output_dir=out_dir, base_filename=base),
             "input_preflight": input_preflight,
-            "vcf_normalization": surfaced_vcf_normalization,
+            "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
-            "warnings": list(vcf_normalization.get("warnings") or []),
+            "warnings": list(pharmcat_input.get("warnings") or []),
         }
-    matcher_vcf = Path(vcf_normalization["input_path"])
+    pharmcat_input_path = Path(pharmcat_input["input_path"])
     command = _build_command(
         selected=selected,
-        vcf_path=matcher_vcf,
+        pharmcat_input_path=pharmcat_input_path,
         output_dir=out_dir,
         base_filename=base,
         sample=sample,
@@ -249,10 +257,10 @@ def run_pharmcat(
     )
     warnings = _command_warnings(selected=selected, outside_call_file=outside_call_file)
     warnings.extend(outside_call_validation.get("warnings") or [])
-    warnings.extend(vcf_normalization.get("warnings") or [])
+    warnings.extend(pharmcat_input.get("warnings") or [])
     if command is None:
         return _unavailable_result(
-            vcf_path=vcf_path,
+            agi_path=agi,
             output_dir=out_dir,
             base_filename=base,
             selected=selected,
@@ -261,21 +269,19 @@ def run_pharmcat(
             sample_metadata=sample_metadata,
             input_preflight=input_preflight,
             outside_call_validation=outside_call_validation,
-            vcf_normalization=surfaced_vcf_normalization,
+            pharmcat_input=surfaced_pharmcat_input,
         )
 
-    private_paths = [vcf_path]
-    if matcher_vcf != vcf_path:
-        private_paths.append(matcher_vcf)
+    command_redactions = {pharmcat_input_path: "[derived_pharmcat_input]"}
     for private_value in (outside_call_file, sample_file, sample_metadata):
         if private_value:
-            private_paths.append(Path(private_value).expanduser())
-    redacted_command = _redact_command(command, private_paths)
+            command_redactions[Path(private_value).expanduser()] = "[hidden_private_path]"
+    redacted_command = _redact_command(command, command_redactions)
     if dry_run:
         return {
-            **_base_result(ok=True, status="planned", vcf_path=vcf_path, output_dir=out_dir, base_filename=base),
+            **_base_result(ok=True, status="planned", agi_path=agi, output_dir=out_dir, base_filename=base),
             "input_preflight": input_preflight,
-            "vcf_normalization": surfaced_vcf_normalization,
+            "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
             "execution": {
                 "mode": selected["mode"],
@@ -300,9 +306,9 @@ def run_pharmcat(
         )
     except subprocess.TimeoutExpired as exc:
         return {
-            **_base_result(ok=False, status="timeout", vcf_path=vcf_path, output_dir=out_dir, base_filename=base),
+            **_base_result(ok=False, status="timeout", agi_path=agi, output_dir=out_dir, base_filename=base),
             "input_preflight": input_preflight,
-            "vcf_normalization": surfaced_vcf_normalization,
+            "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
             "execution": {
                 "mode": selected["mode"],
@@ -328,12 +334,12 @@ def run_pharmcat(
         **_base_result(
             ok=completed.returncode == 0,
             status="completed" if completed.returncode == 0 else "failed",
-            vcf_path=vcf_path,
+            agi_path=agi,
             output_dir=out_dir,
             base_filename=base,
         ),
         "input_preflight": input_preflight,
-        "vcf_normalization": vcf_normalization,
+        "pharmcat_input": surfaced_pharmcat_input,
         "outside_call_validation": outside_call_validation,
         "execution": {
             "mode": selected["mode"],
@@ -363,14 +369,63 @@ def _select_execution_mode(
     jar = _resolve_jar(pharmcat_jar)
     java = _resolve_executable(java_command, default_name="java")
     if requested == "pipeline":
-        return {"mode": "pipeline", "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
+        selected_mode = "pipeline" if pipeline else "unavailable"
+        return {"mode": selected_mode, "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
     if requested == "jar":
-        return {"mode": "jar", "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
+        selected_mode = "jar" if jar and java else "unavailable"
+        return {"mode": selected_mode, "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
     if pipeline:
         return {"mode": "pipeline", "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
     if jar and java:
         return {"mode": "jar", "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
     return {"mode": "unavailable", "pipeline_command": pipeline, "pharmcat_jar": jar, "java_command": java}
+
+
+def _managed_pharmcat_install_request(
+    *,
+    selected: JsonObject,
+    mode: str,
+    pipeline_command: str | Path | None,
+    pharmcat_jar: str | Path | None,
+) -> JsonObject | None:
+    requested = str(mode or "auto").strip().lower()
+    if selected.get("mode") != "unavailable":
+        return None
+    if requested == "pipeline" or pipeline_command or pharmcat_jar:
+        return None
+    request = library_manager.ensure(
+        "pharmcat",
+        intent="broad pharmacogenomic calling with PharmCAT",
+        operation="pharmacogenomics.run_pharmcat",
+    )
+    return request if request.get("status") == "requires_library_install" else None
+
+
+def _explicit_pharmcat_unavailable_result(
+    *,
+    agi_path: Path,
+    output_dir: Path,
+    base_filename: str,
+    selected: JsonObject,
+    input_preflight: JsonObject,
+    outside_call_validation: JsonObject,
+    version: JsonObject,
+) -> JsonObject:
+    return {
+        **_base_result(
+            ok=False,
+            status="explicit_pharmcat_executable_unavailable",
+            agi_path=agi_path,
+            output_dir=output_dir,
+            base_filename=base_filename,
+            message="The requested PharmCAT executable or jar override is unavailable.",
+        ),
+        "input_preflight": input_preflight,
+        "pharmcat_input": {"status": "skipped_tool_unavailable", "path_hidden": True},
+        "outside_call_validation": outside_call_validation,
+        "availability": selected,
+        "execution": {"version_probe": version},
+    }
 
 
 def _version_probe(selected: JsonObject, *, timeout_seconds: int) -> JsonObject:
@@ -426,7 +481,7 @@ def _version_text(stdout: str | None, stderr: str | None) -> str | None:
 def _build_command(
     *,
     selected: JsonObject,
-    vcf_path: Path,
+    pharmcat_input_path: Path,
     output_dir: Path,
     base_filename: str,
     sample: str | None,
@@ -442,7 +497,7 @@ def _build_command(
 ) -> list[str] | None:
     mode = selected.get("mode")
     if mode == "pipeline":
-        command = [str(selected["pipeline_command"]), str(vcf_path), "-o", str(output_dir), "-bf", base_filename]
+        command = [str(selected["pipeline_command"]), str(pharmcat_input_path), "-o", str(output_dir), "-bf", base_filename]
         if include_reporter_json:
             command.append("-reporterJson")
         if include_calls_only_tsv:
@@ -453,7 +508,7 @@ def _build_command(
         command = [str(selected["java_command"])]
         if max_memory:
             command.append(f"-Xmx{max_memory}")
-        command.extend(["-jar", str(selected["pharmcat_jar"]), "-vcf", str(vcf_path), "-o", str(output_dir), "-bf", base_filename])
+        command.extend(["-jar", str(selected["pharmcat_jar"]), "-vcf", str(pharmcat_input_path), "-o", str(output_dir), "-bf", base_filename])
         if include_reporter_json:
             command.append("-reporterJson")
         if include_calls_only_tsv:
@@ -494,7 +549,7 @@ def _command_warnings(*, selected: JsonObject, outside_call_file: str | Path | N
 
 def _unavailable_result(
     *,
-    vcf_path: Path,
+    agi_path: Path,
     output_dir: Path,
     base_filename: str,
     selected: JsonObject,
@@ -503,19 +558,19 @@ def _unavailable_result(
     sample_metadata: str | Path | None,
     input_preflight: JsonObject,
     outside_call_validation: JsonObject,
-    vcf_normalization: JsonObject | None = None,
+    pharmcat_input: JsonObject | None = None,
 ) -> JsonObject:
-    example = ["pharmcat_pipeline", "[hidden_intake_source]", "-o", str(output_dir), "-bf", base_filename, "-reporterJson", "-reporterCallsOnlyTsv"]
+    example = ["pharmcat_pipeline", "[derived_pharmcat_input]", "-o", str(output_dir), "-bf", base_filename, "-reporterJson", "-reporterCallsOnlyTsv"]
     if sample:
         example.extend(["-s", str(sample)])
     if sample_file:
-        example.extend(["-S", "[hidden_intake_source]"])
+        example.extend(["-S", "[hidden_private_path]"])
     if sample_metadata:
-        example.extend(["-sm", "[hidden_intake_source]"])
+        example.extend(["-sm", "[hidden_private_path]"])
     return {
-        **_base_result(ok=False, status="tool_unavailable", vcf_path=vcf_path, output_dir=output_dir, base_filename=base_filename),
+        **_base_result(ok=False, status="tool_unavailable", agi_path=agi_path, output_dir=output_dir, base_filename=base_filename),
         "input_preflight": input_preflight,
-        "vcf_normalization": vcf_normalization or {"status": "not_evaluated"},
+        "pharmcat_input": pharmcat_input or {"status": "not_evaluated"},
         "outside_call_validation": outside_call_validation,
         "availability": selected,
         "execution": {
@@ -527,12 +582,9 @@ def _unavailable_result(
 
 def _prepare_pharmcat_input(
     *,
-    vcf_path: Path,
-    agi_path: str | Path | None,
+    agi_path: str | Path,
     out_dir: Path,
     base_filename: str,
-    input_preflight: JsonObject,
-    selected_mode: str | None,
     dry_run: bool,
 ) -> JsonObject:
     """Produce a PharmCAT-compatible VCF derived from the Active Genome Index.
@@ -545,17 +597,15 @@ def _prepare_pharmcat_input(
     intake VCF is never handed to the matcher.
     """
 
-    resolved_agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    resolved_agi_path = Path(agi_path).expanduser()
     if not resolved_agi_path.exists():
         return {
             "status": "requires_active_genome_index",
             "remediated": False,
             "method": "active_genome_index_export",
-            "intake_path_hidden": True,
+            "path_hidden": True,
             "reason": (
-                "No Active Genome Index found for the intake source; PharmCAT "
-                "input must be derived from the Active Genome Index. "
-                "Run genomi.parse_source first."
+                "No Active Genome Index was found. Run genomi.parse_source first."
             ),
             "next_actions": [
                 {
@@ -564,6 +614,9 @@ def _prepare_pharmcat_input(
                 }
             ],
         }
+    readiness = _pharmcat_agi_export_readiness(resolved_agi_path)
+    if readiness.get("status") != "available":
+        return readiness
 
     if dry_run:
         return {
@@ -571,7 +624,7 @@ def _prepare_pharmcat_input(
             "remediated": True,
             "method": "active_genome_index_export",
             "input_path": str(out_dir / f"{base_filename}.pharmcat-input.vcf"),
-            "intake_path_hidden": True,
+            "path_hidden": True,
             "reason": "dry_run skipped the Active Genome Index export write; matcher would read the Active Genome Index-derived VCF below.",
             "would_apply": {
                 "chrom_style": "chr",
@@ -584,9 +637,8 @@ def _prepare_pharmcat_input(
     normalized_path = out_dir / f"{base_filename}.pharmcat-input.vcf"
     try:
         export = export_variants(
-            vcf_path,
+            resolved_agi_path,
             normalized_path,
-            agi_path=resolved_agi_path,
             pass_only=True,
             primary_contigs_only=True,
             chrom_style="chr",
@@ -596,7 +648,7 @@ def _prepare_pharmcat_input(
             "status": "failed",
             "remediated": False,
             "method": "active_genome_index_export",
-            "intake_path_hidden": True,
+            "path_hidden": True,
             "reason": f"Active Genome Index export for the PharmCAT matcher failed: {exc}",
             "warnings": [
                 "PharmCAT-compatible VCF could not be derived from the Active Genome Index; "
@@ -608,7 +660,7 @@ def _prepare_pharmcat_input(
             "status": "no_pharmcat_vcf_records",
             "remediated": False,
             "method": "active_genome_index_export",
-            "intake_path_hidden": True,
+            "path_hidden": True,
             "manifest_path": export.get("manifest_path"),
             "candidate_records": export.get("candidate_records"),
             "exported_records": export.get("exported_records"),
@@ -625,7 +677,7 @@ def _prepare_pharmcat_input(
         "remediated": True,
         "method": "active_genome_index_export",
         "input_path": str(normalized_path),
-        "intake_path_hidden": True,
+        "path_hidden": True,
         "manifest_path": export.get("manifest_path"),
         "filters_applied": {
             "chrom_style": "chr",
@@ -641,45 +693,67 @@ def _prepare_pharmcat_input(
     }
 
 
-def _surface_vcf_normalization(vcf_normalization: JsonObject) -> JsonObject:
-    """Return a copy of a vcf_normalization dict safe to surface in MCP/CLI output.
-
-    The internal record carries `input_path` so the command builder can plumb
-    the real intake file into the PharmCAT matcher. That same field, however,
-    leaks the user's intake source (which may be any of the supported genome
-    source formats — VCF, gVCF, BAM, 23andMe, AncestryDNA — by the time it
-    reaches normalization). Whenever `intake_path_hidden` is set, redact the
-    path before returning the dict to the agent.
-    """
-
-    if not vcf_normalization.get("intake_path_hidden"):
-        return dict(vcf_normalization)
-    surfaced = dict(vcf_normalization)
-    surfaced["input_path"] = "[hidden_intake_source]"
+def _surface_pharmcat_input(pharmcat_input: JsonObject) -> JsonObject:
+    surfaced = dict(pharmcat_input)
+    if surfaced.get("path_hidden"):
+        surfaced["input_path"] = "[derived_pharmcat_input]"
     return surfaced
+
+
+def _pharmcat_agi_export_readiness(agi_path: Path) -> JsonObject:
+    try:
+        summary = active_genome_index_summary(agi_path)
+    except (OSError, ValueError, sqlite_error_cls()) as exc:
+        return {
+            "status": "active_genome_index_input_unavailable",
+            "remediated": False,
+            "method": "active_genome_index_export",
+            "path_hidden": True,
+            "reason": f"Active Genome Index readiness could not be read for PharmCAT export: {exc}",
+        }
+    stats = summary.get("stats") if isinstance(summary.get("stats"), dict) else {}
+    reference_records = int(stats.get("reference_records") or 0)
+    no_call_records = int(stats.get("no_call_records") or stats.get("array_no_call_records") or 0)
+    if reference_records or no_call_records:
+        return {
+            "status": "position_aware_pharmcat_export_required",
+            "remediated": False,
+            "method": "active_genome_index_export",
+            "path_hidden": True,
+            "reference_records": reference_records,
+            "no_call_records": no_call_records,
+            "reason": (
+                "Broad PharmCAT calling is blocked because the current PharmCAT export writes variant calls only. "
+                "This Active Genome Index contains callable reference or no-call rows that broad PGx calling must not discard."
+            ),
+            "warnings": [
+                "Use targeted PGx evidence until Genomi has a PharmCAT position-aware AGI export that preserves reference and no-call loci."
+            ],
+        }
+    return {"status": "available"}
 
 
 def _base_result(
     *,
     ok: bool,
     status: str,
-    vcf_path: Path,
+    agi_path: Path,
     output_dir: str | Path | None,
     base_filename: str | None,
     message: str | None = None,
 ) -> JsonObject:
-    out_dir = Path(output_dir).expanduser() if output_dir else run_work_dir(vcf_path) / "pharmcat"
+    out_dir = Path(output_dir).expanduser() if output_dir else _default_output_dir(agi_path)
     payload: JsonObject = {
         "schema": PHARMCAT_RUN_SCHEMA,
         "ok": ok,
         "status": status,
         "input": {
-            "role": "active_genome_index_vcf_for_local_pharmcat",
-            "hidden_intake_source": True,
-            "content_sha256": vcf_content_hash(vcf_path),
+            "role": "active_genome_index_for_local_pharmcat",
+            "hidden_agi_path": True,
+            "content_sha256": _file_sha256(agi_path),
         },
         "output_dir": str(out_dir.expanduser().resolve(strict=False)),
-        "base_filename": _selected_base_filename(base_filename, vcf_path),
+        "base_filename": _selected_base_filename(base_filename, agi_path),
         "traceability": {
             "source_tool": "PharmCAT",
             "definition_and_guideline_sources": PHARMCAT_DOCS,
@@ -712,20 +786,24 @@ def _resolve_jar(value: str | Path | None) -> str | None:
     return str(managed) if managed.exists() else None
 
 
-def _redact_command(command: list[str], private_paths: list[Path]) -> list[str]:
-    hidden = set()
-    for private_path in private_paths:
-        hidden.add(str(private_path))
-        hidden.add(str(private_path.expanduser().resolve(strict=False)))
-    return ["[hidden_intake_source]" if item in hidden else item for item in command]
+def _redact_command(command: list[str], redactions: dict[Path, str]) -> list[str]:
+    hidden: dict[str, str] = {}
+    for private_path, placeholder in redactions.items():
+        hidden[str(private_path)] = placeholder
+        hidden[str(private_path.expanduser().resolve(strict=False))] = placeholder
+    return [hidden.get(item, item) for item in command]
 
 
-def _selected_base_filename(base_filename: str | None, vcf_path: Path) -> str:
-    return _clean_base_filename(base_filename) or _default_base_filename(vcf_path)
+def _default_output_dir(agi_path: Path) -> Path:
+    return agi_path.expanduser().resolve(strict=False).parent / "pharmcat"
 
 
-def _default_base_filename(vcf_path: Path) -> str:
-    content_hash = vcf_content_hash(vcf_path)
+def _selected_base_filename(base_filename: str | None, agi_path: Path) -> str:
+    return _clean_base_filename(base_filename) or _default_base_filename(agi_path)
+
+
+def _default_base_filename(agi_path: Path) -> str:
+    content_hash = _file_sha256(agi_path)
     if content_hash:
         return f"active-genome-index-{content_hash[:12]}"
     return "active-genome-index"

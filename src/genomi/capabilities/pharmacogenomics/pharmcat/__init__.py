@@ -45,7 +45,6 @@ from .preflight import (  # noqa: F401
     _is_indel_record,
     _is_symbolic_alt,
     _pharmcat_requirement_checks,
-    _vcf_suffix,
 )
 from .record_payloads import (  # noqa: F401
     _call_finding_text,
@@ -97,7 +96,7 @@ from .execution import (  # noqa: F401
     _resolve_jar,
     _select_execution_mode,
     _selected_base_filename,
-    _surface_vcf_normalization,
+    _surface_pharmcat_input,
     _unavailable_result,
     _version_command,
     _version_probe,
