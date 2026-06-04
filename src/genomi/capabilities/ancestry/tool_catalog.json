@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-tool-catalog-fragment-v1",
   "capabilities": {
     "ancestry": {
       "title": "Ancestry Reference-Panel Context",

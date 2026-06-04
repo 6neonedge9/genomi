@@ -198,12 +198,12 @@ def _source_local_ordering_policy() -> dict[str, Any]:
     }
 
 
-def _source_coverage(coverage_state: str, *, consulted: list[str], unavailable: list[dict[str, str]]) -> dict[str, Any]:
+def _source_coverage(coverage_status: str, *, consulted: list[str], unavailable: list[dict[str, str]]) -> dict[str, Any]:
     consulted_unique = sorted(set(item for item in consulted if item))
     return {
-        "coverage_state": coverage_state,
+        "coverage_status": coverage_status,
         "sources_consulted": consulted_unique,
-        "sources_consulted_and_empty": consulted_unique if coverage_state == "in_scope_empty" else [],
+        "sources_consulted_and_empty": consulted_unique if coverage_status == "in_scope_empty" else [],
         "sources_consulted_but_unavailable": unavailable,
         "sources_not_integrated": NOT_INTEGRATED_SOURCES,
     }
@@ -211,7 +211,7 @@ def _source_coverage(coverage_state: str, *, consulted: list[str], unavailable: 
 
 def _empty_response(
     *,
-    coverage_state: str,
+    coverage_status: str,
     status: str,
     query: dict[str, Any],
     empty_reason: str,
@@ -220,7 +220,7 @@ def _empty_response(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "coverage_state": coverage_state,
+        "coverage_status": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -228,7 +228,7 @@ def _empty_response(
         "resolved_entities": resolved_entities or [],
         "resolution_candidates": resolution_candidates or [],
         "empty_reason": empty_reason,
-        "source_coverage": source_coverage or _source_coverage(coverage_state, consulted=[], unavailable=[]),
+        "source_coverage": source_coverage or _source_coverage(coverage_status, consulted=[], unavailable=[]),
     }
 
 

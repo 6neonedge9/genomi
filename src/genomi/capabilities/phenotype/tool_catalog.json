@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-tool-catalog-fragment-v1",
   "capabilities": {
     "phenotype-gene": {
       "title": "Phenotype, Disease, and Candidate Gene",

@@ -43,7 +43,7 @@ def _retrieve_hpa_cell_type_markers(
         fetch_json=fetch_json,
         fetch_bytes=fetch_bytes,
     )
-    coverage_status = result.get("coverage_state") or result.get("coverage_status") or "out_of_scope_for_input"
+    coverage_status = result.get("coverage_status") or "out_of_scope_for_input"
     if coverage_status != "data_returned":
         return _cell_marker_empty(
             status=result.get("status") or "no_canonical_markers",

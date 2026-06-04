@@ -86,7 +86,7 @@ def retrieve_gene_relationships(
         raise ValueError("controlled entity relationship retrieval requires entity_name or entity_id")
     if query_type and query_type not in SUPPORTED_ENTITY_TYPES:
         return _empty_response(
-            coverage_state="out_of_scope_for_input",
+            coverage_status="out_of_scope_for_input",
             status="unsupported_entity_type",
             query=_query_payload(query_name, query_id, query_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
             empty_reason=f"Unsupported entity_type: {query_type}",
@@ -94,7 +94,7 @@ def retrieve_gene_relationships(
     unsupported_sources = [source for source in requested_sources if source not in SUPPORTED_SOURCES]
     if unsupported_sources:
         return _empty_response(
-            coverage_state="out_of_scope_for_input",
+            coverage_status="out_of_scope_for_input",
             status="unsupported_source",
             query=_query_payload(query_name, query_id, query_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
             empty_reason=f"Unsupported source(s): {', '.join(unsupported_sources)}",
@@ -105,7 +105,7 @@ def retrieve_gene_relationships(
         allowed_source = SOURCE_BY_ENTITY_TYPE.get(inferred_type)
         if allowed_source and allowed_source not in requested_sources:
             return _empty_response(
-                coverage_state="out_of_scope_for_input",
+                coverage_status="out_of_scope_for_input",
                 status="source_entity_type_mismatch",
                 query=_query_payload(query_name, query_id, inferred_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
                 empty_reason=f"Requested sources do not support entity_type {inferred_type}.",
@@ -133,7 +133,7 @@ def retrieve_gene_relationships(
         )
         if resolution["state"] != "resolved":
             return _empty_response(
-                coverage_state="out_of_scope_for_input",
+                coverage_status="out_of_scope_for_input",
                 status=resolution["state"],
                 query=_query_payload(query_name, query_id, inferred_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
                 empty_reason=resolution["reason"],
@@ -209,10 +209,10 @@ def retrieve_gene_relationships(
         records = _filter_records(records, relationship_types=relationship_types or [], evidence_classes=evidence_classes or [])
         records = _sort_records_source_local(records)
         records = records[:return_limit]
-        coverage_state = "data_returned" if records else "in_scope_empty"
+        coverage_status = "data_returned" if records else "in_scope_empty"
         relationship_summary = _relationship_summary(records)
         payload: dict[str, Any] = {
-            "coverage_state": coverage_state,
+            "coverage_status": coverage_status,
             "status": "gene_relationships_found" if records else "no_gene_relationship_records",
             "agent_decision_required": True,
             "query": _query_payload(query_name, query_id, inferred_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
@@ -224,7 +224,7 @@ def retrieve_gene_relationships(
                 "supported_entity_types": SUPPORTED_ENTITY_TYPES,
                 "supported_sources": SUPPORTED_SOURCES,
             },
-            "source_coverage": _source_coverage(coverage_state, consulted=consulted, unavailable=unavailable),
+            "source_coverage": _source_coverage(coverage_status, consulted=consulted, unavailable=unavailable),
             "telemetry": {
                 "tool_family": "controlled_entity_relationships",
                 "returned_answer": False,
@@ -246,7 +246,7 @@ def retrieve_gene_relationships(
         return payload
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _empty_response(
-            coverage_state="out_of_scope_for_input",
+            coverage_status="out_of_scope_for_input",
             status="source_unavailable",
             query=_query_payload(query_name, query_id, inferred_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
             empty_reason="A declared controlled-entity source was unavailable.",

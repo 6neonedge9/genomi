@@ -15,7 +15,6 @@ PHARMCAT_GENES_DRUGS_URL = "https://pharmcat.clinpgx.org/Genes-Drugs/"
 PHARMCAT_CYP2D6_URL = "https://pharmcat.clinpgx.org/using/Calling-CYP2D6/"
 PHARMCAT_OUTSIDE_CALL_URL = "https://pharmcat.clinpgx.org/using/Outside-Call-Format/"
 PHARMCAT_FAQ_URL = "https://pharmcat.clinpgx.org/faqs/"
-PGX_GENE_REQUIREMENTS_SCHEMA = "genomi-pgx-gene-requirements-catalog-v1"
 PGX_GENE_REQUIREMENTS_RESOURCE = ("data", "gene_requirements.json")
 PHARMCAT_NAMED_MATCHER_SECTION = "genes-pharmcat-will-attempt-to-match"
 PHARMCAT_OUTSIDE_CALLER_SECTION = "genes-handled-by-outside-callers"
@@ -27,8 +26,13 @@ def gene_requirements_catalog() -> JsonObject:
     if _GENE_REQUIREMENTS_CACHE is None:
         resource = importlib_resources.files(__package__).joinpath(*PGX_GENE_REQUIREMENTS_RESOURCE)
         payload = json.loads(resource.read_text(encoding="utf-8"))
-        if payload.get("schema") != PGX_GENE_REQUIREMENTS_SCHEMA:
-            raise RuntimeError("PGx gene requirement data has an unsupported schema")
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("named_allele_matcher_genes"), list)
+            or not isinstance(payload.get("outside_call_genes"), dict)
+            or not isinstance(payload.get("special_gene_requirements"), dict)
+        ):
+            raise RuntimeError("PGx gene requirement data must define gene requirement groups")
         _GENE_REQUIREMENTS_CACHE = payload
     return dict(_GENE_REQUIREMENTS_CACHE)
 

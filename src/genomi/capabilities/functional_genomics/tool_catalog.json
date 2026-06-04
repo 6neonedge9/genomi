@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-tool-catalog-fragment-v1",
   "capabilities": {
     "functional-genomics": {
       "title": "Functional Genomics Perturbation Evidence",

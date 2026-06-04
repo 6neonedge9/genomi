@@ -104,7 +104,6 @@
       ]
     }
   },
-  "schema": "genomi-pgx-gene-requirements-catalog-v1",
   "source_documents": [
     {
       "supports": [

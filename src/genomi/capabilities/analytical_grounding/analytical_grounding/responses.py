@@ -32,7 +32,6 @@ def _pathway_response(
 ) -> dict[str, Any]:
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -60,7 +59,6 @@ def _pathway_empty(
 ) -> dict[str, Any]:
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -85,7 +83,6 @@ def _cell_marker_response(
     deduped = _dedupe_markers(markers)
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -113,7 +110,6 @@ def _cell_marker_empty(
 ) -> dict[str, Any]:
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -129,7 +125,6 @@ def _cell_marker_empty(
 def _region_empty(*, status: str, coverage_status: str, query: dict[str, Any], empty_reason: str, source_coverage: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -167,7 +162,6 @@ def _library_install_response(
     payload: dict[str, Any] = {
         **request,
         "coverage_status": "out_of_scope_for_input",
-        "coverage_state": "out_of_scope_for_input",
         "agent_decision_required": True,
         "query": query,
         "capability": capability,
@@ -231,7 +225,6 @@ def _source_coverage(coverage_status: str, *, consulted: list[str], unavailable:
     consulted_unique = sorted(set(item for item in consulted if item))
     return {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "sources_consulted": consulted_unique,
         "sources_consulted_and_empty": consulted_unique if coverage_status == "in_scope_empty" else [],
         "sources_consulted_but_unavailable": unavailable,

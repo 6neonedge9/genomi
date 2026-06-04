@@ -23,7 +23,9 @@ from _genomi_runtime_helpers import (
 
 class GenomiRuntimeCatalogTests(GenomiRuntimeTestCase):
     def test_tool_catalog_groups_and_backs_registered_operations(self) -> None:
-        self.assertEqual(TOOL_CATALOG["schema"], "genomi-tool-catalog-v1")
+        self.assertIsInstance(TOOL_CATALOG["schema_fragments"], dict)
+        self.assertIsInstance(TOOL_CATALOG["capability_order"], list)
+        self.assertIsInstance(TOOL_CATALOG["namespace_order"], list)
         registered_names = {operation.name for operation in OPERATIONS}
         self.assertEqual(set(TOOL_CATALOG_OPERATIONS), registered_names)
 

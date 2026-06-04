@@ -22,7 +22,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
         )
 
         self.assertEqual(result["coverage_status"], "data_returned")
-        self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["source_coverage"]["coverage_status"], "data_returned")
         self.assertEqual(result["pathway"]["id"], "R-HSA-70635")
         self.assertEqual({member["gene_symbol"] for member in result["members"]}, {"OTC", "CPS1"})
         self.assertNotIn("answer", result)

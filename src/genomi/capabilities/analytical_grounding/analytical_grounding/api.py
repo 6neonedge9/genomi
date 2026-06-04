@@ -380,7 +380,6 @@ def retrieve_region_feature_annotation(
     status = "feature_annotations_found" if coverage_status == "data_returned" else "no_feature_annotations"
     response: dict[str, Any] = {
         "coverage_status": coverage_status,
-        "coverage_state": coverage_status,
         "status": status,
         "agent_decision_required": True,
         "query": {**query, "assembly": assembly_label},

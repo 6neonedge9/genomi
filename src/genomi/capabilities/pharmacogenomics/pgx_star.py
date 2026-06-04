@@ -9,7 +9,6 @@ from ...active_genome_index.observations import observed_alleles_from_record
 from ..variant import variant_lookup
 
 JsonObject = dict[str, Any]
-PGX_MARKER_DEFINITION_SCHEMA = "genomi-pgx-marker-definition-catalog-v1"
 PGX_MARKER_DEFINITION_RESOURCE = ("data", "star_marker_definitions.json")
 _STAR_CATALOG_CACHE: dict[str, Any] | None = None
 
@@ -19,8 +18,8 @@ def marker_definition_catalog() -> dict[str, Any]:
     if _STAR_CATALOG_CACHE is None:
         resource = importlib_resources.files(__package__).joinpath(*PGX_MARKER_DEFINITION_RESOURCE)
         payload = json.loads(resource.read_text(encoding="utf-8"))
-        if payload.get("schema") != PGX_MARKER_DEFINITION_SCHEMA or not isinstance(payload.get("definition_sets"), list):
-            raise RuntimeError("PGx marker definition data has an unsupported schema")
+        if not isinstance(payload, dict) or not isinstance(payload.get("definition_sets"), list):
+            raise RuntimeError("PGx marker definition data must define definition_sets")
         _STAR_CATALOG_CACHE = payload
     return dict(_STAR_CATALOG_CACHE)
 

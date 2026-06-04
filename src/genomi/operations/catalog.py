@@ -33,8 +33,14 @@ CATALOG_FRAGMENT_PACKAGES = (
 
 def load_tool_catalog() -> JsonObject:
     payload = _read_json_resource(CATALOG_BASE_PACKAGE, CATALOG_BASE_FILENAME)
-    if not isinstance(payload, dict) or payload.get("schema") != "genomi-tool-catalog-v1":
-        raise RuntimeError(f"{CATALOG_BASE_FILENAME} has an unsupported schema")
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{CATALOG_BASE_FILENAME} must be a JSON object")
+    if not isinstance(payload.get("capability_order"), list):
+        raise RuntimeError(f"{CATALOG_BASE_FILENAME} capability_order must be an array")
+    if not isinstance(payload.get("namespace_order"), list):
+        raise RuntimeError(f"{CATALOG_BASE_FILENAME} namespace_order must be an array")
+    if not isinstance(payload.get("schema_fragments"), dict):
+        raise RuntimeError(f"{CATALOG_BASE_FILENAME} schema_fragments must be an object")
 
     capabilities: dict[str, Any] = {}
     operations: dict[str, Any] = {}
@@ -66,8 +72,8 @@ def _merge_catalog_fragment(
     capabilities: dict[str, Any],
     operations: dict[str, Any],
 ) -> None:
-    if not isinstance(fragment, dict) or fragment.get("schema") != "genomi-tool-catalog-fragment-v1":
-        raise RuntimeError(f"{package}:{CATALOG_FRAGMENT_FILENAME} has an unsupported schema")
+    if not isinstance(fragment, dict):
+        raise RuntimeError(f"{package}:{CATALOG_FRAGMENT_FILENAME} must be a JSON object")
     fragment_capabilities = fragment.get("capabilities")
     fragment_operations = fragment.get("operations")
     if not isinstance(fragment_capabilities, dict):

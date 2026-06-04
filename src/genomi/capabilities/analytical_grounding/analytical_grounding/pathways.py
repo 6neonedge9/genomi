@@ -48,7 +48,7 @@ def _retrieve_reactome_pathway_members(
         reactome_api_base=reactome_api_base,
         fetch_json=fetch_json,
     )
-    coverage_status = relationship_result.get("coverage_state") or relationship_result.get("coverage_status") or "out_of_scope_for_input"
+    coverage_status = relationship_result.get("coverage_status") or "out_of_scope_for_input"
     if coverage_status != "data_returned":
         return _pathway_empty(
             status=relationship_result.get("status") or "no_pathway_members",

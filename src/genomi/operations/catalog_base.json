@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-tool-catalog-v1",
   "schema_fragments": {
     "properties": {
       "local_path": {

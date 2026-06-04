@@ -41,7 +41,7 @@ without asking Genomi to choose the interpretation.
 - These are retrieval verbs over declared source coverage.
 - Do not use them as experimental protocol recommendations, workflow templates,
   or free-text biological interpretation.
-- Treat `coverage_status` / `coverage_state` literally:
+- Treat `coverage_status` literally:
   - `data_returned`: declared source records were returned.
   - `in_scope_empty`: the input was in declared scope, and no records matched.
   - `out_of_scope_for_input`: the source, assembly, identifier, or required

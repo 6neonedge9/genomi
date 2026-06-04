@@ -27,8 +27,10 @@ class ImplementationCatalogTests(unittest.TestCase):
 
         marker_catalog = pgx_star.marker_definition_catalog()
         requirement_catalog = pgx_requirements.gene_requirements_catalog()
-        self.assertEqual(marker_catalog["schema"], "genomi-pgx-marker-definition-catalog-v1")
-        self.assertEqual(requirement_catalog["schema"], "genomi-pgx-gene-requirements-catalog-v1")
+        self.assertTrue(marker_catalog["curation_scope"].strip())
+        self.assertTrue(marker_catalog["definition_sets"])
+        self.assertTrue(requirement_catalog["curation_scope"].strip())
+        self.assertTrue(requirement_catalog["named_allele_matcher_genes"])
         self.assertEqual(pgx_star.implemented_marker_definition_genes(), ["CYP2C19"])
         self.assertIn("CYP2D6", requirement_catalog["outside_call_genes"])
 

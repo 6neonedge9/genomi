@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-tool-catalog-fragment-v1",
   "capabilities": {
     "variant-evidence": {
       "title": "Variant and Public Evidence",
