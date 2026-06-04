@@ -58,7 +58,6 @@ def _sequence_analyze(params: JsonObject) -> JsonObject:
             max_matches=_int(params, "max_matches", 10),
         )
     return {
-        "schema": "genomi-sequence-analysis-v1",
         "status": "completed",
         "query": {"mode": mode, "sequence_length": len(sequence_text)},
         "analyses": analyses,

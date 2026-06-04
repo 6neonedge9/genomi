@@ -4,8 +4,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-SEQUENCE_SCHEMA_VERSION = "genomi-sequence-utility-v1"
-
 CODON_TABLE = {
     "TTT": "F",
     "TTC": "F",
@@ -119,7 +117,6 @@ def translate_sequence(sequence: str, *, frame: int = 1, strand: str = "forward"
     codons = [translated_dna[index : index + 3] for index in range(offset, len(translated_dna) - 2, 3)]
     amino_acids = "".join(CODON_TABLE.get(codon, "X") for codon in codons)
     return {
-        "schema": SEQUENCE_SCHEMA_VERSION,
         "operation": "translate",
         "status": "completed",
         "query": {"frame": frame, "strand": strand, "sequence_length": len(dna)},
@@ -145,7 +142,6 @@ def find_orfs(sequence: str, *, min_aa: int = 30, strand: str = "both") -> dict[
             orfs.extend(_orfs_in_frame(seq, original_length=len(dna), frame=frame, strand=strand_name, min_aa=min_aa))
     orfs.sort(key=lambda item: (-item["aa_length"], item["strand"], item["frame"], item["start"]))
     return {
-        "schema": SEQUENCE_SCHEMA_VERSION,
         "operation": "find_orfs",
         "status": "completed",
         "query": {"sequence_length": len(dna), "min_aa": min_aa, "strand": strand},
@@ -185,7 +181,6 @@ def find_restriction_sites(
         ]
         results.append({"name": name, "motif": motif, "site_count": len(matches), "sites": matches})
     return {
-        "schema": SEQUENCE_SCHEMA_VERSION,
         "operation": "restriction_sites",
         "status": "completed",
         "query": {"sequence_length": len(dna), "enzyme_count": len(requested)},
@@ -215,7 +210,6 @@ def kozak_context(sequence: str, *, start_pos: int | None = None) -> dict[str, A
             }
         )
     return {
-        "schema": SEQUENCE_SCHEMA_VERSION,
         "operation": "kozak_context",
         "status": "completed",
         "query": {"sequence_length": len(dna), "start_pos": start_pos},
@@ -251,9 +245,8 @@ def check_primers(
                         "reverse_binding_start": r_hit + 1,
                         "product_size": r_hit + len(reverse_binding) - f_hit,
                     }
-                )
+            )
     return {
-        "schema": SEQUENCE_SCHEMA_VERSION,
         "operation": "check_primers",
         "status": "completed",
         "primers": primer_rows,
@@ -284,7 +277,6 @@ def match_reference_records(
     matches.sort(key=lambda item: (-float(item["query_coverage"]), item["record_id"], item["strand"], item["start"]))
     emitted = matches[: max(0, int(max_matches or 0))]
     return {
-        "schema": "genomi-sequence-reference-match-v1",
         "operation": "match_reference_records",
         "status": "matched" if emitted else "no_reference_match",
         "query": {
