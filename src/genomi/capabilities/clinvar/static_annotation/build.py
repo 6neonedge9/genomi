@@ -614,7 +614,7 @@ def fetch_static_population(
     sync_shared: bool = True,
     dataset: str = "gnomad_r4",
     genome_build: str = "GRCh38",
-    api_url: str = "https://gnomad.broadinstitute.org/api",
+    api_url: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
     run_db = Path(evidence_db)
@@ -633,7 +633,7 @@ def fetch_static_population(
             alt,
             dataset=dataset,
             genome_build=genome_build,
-            api_url=api_url,
+            api_url=api_url or str(library_manager.get("gnomad").source.api_base or ""),
             force=force,
         )
     except RuntimeError as exc:
