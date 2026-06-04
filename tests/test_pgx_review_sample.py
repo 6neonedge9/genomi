@@ -194,7 +194,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
@@ -237,7 +236,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
@@ -294,7 +292,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": True,
             "status": "completed",
             "gene": "CYP2C19",

@@ -12,8 +12,6 @@ from .. import pgx_outside_calls
 from ._common import (
     JsonObject,
     PHARMCAT_DOCS,
-    PHARMCAT_RUN_SCHEMA,
-    PHARMCAT_STATUS_SCHEMA,
     _clean_base_filename,
     _file_sha256,
     _tail,
@@ -53,7 +51,6 @@ def pharmcat_status(
     )
     if managed_install is not None:
         return {
-            "schema": PHARMCAT_STATUS_SCHEMA,
             "ok": False,
             **managed_install,
             "availability": selected,
@@ -67,7 +64,6 @@ def pharmcat_status(
     version_ok = version.get("status") in {"completed", "skipped"}
     status = "available" if available else "tool_unavailable"
     return {
-        "schema": PHARMCAT_STATUS_SCHEMA,
         "ok": bool(available and version_ok),
         "status": status,
         "availability": selected,
@@ -85,7 +81,6 @@ def pharmcat_preflight(*, agi_path: str | Path) -> JsonObject:
     agi = Path(agi_path).expanduser()
     if not agi.exists():
         return {
-            "schema": "genomi-pharmcat-preflight-v1",
             "ok": False,
             "status": "missing_active_genome_index",
             "input": {"hidden_agi_path": True},
@@ -97,7 +92,6 @@ def pharmcat_preflight(*, agi_path: str | Path) -> JsonObject:
         }
     preflight = _input_preflight(agi)
     return {
-        "schema": "genomi-pharmcat-preflight-v1",
         "ok": preflight.get("status") == "completed",
         "status": preflight.get("status") or "unknown",
         "input_preflight": preflight,
@@ -158,7 +152,7 @@ def run_pharmcat(
     outside_call_validation = (
         pgx_outside_calls.validate_outside_call_file(outside_call_file)
         if outside_call_file
-        else {"schema": pgx_outside_calls.OUTSIDE_CALL_SCHEMA, "ok": True, "status": "not_supplied"}
+        else {"ok": True, "status": "not_supplied"}
     )
     # Early gates that don't require touching the Active Genome Index or the intake source:
     # tool availability and outside-call validity. Surface these first so the
@@ -205,7 +199,7 @@ def run_pharmcat(
                     base_filename=base,
                 ),
                 **managed_install,
-                "input_preflight": {"schema": "genomi-pharmcat-input-preflight-v1", "status": "skipped_missing_library"},
+                "input_preflight": {"status": "skipped_missing_library"},
                 "outside_call_validation": outside_call_validation,
                 "pharmcat_input": {"status": "skipped_missing_library", "path_hidden": True},
                 "availability": selected,
@@ -216,7 +210,7 @@ def run_pharmcat(
             output_dir=out_dir,
             base_filename=base,
             selected=selected,
-            input_preflight={"schema": "genomi-pharmcat-input-preflight-v1", "status": "skipped_tool_unavailable"},
+            input_preflight={"status": "skipped_tool_unavailable"},
             outside_call_validation=outside_call_validation,
             version=version,
         )
@@ -744,7 +738,6 @@ def _base_result(
 ) -> JsonObject:
     out_dir = Path(output_dir).expanduser() if output_dir else _default_output_dir(agi_path)
     payload: JsonObject = {
-        "schema": PHARMCAT_RUN_SCHEMA,
         "ok": ok,
         "status": status,
         "input": {

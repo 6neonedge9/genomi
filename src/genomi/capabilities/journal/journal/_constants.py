@@ -4,8 +4,6 @@ from typing import Any
 
 JsonObject = dict[str, Any]
 
-JOURNAL_SCHEMA = "genomi-journal-v1"
-MEMORY_ARTIFACT_SCHEMA = "genomi-journal-memory-artifact-v1"
 JOURNAL_DB_NAME = "journal.sqlite"
 JOURNALS_DIR_NAME = "journals"
 

@@ -9,7 +9,6 @@ from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
 
-SCREEN_EXPERIMENT_RECORDS_SCHEMA_VERSION = "genomi-functional-genomics-perturbation-records-v1"
 BIOGRID_ORCS_API_BASE = "https://orcsws.thebiogrid.org"
 BIOGRID_ORCS_ACCESS_KEY_ENV = "BIOGRID_ORCS_ACCESS_KEY"
 DEPMAP_CRISPR_GENE_EFFECT_URL_ENV = "DEPMAP_CRISPR_GENE_EFFECT_URL"

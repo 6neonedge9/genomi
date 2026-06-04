@@ -15,7 +15,6 @@ from ....runtime.handoff import evidence_context
 from ._base import (
     CANCER_TERMS,
     RARE_DISEASE_TERMS,
-    RISK_INVESTIGATION_SCHEMA_VERSION,
     RISK_INVESTIGATION_TYPES,
     _clean_text,
     _normalize_genes,
@@ -135,7 +134,6 @@ def prepare_risk_investigation(
         ),
     )
     payload = {
-        "schema": RISK_INVESTIGATION_SCHEMA_VERSION,
         "status": "completed",
         "workflow_area": "research",
         "context_scope": context_scope,

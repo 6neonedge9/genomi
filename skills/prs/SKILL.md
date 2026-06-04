@@ -127,7 +127,7 @@ Apply a published polygenic score to an approved Active Genome Index and return 
 
 **Example prompts**: Calculate PGS000001 for my Active Genome Index. Apply this local scoring file to my GRCh38 genome.
 
-**Result semantics**: Uses schema genomi-prs-score-v1. Output is a raw weighted score and QC unless explicit calibration parameters are supplied. Do not phrase it as diagnosis, absolute disease risk, ethnicity, or clinical actionability.
+**Result semantics**: Output is a raw weighted score and QC unless explicit calibration parameters are supplied. Do not phrase it as diagnosis, absolute disease risk, ethnicity, or clinical actionability.
 
 ### prs.check_score_overlap
 

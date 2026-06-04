@@ -558,14 +558,13 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         args = parser.parse_args(["call", "genomi.list_resources", "--debug-raw"])
         payload = args.func(args)
 
-        self.assertEqual(payload["schema"], "genomi-resource-catalog-v1")
+        self.assertEqual(set(payload), {"context_policy", "host_response_profiles", "local_runtime", "resource_groups", "source_catalog", "toolset_disclosure"})
         self.assertIn("resource_groups", payload)
         # debug-raw bypasses present_result entirely.
         self.assertNotIn("disclosure", payload)
 
     def test_mcp_tool_call_returns_in_progress_background_job_after_timeout(self) -> None:
         running_job = {
-            "schema": background_jobs.JOB_SCHEMA,
             "job_id": "runtime-list-resources-test",
             "operation": "genomi.list_resources",
             "status": "running",
@@ -600,18 +599,16 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertIn("in_progress:poll_runtime_check_background_job", payload["evidence_envelope"]["guidance"])
         self.assertEqual(payload["evidence_envelope"]["next_actions"][0]["operation"], "genomi.check_background_job")
 
-    def test_operation_error_json_uses_evidence_envelope_schema(self) -> None:
+    def test_operation_error_json_uses_evidence_envelope_contract(self) -> None:
         payload = OperationError("invalid_params", "missing required input").to_json(operation="genomi.list_resources")
 
         self.assertEqual(payload["status"], "invalid_params")
-        self.assertEqual(payload["evidence_envelope"]["schema"], "genomi-evidence-envelope-v1")
         self.assertEqual(payload["evidence_envelope"]["operation"], "genomi.list_resources")
         self.assertEqual(payload["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertIn("invalid_input:fix_params_before_retry", payload["evidence_envelope"]["guidance"])
 
-    def test_mcp_failed_background_job_uses_evidence_envelope_schema(self) -> None:
+    def test_mcp_failed_background_job_uses_evidence_envelope_contract(self) -> None:
         failed_job = {
-            "schema": background_jobs.JOB_SCHEMA,
             "job_id": "runtime-list-resources-failed",
             "operation": "genomi.list_resources",
             "status": "failed",
@@ -636,14 +633,12 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertTrue(response["result"]["isError"])
         payload = json.loads(response["result"]["content"][0]["text"])
         self.assertEqual(payload["status"], "background_job_failed")
-        self.assertEqual(payload["evidence_envelope"]["schema"], "genomi-evidence-envelope-v1")
         self.assertEqual(payload["evidence_envelope"]["operation"], "genomi.list_resources")
         self.assertIn("operation_failed:inspect_error_before_retry", payload["evidence_envelope"]["guidance"])
 
     def test_mcp_tool_call_presents_background_result_when_completed_quickly(self) -> None:
         raw_result = call_operation("genomi.list_resources")
         completed_job = {
-            "schema": background_jobs.JOB_SCHEMA,
             "job_id": "runtime-list-resources-done",
             "operation": "genomi.list_resources",
             "status": "completed",
@@ -676,7 +671,6 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         background_jobs.write_job(
             job_path,
             {
-                "schema": background_jobs.JOB_SCHEMA,
                 "job_id": job_id,
                 "operation": "genomi.list_resources",
                 "params": {},
@@ -715,7 +709,6 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         background_jobs.write_job(
             background_jobs.jobs_dir() / f"{job_id}.json",
             {
-                "schema": background_jobs.JOB_SCHEMA,
                 "job_id": job_id,
                 "operation": "genomi.list_resources",
                 "params": {},
@@ -737,7 +730,6 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         # A live pid (this process) so the pid probe alone never marks it dead;
         # the staleness path is what these tests exercise.
         job = {
-            "schema": background_jobs.JOB_SCHEMA,
             "job_id": job_id,
             "operation": "genomi.list_resources",
             "params": {},

@@ -6,30 +6,25 @@ from genomi.interfaces.presentation import present_result
 
 
 class PgxPresentationTests(unittest.TestCase):
-    def test_review_medication_compacts_schema_bearing_subobjects(self) -> None:
+    def test_review_medication_compacts_structured_subobjects(self) -> None:
         presented = present_result(
             "pharmacogenomics.review_medication",
             {
-                "schema": "genomi-pgx-medication-review-v1",
                 "ok": True,
                 "status": "completed",
                 "query": {"drug": "clopidogrel", "rsid": "rs4244285"},
                 "evidence_state": {
-                    "schema": "genomi-pgx-evidence-state-v1",
                     "status": "source_and_sample_evidence_present",
                     "has_public_pgx_evidence": True,
                     "has_sample_evidence": True,
                 },
                 "interpretation_readiness": {
-                    "schema": "genomi-pgx-interpretation-readiness-v1",
                     "status": "ready_for_agent_synthesis",
                 },
                 "pgx_evidence_scope": {
-                    "schema": "genomi-pgx-evidence-scope-v1",
                     "model": "bounded_target_scoped_evidence",
                     "status": "bounded_evidence_ready",
                     "scope": {
-                        "schema": "genomi-pgx-scope-v1",
                         "sample_context_requested": True,
                     },
                 },

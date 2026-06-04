@@ -243,7 +243,6 @@ def _genomi_install(params: JsonObject) -> JsonObject:
     if install_result.get("status") == "completed":
         refreshed, errors = _refresh_public_retrieval_indexes()
         reindex_result = {
-            "schema": "genomi-retrieval-index-refresh",
             "status": "completed" if refreshed and not errors else ("partial" if refreshed else "not_refreshed"),
             "refreshed_indexes": refreshed,
             "errors": errors,
@@ -257,7 +256,6 @@ def _genomi_install(params: JsonObject) -> JsonObject:
 
     return {
         "status": "completed",
-        "schema": "genomi-install-result-v1",
         "genomi_home": str(genomi_data_root()),
         "libraries_requested": libraries,
         "install_scope": _genomi_install_scope(),
@@ -616,7 +614,6 @@ def _reparse_stale_genomes() -> JsonObject:
         except Exception as exc:  # pragma: no cover - best effort per genome
             skipped.append({**entry, "reason": f"launch_failed: {exc}"})
     return {
-        "schema": "genomi-reparse-scan-v1",
         "effective_schema_version": effective_schema,
         "checked": checked,
         "stale": len(launched) + len(skipped),
@@ -778,7 +775,6 @@ def _genomi_search_indexes(params: JsonObject) -> JsonObject:
             private_search_status = {"status": "included"}
 
     return {
-        "schema": "genomi-retrieval-index-search",
         "status": "completed",
         "query": {
             "source": source_filter,

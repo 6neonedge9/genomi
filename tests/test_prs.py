@@ -121,10 +121,8 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["pgs_id"], "PGS001987")
         self.assertEqual(result["results"][0]["mapped_trait_ids"], "EFO_0007825")
         semantic_context = result["semantic_context"]
-        self.assertEqual(semantic_context["schema"], "genomi-semantic-retrieval")
         self.assertEqual(
             {
-                "schema",
                 "raw_query",
                 "host_expansions",
                 "host_entities",

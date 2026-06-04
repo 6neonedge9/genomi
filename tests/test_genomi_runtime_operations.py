@@ -113,7 +113,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
 
         with mock.patch(
             "genomi.operations.pgx.review_medication_interaction",
-            return_value={"schema": "genomi-pgx-medication-review-v1", "status": "completed"},
+            return_value={"status": "completed"},
         ) as review:
             call_operation("pharmacogenomics.review_medication", {"drug": "clopidogrel"})
 
@@ -152,7 +152,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
 
                 with mock.patch(
                     "genomi.operations.pgx.review_medication_interaction",
-                    return_value={"schema": "genomi-pgx-medication-review-v1", "status": "completed"},
+                    return_value={"status": "completed"},
                 ) as review:
                     call_operation("pharmacogenomics.review_medication", {"drug": "clopidogrel"})
 
@@ -193,7 +193,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
 
                 with mock.patch(
                     "genomi.operations.pgx.review_medication_interaction",
-                    return_value={"schema": "genomi-pgx-medication-review-v1", "status": "completed"},
+                    return_value={"status": "completed"},
                 ) as review:
                     call_operation(
                         "pharmacogenomics.review_medication",

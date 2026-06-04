@@ -150,7 +150,7 @@ Estimate qualitative reference-panel similarity for an approved GRCh37 or GRCh38
 
 **Example prompts**: What 1000 Genomes reference cluster is my Active Genome Index closest to?
 
-**Result semantics**: Uses schema genomi-ancestry-population-context-v1. The interpretation is qualitative reference-panel similarity only and must never be phrased as ethnicity, nationality, race, tribe, caste, religion, or personal identity.
+**Result semantics**: The interpretation is qualitative reference-panel similarity only and must never be phrased as ethnicity, nationality, race, tribe, caste, religion, or personal identity.
 
 ### ancestry.list_reference_panels
 

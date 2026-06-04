@@ -24,7 +24,6 @@ class PGxOutsideCallTests(unittest.TestCase):
             result = validate_outside_call_file(outside)
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["schema"], "genomi-pgx-outside-call-validation-v1")
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["summary"]["genes"], ["CYP2D6"])
         self.assertEqual(result["rows"][0]["gene"], "CYP2D6")
@@ -116,7 +115,7 @@ class PGxOutsideCallTests(unittest.TestCase):
             result = prepare_outside_call_file(optitype, caller_format="optitype", output_file=output)
 
             self.assertTrue(result["ok"])
-            self.assertEqual(result["schema"], "genomi-pgx-outside-call-prepare-v1")
+            self.assertEqual(result["status"], "completed")
             self.assertEqual(result["caller_format"], "optitype")
             self.assertEqual(result["summary"]["genes"], ["HLA-A", "HLA-B"])
             self.assertEqual(result["rows"][0]["diplotype"], "*32:01/*68:03")

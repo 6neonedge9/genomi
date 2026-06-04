@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .constants import (
     CHEMBL_API_BASE,
-    CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION,
     CONTROLLED_ID_PREFIXES,
     DEFAULT_SPECIES,
     DEFAULT_TAXON_ID,

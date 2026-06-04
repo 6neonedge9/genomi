@@ -351,7 +351,6 @@ class ActiveGenomeIndexContractFixtureMixin:
         (panel_dir / reference_panels.PANEL_STATS_NAME).write_text(
             json.dumps(
                 {
-                    "schema": "genomi-ancestry-panel-stats-v1",
                     "sample_count": 2,
                     "marker_count": len(LOCUS_MODEL),
                     "component_count": 1,
@@ -367,7 +366,6 @@ class ActiveGenomeIndexContractFixtureMixin:
         (panel_dir / reference_panels.MANIFEST_NAME).write_text(
             json.dumps(
                 {
-                    "schema": "genomi-ancestry-reference-panel-v1",
                     "panel_id": ancestry_source_context.panel_id_for_build("GRCh37"),
                     "title": ancestry_source_context.PANEL_TITLE_GRCH37,
                     "library": ancestry_source_context.panel_library_for_build("GRCh37"),

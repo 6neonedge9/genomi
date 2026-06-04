@@ -54,7 +54,6 @@ def _write_synthetic_panel(panel_dir: Path) -> None:
     (panel_dir / "manifest.json").write_text(
         json.dumps(
             {
-                "schema": "genomi-ancestry-reference-panel-v1",
                 "panel_id": source_context.PANEL_ID_GRCH38,
                 "library": source_context.PANEL_LIBRARY_GRCH38,
                 "genome_build": "GRCh38",

@@ -15,8 +15,8 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["schema"], "genomi-controlled-entity-relationships-v1")
         self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["status"], "gene_relationships_found")
         self.assertTrue(result["agent_decision_required"])
         self.assertNotIn("answer", result)
         self.assertEqual(result["resolved_entities"][0]["entity_type"], "go_term")

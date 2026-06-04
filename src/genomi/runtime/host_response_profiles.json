@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-host-response-profiles-v1",
   "default_profile": "eli5",
   "profiles": [
     {

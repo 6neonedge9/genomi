@@ -21,7 +21,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
     def test_normalize_phenotypes_extracts_hpo_ids_and_terms(self) -> None:
         result = normalize_phenotypes(text="Ataxia; seizures; HP:0001250", terms=["microcephaly"])
 
-        self.assertEqual(result["schema"], "genomi-phenotype-normalization-v1")
         self.assertEqual(result["status"], "completed")
         self.assertIn("HP:0001250", result["hpo_ids"])
         normalized = [item["normalized"] for item in result["normalized_phenotypes"]]

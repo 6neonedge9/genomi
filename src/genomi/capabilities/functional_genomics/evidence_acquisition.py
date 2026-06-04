@@ -94,7 +94,6 @@ def acquire_perturbation_source_records(
     verified = [record for record in records if record["verification"]["status"] in {"verified", "partially_verified"}]
     direct_ready = [record for record in records if record["verification"]["direct_perturbation_support"]]
     return {
-        "schema": "genomi-perturbation-source-acquisition-v1",
         "ok": True,
         "status": _acquisition_status(records, direct_ready, verified),
         "query": query,
@@ -185,7 +184,6 @@ def extract_screen_table_evidence_records(
         limit=limit,
     )
     return {
-        "schema": "genomi-perturbation-table-evidence-records-v1",
         "ok": True,
         "status": acquisition["status"],
         "table": {

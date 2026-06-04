@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-SOURCE_CATALOG_SCHEMA_VERSION = "genomi-evidence-source-catalog-v1"
-
 SOURCE_HOME_URLS = {
     "clinvar": "https://www.ncbi.nlm.nih.gov/clinvar/",
     "gnomad": "https://gnomad.broadinstitute.org/",
@@ -380,7 +378,6 @@ def evidence_source_catalog(
         and (source_id is None or source_id == source["source_id"])
     ]
     return {
-        "schema": SOURCE_CATALOG_SCHEMA_VERSION,
         "filters": {"target_type": target_type, "source_id": source_id},
         "summary": {"source_count": len(sources)},
         "sources": sources,

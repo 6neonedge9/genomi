@@ -35,8 +35,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-ENVELOPE_SCHEMA_VERSION = "genomi-evidence-envelope-v1"
-
 
 # --- typed states ----------------------------------------------------------
 
@@ -140,7 +138,6 @@ LIBRARY_STATES = (
 
 @dataclass(frozen=True)
 class EvidenceEnvelope:
-    schema: str
     operation: str
     query_scope: dict[str, Any]
     personal_context: dict[str, Any]
@@ -157,7 +154,6 @@ class EvidenceEnvelope:
         # Reading order: identity → verdict → guidance → context → details.
         # Headline lets a one-glance preview convey the verdict.
         return {
-            "schema": self.schema,
             "operation": self.operation,
             "headline": f"{self.operation}: {self.finding_state} · {self.answer_readiness}",
             "finding_state": self.finding_state,
@@ -251,7 +247,6 @@ def envelope(
     """
 
     env = EvidenceEnvelope(
-        schema=ENVELOPE_SCHEMA_VERSION,
         operation=operation,
         query_scope=dict(query_scope or {}),
         personal_context=dict(personal_context or _personal_context()),

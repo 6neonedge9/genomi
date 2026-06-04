@@ -44,7 +44,7 @@ class RiskInvestigationTests(unittest.TestCase):
                 investigation_type="cancer_risk",
             )
 
-        self.assertEqual(result["schema"], "genomi-risk-investigation-v1")
+        self.assertEqual(result["status"], "completed")
         self.assertEqual(result["context_scope"], "public_only")
         self.assertEqual(result["target"]["investigation_type"], "cancer_risk")
         self.assertEqual(result["active_genome_index_evidence"]["status"], "not_selected")
@@ -54,8 +54,8 @@ class RiskInvestigationTests(unittest.TestCase):
         self.assertIn("nci_cancer_genetics", source_ids)
         self.assertIn("cosmic_cancer_gene_census", source_ids)
         self.assertIn("BRCA1", result["source_plan"]["safe_external_targets"]["genes"])
-        self.assertEqual(result["evidence_view"]["schema"], "genomi-candidate-evidence-view-v1")
         self.assertEqual(result["evidence_view"]["task_profile"]["profile_id"], "rare_disease_cancer_risk_investigation")
+        self.assertEqual(result["evidence_view"]["coverage_state"], "data_returned")
         self.assertTrue(result["evidence_view"]["agent_decision_required"])
         self.assertEqual(result["top_observed_candidate"], "gene:BRCA1")
         self.assertEqual(result["candidate_matrix"][0]["candidate_id"], "gene:BRCA1")
@@ -110,7 +110,6 @@ class RiskInvestigationTests(unittest.TestCase):
         self.assertEqual(active["result_state"], "no_candidate_inventory_hits_in_selected_evidence_groups")
         # The unified envelope encodes the scoped-result and disallowed-negative.
         env = result["evidence_envelope"]
-        self.assertEqual(env["schema"], "genomi-evidence-envelope-v1")
         self.assertEqual(env["operation"], "phenotype.plan_risk_investigation")
         self.assertEqual(env["finding_state"], "not_observed_in_consulted_scope")
         self.assertEqual(env["answer_readiness"], "scoped_answer_only")

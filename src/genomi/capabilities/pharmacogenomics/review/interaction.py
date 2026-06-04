@@ -68,10 +68,9 @@ def capability_inventory(*, check_pharmcat: bool = False, pharmcat_timeout_secon
     pharmcat_status = (
         pharmcat.pharmcat_status(timeout_seconds=pharmcat_timeout_seconds)
         if check_pharmcat
-        else {"schema": "genomi-pharmcat-status-v1", "status": "not_checked", "operation": "pharmacogenomics.check_pharmcat"}
+        else {"status": "not_checked", "operation": "pharmacogenomics.check_pharmcat"}
     )
     return {
-        "schema": "genomi-pgx-capabilities-v1",
         "status": "completed",
         "capability_axes": {
             "public_source_evidence": {
@@ -491,7 +490,6 @@ def review_medication_interaction(
         source_availability=source_availability,
     )
     payload = {
-        "schema": "genomi-pgx-medication-review-v1",
         "ok": status == "completed",
         "status": status,
         "unanswered_answer_components": unanswered_answer_components,
@@ -535,7 +533,6 @@ def review_medication_interaction(
             "star_allele_calls": star_allele_calls,
         },
         "evidence_matrix": {
-            "schema": "genomi-pgx-evidence-matrix-v1",
             "item_count": len(evidence_items),
             "role_counts": _evidence_item_role_counts(evidence_items),
             "traceability": evidence_matrix_traceability,

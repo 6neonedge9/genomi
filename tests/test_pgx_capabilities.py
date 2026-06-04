@@ -11,7 +11,6 @@ class PGxCapabilityInventoryTests(unittest.TestCase):
     def test_capability_inventory_lists_pgx_evidence_paths(self) -> None:
         result = capability_inventory()
 
-        self.assertEqual(result["schema"], "genomi-pgx-capabilities-v1")
         self.assertEqual(result["status"], "completed")
         self.assertIn("public_source_evidence", result["capability_axes"])
         self.assertIn("targeted_sample_evidence", result["capability_axes"])
@@ -36,7 +35,7 @@ class PGxCapabilityInventoryTests(unittest.TestCase):
     def test_capability_inventory_can_check_pharmcat(self) -> None:
         with patch(
             "genomi.capabilities.pharmacogenomics.review.pharmcat.pharmcat_status",
-            return_value={"schema": "genomi-pharmcat-status-v1", "status": "available", "ok": True},
+            return_value={"status": "available", "ok": True},
         ) as status:
             result = capability_inventory(check_pharmcat=True, pharmcat_timeout_seconds=3)
 

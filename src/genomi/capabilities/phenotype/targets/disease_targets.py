@@ -8,7 +8,6 @@ from typing import Any
 from ....retrieval import semantic as retrieval_semantic
 
 from ._base import (
-    DISEASE_DRUG_TARGET_RETRIEVAL_SCHEMA_VERSION,
     OPENTARGETS_DISEASE_SEARCH_LIMIT,
     OPENTARGETS_GRAPHQL_API_URL,
     _as_list,
@@ -481,7 +480,6 @@ def _disease_drug_target_response(
     raw_candidate_count: int = 0,
 ) -> dict[str, Any]:
     return {
-        "schema": DISEASE_DRUG_TARGET_RETRIEVAL_SCHEMA_VERSION,
         "status": status,
         "mode": mode,
         "coverage_status": coverage_state,

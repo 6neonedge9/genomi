@@ -40,7 +40,6 @@ def _set_reference_job(index: Path, *, status: str, pid: int | None, fresh_heart
     job_path = background_jobs.jobs_dir() / f"{job_id}.json"
     now = utc_now()
     job = {
-        "schema": background_jobs.JOB_SCHEMA,
         "job_id": job_id,
         "operation": "active_genome_index.build_reference_pass",
         "params": {"agi_path": str(index)},

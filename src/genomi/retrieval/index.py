@@ -12,7 +12,6 @@ from ..runtime.sqlite_support import LONG_WRITE_BUSY_TIMEOUT_SECONDS, connect_sq
 from . import hybrid
 
 JsonObject = dict[str, Any]
-INDEX_SCHEMA = "genomi-retrieval-index-v1"
 PUBLIC_INDEX_DIR = ("indexes", "public")
 PRIVATE_INDEX_DIR = ("indexes", "private")
 
@@ -47,7 +46,6 @@ def refresh_index(
         _reset_schema(connection, fields)
         generated_at = utc_now()
         metadata = {
-            "schema": INDEX_SCHEMA,
             "source": source,
             "scope": scope,
             "field_weights": {str(key): float(value) for key, value in field_weights.items()},
@@ -86,7 +84,6 @@ def refresh_index(
                     [rowid, *[str(doc.fields.get(field) or "") for field in fields]],
                 )
     return {
-        "schema": INDEX_SCHEMA,
         "status": "completed",
         "index_path": str(db_path),
         "source": source,
@@ -339,7 +336,6 @@ def _field_order(documents: list[hybrid.RetrievalDocument], field_weights: Mappi
 
 def _index_record(path: Path, metadata: JsonObject, *, default_scope: str) -> JsonObject:
     return {
-        "schema": INDEX_SCHEMA,
         "index_path": str(path),
         "exists": path.exists(),
         "source": metadata.get("source") or path.stem,

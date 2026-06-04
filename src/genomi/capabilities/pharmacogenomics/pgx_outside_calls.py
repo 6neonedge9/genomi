@@ -9,8 +9,6 @@ from ...runtime.paths import run_output_path_for_source
 
 JsonObject = dict[str, Any]
 
-OUTSIDE_CALL_SCHEMA = "genomi-pgx-outside-call-validation-v1"
-OUTSIDE_CALL_PREPARE_SCHEMA = "genomi-pgx-outside-call-prepare-v1"
 PHARMCAT_OUTSIDE_CALL_URL = "https://pharmcat.clinpgx.org/using/Outside-Call-Format/"
 PHARMCAT_HLA_URL = "https://pharmcat.clinpgx.org/using/Calling-HLA/"
 PHARMCAT_CYP2D6_URL = "https://pharmcat.clinpgx.org/using/Calling-CYP2D6/"
@@ -36,7 +34,6 @@ def validate_outside_call_file(
 
     if outside_call_file is None or str(outside_call_file).strip() == "":
         return {
-            "schema": OUTSIDE_CALL_SCHEMA,
             "ok": False,
             "status": "missing_outside_call_file",
             "input": {"hidden_intake_source": True},
@@ -45,7 +42,6 @@ def validate_outside_call_file(
     path = Path(outside_call_file).expanduser()
     if not path.exists():
         return {
-            "schema": OUTSIDE_CALL_SCHEMA,
             "ok": False,
             "status": "missing_outside_call_file",
             "input": {"hidden_intake_source": True},
@@ -53,7 +49,6 @@ def validate_outside_call_file(
         }
     if not path.is_file():
         return {
-            "schema": OUTSIDE_CALL_SCHEMA,
             "ok": False,
             "status": "invalid_outside_call_file",
             "input": _input_descriptor(path),
@@ -65,7 +60,6 @@ def validate_outside_call_file(
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         return {
-            "schema": OUTSIDE_CALL_SCHEMA,
             "ok": False,
             "status": "encoding_error",
             "input": _input_descriptor(path),
@@ -74,7 +68,6 @@ def validate_outside_call_file(
         }
     except OSError as exc:
         return {
-            "schema": OUTSIDE_CALL_SCHEMA,
             "ok": False,
             "status": "read_error",
             "input": _input_descriptor(path),
@@ -98,7 +91,6 @@ def validate_outside_call_file(
     if not records and not invalid_rows:
         status = "empty_outside_call_file"
     return {
-        "schema": OUTSIDE_CALL_SCHEMA,
         "ok": status == "completed",
         "status": status,
         "input": _input_descriptor(path),
@@ -134,7 +126,6 @@ def prepare_outside_call_file(
     requested_format = _normalize_caller_format(caller_format)
     if requested_format not in CALLER_FORMATS:
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "unsupported_caller_format",
             "input": {"hidden_intake_source": True},
@@ -144,7 +135,6 @@ def prepare_outside_call_file(
         }
     if caller_output_file is None or str(caller_output_file).strip() == "":
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "missing_caller_output_file",
             "input": {"hidden_intake_source": True},
@@ -154,7 +144,6 @@ def prepare_outside_call_file(
     input_path = Path(caller_output_file).expanduser()
     if not input_path.exists():
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "missing_caller_output_file",
             "input": {"hidden_intake_source": True},
@@ -163,7 +152,6 @@ def prepare_outside_call_file(
         }
     if not input_path.is_file():
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "invalid_caller_output_file",
             "input": _input_descriptor(input_path),
@@ -175,7 +163,6 @@ def prepare_outside_call_file(
         text = input_path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "encoding_error",
             "input": _input_descriptor(input_path),
@@ -185,7 +172,6 @@ def prepare_outside_call_file(
         }
     except OSError as exc:
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": "read_error",
             "input": _input_descriptor(input_path),
@@ -199,7 +185,6 @@ def prepare_outside_call_file(
     if invalid_rows or not rows:
         status = "empty_prepared_outside_call" if not rows and not invalid_rows else "invalid_caller_output_file"
         return {
-            "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
             "ok": False,
             "status": status,
             "input": _input_descriptor(input_path),
@@ -221,7 +206,6 @@ def prepare_outside_call_file(
     _write_outside_call_tsv(output_path, rows)
     validation = validate_outside_call_file(output_path, max_rows=max_rows)
     return {
-        "schema": OUTSIDE_CALL_PREPARE_SCHEMA,
         "ok": bool(validation.get("ok")),
         "status": "completed" if validation.get("ok") else "prepared_validation_failed",
         "input": _input_descriptor(input_path),

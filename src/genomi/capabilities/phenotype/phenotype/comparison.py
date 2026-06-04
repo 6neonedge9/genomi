@@ -30,8 +30,6 @@ from ....retrieval import semantic as retrieval_semantic
 
 from ._base import (
     HPO_ID_RE,
-    PHENOTYPE_NORMALIZATION_SCHEMA_VERSION,
-    PHENOTYPE_PRIORITIZATION_SCHEMA_VERSION,
     _any_field_matches,
     _canonical_phrase,
     _clean_text,
@@ -89,7 +87,6 @@ def normalize_phenotypes(
     ]
     term_usage = _phenotype_term_usage(semantic)
     return {
-        "schema": PHENOTYPE_NORMALIZATION_SCHEMA_VERSION,
         "status": "completed" if (ids or phenotype_terms) else "no_phenotype_terms",
         "query": {
             "text": _clean_text(text),
@@ -184,7 +181,6 @@ def compare_disease_phenotype_evidence(
         evidence_state="ambiguous_discrimination" if discrimination["discrimination_required"] else None,
     )
     payload = {
-        "schema": PHENOTYPE_PRIORITIZATION_SCHEMA_VERSION,
         "status": _status(records, selected, candidates),
         "query": query,
         "phenotype_normalization": normalized,
@@ -264,7 +260,6 @@ def compare_gene_hpo_evidence(
         warnings=_warnings(records, selected_for_answer, candidates, "gene") + _coverage_warnings(candidates, records, hpo_context, selected=selected),
     )
     payload = {
-        "schema": PHENOTYPE_PRIORITIZATION_SCHEMA_VERSION,
         "status": _status(records, selected, candidates),
         "query": query,
         "phenotype_normalization": normalized,

@@ -56,7 +56,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["execution"]["mode"], "pipeline")
         self.assertIn("[derived_pharmcat_input]", result["execution"]["command"])
         self.assertIn("version_probe", result["execution"])
-        self.assertEqual(result["input_preflight"]["schema"], "genomi-pharmcat-input-preflight-v1")
+        self.assertEqual(result["input_preflight"]["status"], "completed")
         self.assertTrue(result["input_preflight"]["input"]["hidden_agi_path"])
         self.assertEqual(result["input_preflight"]["header"]["sample_count"], 1)
         self.assertEqual(result["input_preflight"]["header"]["contig_style"], "chr_prefixed")
@@ -240,10 +240,10 @@ class PharmCATIntegrationTests(unittest.TestCase):
             )
             agi_path = self._build_agi(vcf)
 
-            result = pharmcat_preflight(agi_path=agi_path)
+        result = pharmcat_preflight(agi_path=agi_path)
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["schema"], "genomi-pharmcat-preflight-v1")
+        self.assertEqual(result["status"], "completed")
         self.assertEqual(result["input_preflight"]["header"]["sample_count"], 1)
         self.assertEqual(result["input_preflight"]["header"]["contig_style"], "bare")
         self.assertEqual(result["input_preflight"]["scan_summary"]["records_with_gt"], 1)
@@ -405,7 +405,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
             )
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["schema"], "genomi-pharmcat-artifact-import-v1")
+        self.assertEqual(result["status"], "completed")
         self.assertEqual(result["artifacts"]["calls_only"]["genes"], ["CYP2C19"])
         calls_hash = result["artifacts"]["calls_only"]["artifact"]["content_sha256"]
         match_hash = result["artifacts"]["named_allele_match_json"]["artifact"]["content_sha256"]
@@ -627,7 +627,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
             result = call_operation("pharmacogenomics.preflight_pharmcat")
 
-        self.assertEqual(result["schema"], "genomi-pharmcat-preflight-v1")
+        self.assertEqual(result["status"], "completed")
         self.assertTrue(result["input_preflight"]["input"]["hidden_agi_path"])
 
     def test_call_operation_uses_active_genome_index_context(self) -> None:
@@ -651,7 +651,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
             with patch(
                 "genomi.operations.pharmcat.run_pharmcat",
-                return_value={"schema": "genomi-pharmcat-run-v1", "status": "planned"},
+                return_value={"status": "planned"},
             ) as runner:
                 result = call_operation("pharmacogenomics.run_pharmcat", {"dry_run": True})
 
@@ -741,7 +741,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
                 patch("genomi.capabilities.pharmacogenomics.pharmcat.execution.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"),
                 patch(
                     "genomi.capabilities.pharmacogenomics.pharmcat.execution._input_preflight",
-                    return_value={"schema": "genomi-pharmcat-input-preflight-v1", "status": "completed"},
+                    return_value={"status": "completed"},
                 ) as preflight,
                 patch(
                     "genomi.capabilities.pharmacogenomics.pharmcat.execution._prepare_pharmcat_input",

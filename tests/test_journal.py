@@ -277,7 +277,7 @@ class JournalTests(unittest.TestCase):
 
         artifact = call_operation("journal.export_memory")
 
-        self.assertEqual(artifact["schema"], "genomi-journal-memory-artifact-v1")
+        self.assertEqual(artifact["status"], "completed")
         self.assertEqual(artifact["format"], "memos-compatible-json")
         self.assertEqual(artifact["memories"][0]["memory_type"], "decision_memory")
         metadata = artifact["memories"][0]["metadata"]

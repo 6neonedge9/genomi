@@ -73,8 +73,8 @@ class GwasCatalogVariantTests(unittest.TestCase):
         self.assertEqual(result["top_observed"]["best_evidence_lane"], "exact_trait_match")
         self.assertEqual([row["candidate_id"] for row in result["candidate_matrix"]], ["rs3738934", "rs7700133", "rs1280"])
         view = result["evidence_view"]
-        self.assertEqual(view["schema"], "genomi-candidate-evidence-view-v1")
         self.assertEqual(view["task_profile"]["profile_id"], "gwas_variant_prioritization")
+        self.assertEqual(view["coverage_state"], "data_returned")
         self.assertNotIn("same_gene_or_locus", view["task_profile"]["preferred_evidence_lanes"])
         self.assertNotIn("pathway_plausibility", view["task_profile"]["preferred_evidence_lanes"])
         self.assertNotIn("literature_plausibility", view["task_profile"]["ranking_weights"])

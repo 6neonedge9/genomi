@@ -367,8 +367,8 @@ class CandidateInventoryTests(EvidenceImportTestBase):
             self.assertEqual(result["summary"]["total_match_records"], 2)
             self.assertEqual(result["summary"]["selected_candidate_variants"], 1)
             view = result["evidence_view"]
-            self.assertEqual(view["schema"], "genomi-candidate-evidence-view-v1")
             self.assertEqual(view["task_profile"]["profile_id"], "clinvar_candidate_scan")
+            self.assertEqual(view["coverage_state"], "data_returned")
             self.assertEqual(view["coverage"]["candidate_count"], len(result["candidate_matrix"]))
             self.assertEqual(view["candidate_matrix"], result["candidate_matrix"])
             self.assertEqual(result["top_observed_candidate"], result["candidate_matrix"][0]["candidate_id"])
@@ -401,7 +401,7 @@ class CandidateInventoryTests(EvidenceImportTestBase):
             cached = extract_clinvar_candidates(matches, db, output)
             self.assertEqual(cached["status"], "cached")
             self.assertEqual(cached["summary"]["selected_candidate_variants"], 1)
-            self.assertEqual(cached["evidence_view"]["schema"], "genomi-candidate-evidence-view-v1")
+            self.assertEqual(cached["evidence_view"]["task_profile"]["profile_id"], "clinvar_candidate_scan")
 
             record_research_findings(
                 db,

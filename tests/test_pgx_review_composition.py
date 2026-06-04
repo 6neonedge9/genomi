@@ -149,7 +149,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "support_context": {"genotype_support": [{"support_status": "supported"}]},
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
@@ -184,17 +183,16 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["answer_support"]["star_diplotype_summaries"][0]["gene"], "CYP2C19")
         self.assertTrue(result["answer_support"]["source_recommendation_summaries"])
         view = result["evidence_view"]
-        self.assertEqual(view["schema"], "genomi-candidate-evidence-view-v1")
         self.assertEqual(view["task_profile"]["profile_id"], "pgx_medication_review")
+        self.assertEqual(view["coverage_state"], "data_returned")
         self.assertEqual(view["coverage"]["candidate_count"], 1)
         self.assertEqual(view["candidate_matrix"], result["candidate_matrix"])
         self.assertEqual(view["top_observed"]["answerability"], "direct_source_supported")
         self.assertTrue(view["agent_decision_required"])
-        self.assertEqual(result["evidence_matrix"]["schema"], "genomi-pgx-evidence-matrix-v1")
+        self.assertEqual(result["evidence_matrix"]["item_count"], len(result["evidence_matrix"]["items"]))
         self.assertGreaterEqual(result["evidence_matrix"]["role_counts"]["medication_source_evidence"], 2)
         self.assertGreaterEqual(result["evidence_matrix"]["role_counts"]["sample_pgx_evidence"], 2)
         matrix_traceability = result["evidence_matrix"]["traceability"]
-        self.assertEqual(matrix_traceability["schema"], "genomi-pgx-evidence-matrix-traceability-v1")
         self.assertTrue(matrix_traceability["all_items_have_stable_ids"])
         self.assertTrue(matrix_traceability["all_items_have_verification"])
         self.assertGreaterEqual(matrix_traceability["source_traceable_item_count"], 2)
@@ -228,11 +226,9 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             if item["evidence_class"] == "pgx_star_allele_marker_call"
         )
         self.assertEqual(star_matrix_item["verification"]["status"], "observed_marker_evidence")
-        self.assertEqual(result["evidence_state"]["schema"], "genomi-pgx-evidence-state-v1")
         self.assertTrue(result["evidence_state"]["has_public_pgx_evidence"])
         self.assertTrue(result["evidence_state"]["has_sample_evidence"])
         self.assertTrue(result["evidence_state"]["has_genotype_support"])
-        self.assertEqual(result["pgx_evidence_scope"]["schema"], "genomi-pgx-evidence-scope-v1")
         self.assertEqual(result["pgx_evidence_scope"]["model"], "bounded_target_scoped_evidence")
         self.assertEqual(result["pgx_evidence_scope"]["scope"]["selected_public_targets"]["drug"], "clopidogrel")
         self.assertTrue(result["pgx_evidence_scope"]["scope"]["sample_context_requested"])
@@ -249,7 +245,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["interpretation_readiness"]["personal_statement_support"], "source_and_sample_evidence_present")
         self.assertFalse(result["interpretation_readiness"]["supported_star_marker_coverage"])
         self.assertEqual(result["interpretation_readiness"]["status"], "informational_evidence_review_requires_clinical_confirmation")
-        self.assertEqual(result["evidence_components"]["schema"], "genomi-pgx-evidence-components-v1")
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
         self.assertEqual(components["public_pgx_evidence"]["state"], "present")
         self.assertEqual(components["sample_variant_or_marker_evidence"]["state"], "present")
@@ -450,7 +445,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
@@ -497,7 +491,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "schema": "genomi-pgx-star-allele-call-v1",
             "ok": False,
             "status": "no_sample_context",
             "gene": "CYP2C19",

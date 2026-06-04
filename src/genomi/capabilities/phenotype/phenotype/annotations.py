@@ -383,7 +383,6 @@ def _primary_gene_disease_response(
     source_coverage: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "schema": "genomi-primary-gene-disease-associations-v1",
         "status": status,
         "coverage_state": coverage_state,
         "agent_decision_required": True,

@@ -17,7 +17,6 @@ from .text_utils import (
     _https_url,
 )
 
-GEO_QUERY_SCHEMA_VERSION = "genomi-functional-genomics-geo-query-v1"
 NCBI_EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 NCBI_GEO_FTP_BASE = "https://ftp.ncbi.nlm.nih.gov/geo"
 NCBI_API_KEY_ENV = "NCBI_API_KEY"

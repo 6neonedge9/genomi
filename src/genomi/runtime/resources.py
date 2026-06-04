@@ -12,8 +12,6 @@ from .host_response import host_response_profiles
 from .libraries.manager import inventory as library_inventory
 from .paths import genomi_data_root, shared_evidence_db_path, shared_reference_dir
 
-RESOURCE_CATALOG_SCHEMA_VERSION = "genomi-resource-catalog-v1"
-
 
 def list_resources() -> dict[str, Any]:
     """Return the agent-facing inventory of local and public Genomi resources."""
@@ -23,7 +21,6 @@ def list_resources() -> dict[str, Any]:
     reference_dir = shared_reference_dir()
     source_catalog = evidence_source_catalog()
     return {
-        "schema": RESOURCE_CATALOG_SCHEMA_VERSION,
         "local_runtime": {"available": root.exists()},
         "context_policy": {
             "active_genome_index_context_listed": False,

@@ -71,8 +71,8 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(result["top_observed"]["candidate_id"], "EGFR")
         self.assertEqual(result["top_observed"]["best_evidence_lane"], "direct_source_match")
         view = result["evidence_view"]
-        self.assertEqual(view["schema"], "genomi-candidate-evidence-view-v1")
         self.assertEqual(view["task_profile"]["profile_id"], "functional_genomics_perturbation_evidence")
+        self.assertEqual(view["coverage_state"], "data_returned")
         self.assertEqual(view["top_observed"]["candidate_id"], "EGFR")
         self.assertEqual(result["decision_evidence"]["top_observed_candidate"], "EGFR")
         self.assertEqual(result["decision_evidence"]["top_observed_evidence"]["supporting_evidence"][0]["record_id"], "screen-1")
@@ -295,7 +295,6 @@ class ScreenGeneTests(unittest.TestCase):
         with mock.patch(
             "genomi.operations.registry.geo.query_geo_datasets",
             return_value={
-                "schema": "genomi-functional-genomics-geo-query-v1",
                 "ok": True,
                 "status": "geo_metadata_found",
                 "coverage_state": "metadata_only",

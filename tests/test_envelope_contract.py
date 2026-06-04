@@ -1,4 +1,4 @@
-"""End-to-end contract test: Genomi emits one valid envelope schema.
+"""End-to-end contract test: Genomi emits one valid envelope contract.
 
 This file does NOT exercise each operation with real data — that would require
 fixtures spanning every public source. Instead, it stubs each handler with a
@@ -11,7 +11,7 @@ minimal representative result and asserts:
      stripped or overwritten — the explicit envelope is preserved.
   4. Non-evidence ops (e.g. genomi.list_resources) are passed through
      unchanged with no envelope auto-attached.
-  5. Every registered operation gets the same envelope schema for failure-like
+  5. Every registered operation gets the same envelope guidance for failure-like
      results, so tools do not invent one-off prose or policy fields.
 """
 
@@ -96,7 +96,7 @@ class DispatchEnvelopeContractTests(unittest.TestCase):
                 self.assertEqual(envelope["answer_readiness"], env.CANNOT_ANSWER_YET)
                 self.assertIn("source_unavailable:retry_or_use_alternate_source", envelope["guidance"])
 
-    def test_every_operation_failure_like_result_gets_same_envelope_schema(self) -> None:
+    def test_every_operation_failure_like_result_gets_same_envelope_guidance(self) -> None:
         for name in sorted(ops._OPERATION_BY_NAME):
             with self.subTest(op=name):
                 result = self._call_with_stub(

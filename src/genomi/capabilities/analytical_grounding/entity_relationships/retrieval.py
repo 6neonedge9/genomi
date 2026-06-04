@@ -5,7 +5,6 @@ from typing import Any
 
 from .constants import (
     CHEMBL_API_BASE,
-    CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION,
     DEFAULT_SPECIES,
     DEFAULT_TAXON_ID,
     HPA_API_BASE,
@@ -213,7 +212,6 @@ def retrieve_gene_relationships(
         coverage_state = "data_returned" if records else "in_scope_empty"
         relationship_summary = _relationship_summary(records)
         payload: dict[str, Any] = {
-            "schema": CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION,
             "coverage_state": coverage_state,
             "status": "gene_relationships_found" if records else "no_gene_relationship_records",
             "agent_decision_required": True,

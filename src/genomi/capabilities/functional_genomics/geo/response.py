@@ -4,7 +4,6 @@ from collections.abc import Iterable
 from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
-from .client import GEO_QUERY_SCHEMA_VERSION
 from .text_utils import _dedupe_text, _extract_accessions, _records_by_gene
 
 
@@ -25,7 +24,6 @@ def _geo_response(
     if acquisition:
         direct_records = [record for record in acquisition.get("direct_perturbation_source_records", []) if isinstance(record, dict)]
     payload: dict[str, Any] = {
-        "schema": GEO_QUERY_SCHEMA_VERSION,
         "ok": status != "source_unavailable",
         "status": status,
         "coverage_state": coverage_state,

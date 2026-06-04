@@ -129,7 +129,6 @@ def _evidence_matrix_traceability(items: list[JsonObject]) -> JsonObject:
         if status == "user_provided_unverified":
             user_provided += 1
     return {
-        "schema": "genomi-pgx-evidence-matrix-traceability-v1",
         "item_count": len(items),
         "item_ids": item_ids,
         "unique_item_id_count": len(set(item_ids)),

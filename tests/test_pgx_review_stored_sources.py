@@ -747,7 +747,7 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
     def test_call_operation_uses_medication_review(self) -> None:
         with patch(
             "genomi.operations.pgx.review_medication_interaction",
-            return_value={"schema": "genomi-pgx-medication-review-v1", "status": "completed"},
+            return_value={"status": "completed"},
         ) as review:
             result = call_operation(
                 "pharmacogenomics.review_medication",

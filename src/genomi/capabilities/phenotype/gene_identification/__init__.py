@@ -7,7 +7,6 @@ from ._base import (
     DRUG_TARGET_PRIOR,
     EVIDENCE_PRIORS,
     EXPLICIT_GWAS_GENE_FIELD_TERMS,
-    GENE_IDENTIFICATION_SCHEMA_VERSION,
     GWAS_PRIOR,
     LOCUS_GENE_CONTEXT_TERMS,
     LOCUS_TO_GENE_PRIOR,
@@ -18,7 +17,6 @@ from ._base import (
     TRAIT_CAUSAL_ASSOCIATION_ONLY_TERMS,
     TRAIT_CAUSAL_DIRECT_SOURCES,
     TRAIT_CAUSAL_DIRECT_TERMS,
-    TRAIT_GENE_RECORDS_SCHEMA_VERSION,
     WEAK_LOCUS_NEIGHBOR_TERMS,
     _candidate_records_found,
     _clean_text,
@@ -120,8 +118,6 @@ from .comparison import (
 )
 
 __all__ = [
-    "GENE_IDENTIFICATION_SCHEMA_VERSION",
-    "TRAIT_GENE_RECORDS_SCHEMA_VERSION",
     "OPENTARGETS_GRAPHQL_API_URL",
     "compare_candidate_evidence",
     "compare_drug_target_gene_evidence",

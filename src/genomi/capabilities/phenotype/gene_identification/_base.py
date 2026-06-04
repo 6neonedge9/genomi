@@ -6,8 +6,6 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any
 
-GENE_IDENTIFICATION_SCHEMA_VERSION = "genomi-gene-evidence-comparison-v1"
-TRAIT_GENE_RECORDS_SCHEMA_VERSION = "genomi-trait-gene-records-v1"
 OPENTARGETS_GRAPHQL_API_URL = "https://api.platform.opentargets.org/api/v4/graphql"
 OPENTARGETS_TRAIT_TARGET_LIMIT = 100
 

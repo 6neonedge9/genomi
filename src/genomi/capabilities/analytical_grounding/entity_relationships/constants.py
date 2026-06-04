@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION = "genomi-controlled-entity-relationships-v1"
 QUICKGO_API_BASE = "https://www.ebi.ac.uk/QuickGO/services"
 REACTOME_CONTENT_SERVICE_BASE = "https://reactome.org/ContentService"
 KEGG_REST_API_BASE = "https://rest.kegg.jp"

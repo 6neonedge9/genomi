@@ -12,8 +12,6 @@ from ....evidence import search_research_findings
 from ....runtime.libraries import registry as _library_registry
 from ....retrieval import semantic as retrieval_semantic
 
-PHENOTYPE_NORMALIZATION_SCHEMA_VERSION = "genomi-phenotype-normalization-v1"
-PHENOTYPE_PRIORITIZATION_SCHEMA_VERSION = "genomi-phenotype-prioritization-v1"
 # Source URLs live only in the central registry; these names expose them as the
 # documented defaults for the phenotype operations and for record provenance.
 HPO_GENE_ANNOTATION_URL = _library_registry.get("hpo").source.urls[0]

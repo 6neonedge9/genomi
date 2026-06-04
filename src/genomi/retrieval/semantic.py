@@ -6,8 +6,6 @@ from typing import Any
 
 JsonObject = dict[str, Any]
 
-SEMANTIC_CONTEXT_SCHEMA = "genomi-semantic-context-v1"
-SEMANTIC_RETRIEVAL_SCHEMA = "genomi-semantic-retrieval"
 MAX_EXPANSIONS = 12
 MAX_ENTITIES = 12
 MAX_TEXT_LENGTH = 160
@@ -26,7 +24,6 @@ class SemanticContext:
 
     def as_json(self) -> JsonObject:
         return {
-            "schema": SEMANTIC_CONTEXT_SCHEMA,
             "raw_query": self.raw_query,
             "host_expansions": list(self.host_expansions),
             "host_entities": [dict(item) for item in self.host_entities],
@@ -211,7 +208,6 @@ def term_usage_payload(
             if _dedupe_key(text) not in matched_keys:
                 misses.append({"text": text, "status": "miss"})
     return {
-        "schema": SEMANTIC_RETRIEVAL_SCHEMA,
         "raw_query": context.raw_query,
         "host_expansions": list(context.host_expansions),
         "host_entities": [dict(item) for item in context.host_entities],

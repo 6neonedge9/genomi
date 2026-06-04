@@ -14,7 +14,6 @@ from .helpers import (
     BIOGRID_ORCS_API_BASE,
     DEPMAP_CRISPR_GENE_EFFECT_URL_ENV,
     DEPMAP_MODEL_URL_ENV,
-    SCREEN_EXPERIMENT_RECORDS_SCHEMA_VERSION,
     SUPPORTED_NATIVE_SCREEN_SOURCES,
     _as_float,
     _canonical,
@@ -265,7 +264,6 @@ def _public_screen_response(
     semantic_context: retrieval_semantic.SemanticContext | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "schema": SCREEN_EXPERIMENT_RECORDS_SCHEMA_VERSION,
         "status": status,
         "coverage_state": coverage_state,
         "agent_decision_required": True,

@@ -10,8 +10,6 @@ from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
 
-DRUG_TARGET_PRIORITIZATION_SCHEMA_VERSION = "genomi-drug-target-prioritization-v1"
-DISEASE_DRUG_TARGET_RETRIEVAL_SCHEMA_VERSION = "genomi-disease-clinical-drug-targets-v1"
 OPENTARGETS_GRAPHQL_API_URL = "https://api.platform.opentargets.org/api/v4/graphql"
 OPENTARGETS_DISEASE_SEARCH_LIMIT = 3
 TOKEN_RE = re.compile(r"[a-z0-9]+")

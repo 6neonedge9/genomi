@@ -198,7 +198,6 @@ def _answer_support(
     else:
         status = "needs_evidence"
     return {
-        "schema": "genomi-pgx-answer-support-v1",
         "status": status,
         "public_signal_count": source_evidence_count,
         "sample_signal_count": sample_signal_count,
@@ -528,7 +527,6 @@ def _target_inventory(
     genotype_support_loci.extend(_genotype_support_loci(sample_lookups))
     genotype_support_loci.extend(_star_marker_genotype_support_loci(star_allele_calls))
     return {
-        "schema": "genomi-pgx-target-inventory-v1",
         "drug": drug,
         "selected_gene": gene,
         "public_evidence_count": public_evidence_count,

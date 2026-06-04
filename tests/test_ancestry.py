@@ -103,7 +103,6 @@ def _write_synthetic_panel(
     (output_dir / reference_panels.PANEL_STATS_NAME).write_text(
         json.dumps(
             {
-                "schema": "genomi-ancestry-panel-stats-v1",
                 "sample_count": len(samples),
                 "marker_count": len(marker_rows),
                 "component_count": len(component_names),
@@ -119,7 +118,6 @@ def _write_synthetic_panel(
     (output_dir / reference_panels.MANIFEST_NAME).write_text(
         json.dumps(
             {
-                "schema": "genomi-ancestry-reference-panel-v1",
                 "panel_id": panel_id or reference_panels.PANEL_ID,
                 "title": panel_title or reference_panels.PANEL_TITLE,
                 "library": panel_library or reference_panels.PANEL_LIBRARY,

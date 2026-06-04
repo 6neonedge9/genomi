@@ -7,7 +7,6 @@ from pathlib import Path
 from ._common import (
     JsonObject,
     PHARMCAT_DOCS,
-    PHARMCAT_IMPORT_SCHEMA,
     _artifact_fingerprint,
     _as_dicts,
     _as_list,
@@ -58,7 +57,6 @@ def import_pharmcat_artifacts(
     ]
     status = "completed" if _has_imported_pharmcat_evidence(artifacts) else "no_pharmcat_artifacts"
     return {
-        "schema": PHARMCAT_IMPORT_SCHEMA,
         "ok": status == "completed",
         "status": status,
         "artifacts": artifacts,

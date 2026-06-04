@@ -25,9 +25,6 @@ from ...runtime.liftover import LiftoverConfigurationError, get_liftover
 from ...runtime.paths import ancestry_reference_panel_dir
 from . import reference_panels, source_context
 
-PANEL_BUILD_SCHEMA = "genomi-ancestry-panel-build-v1"
-
-
 class PanelBuildError(RuntimeError):
     """Raised when a local panel build cannot proceed."""
 
@@ -68,7 +65,6 @@ def build_grch37_panel_from_grch38(
     target_paths = _expected_panel_paths(target_dir)
     if not force and all(path.exists() for path in target_paths.values()):
         return {
-            "schema": PANEL_BUILD_SCHEMA,
             "status": "cached",
             "panel_id": source_context.PANEL_ID_GRCH37,
             "title": source_context.PANEL_TITLE_GRCH37,
@@ -103,7 +99,6 @@ def build_grch37_panel_from_grch38(
     _write_json(target_paths["panel_stats"], stats)
 
     return {
-        "schema": PANEL_BUILD_SCHEMA,
         "status": "completed",
         "panel_id": source_context.PANEL_ID_GRCH37,
         "library": source_context.PANEL_LIBRARY_GRCH37,

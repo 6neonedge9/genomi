@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from .constants import (
-    CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION,
     DEFAULT_SPECIES,
     DEFAULT_TAXON_ID,
     NOT_INTEGRATED_SOURCES,
@@ -221,7 +220,6 @@ def _empty_response(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "schema": CONTROLLED_ENTITY_RELATIONSHIPS_SCHEMA_VERSION,
         "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,

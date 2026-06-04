@@ -5,8 +5,6 @@ from typing import Any
 
 from . import envelope as _env
 
-EVIDENCE_VIEW_SCHEMA_VERSION = "genomi-candidate-evidence-view-v1"
-
 DIRECT_SOURCE_MATCH = "direct_source_match"
 EXACT_TRAIT_MATCH = "exact_trait_match"
 ONTOLOGY_SYNONYM_MATCH = "ontology_synonym_match"
@@ -240,7 +238,6 @@ def evidence_view(
     if evidence_state is None:
         evidence_state = "decision_grade_evidence" if top_observed else "not_decision_grade"
     return {
-        "schema": EVIDENCE_VIEW_SCHEMA_VERSION,
         "query": query or {},
         "task_profile": profile_payload,
         "evidence_policy": evidence_policy,

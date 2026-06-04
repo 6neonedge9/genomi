@@ -9,7 +9,6 @@ from ....retrieval import semantic as retrieval_semantic
 from ..evidence_acquisition import acquire_perturbation_source_records
 from .client import (
     DEFAULT_NCBI_TOOL,
-    GEO_QUERY_SCHEMA_VERSION,
     MAX_CANDIDATE_FILES,
     MAX_DECOMPRESSED_BYTES,
     MAX_DOWNLOAD_BYTES,

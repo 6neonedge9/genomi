@@ -48,7 +48,6 @@ def pharmacogene_requirements(
     selected_gene = _normalize_gene(gene)
     records = [_record_for_gene(selected_gene)] if selected_gene else [_record_for_gene(item) for item in sorted(_all_genes())]
     payload: JsonObject = {
-        "schema": "genomi-pgx-gene-requirements-v1",
         "status": "completed",
         "query": {
             "gene": selected_gene,
@@ -191,7 +190,6 @@ def _catalog_source_comparison(snapshot: JsonObject) -> JsonObject:
     named_source = set(snapshot.get("named_allele_matcher_genes") or [])
     outside_source = set(snapshot.get("outside_call_genes") or [])
     return {
-        "packaged_catalog_schema": PGX_GENE_REQUIREMENTS_SCHEMA,
         "source_url": snapshot.get("source_url"),
         "named_allele_matcher": {
             "source_not_in_packaged": sorted(named_source - NAMED_ALLELE_MATCHER_GENES),

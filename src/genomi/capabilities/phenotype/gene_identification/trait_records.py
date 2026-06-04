@@ -14,7 +14,6 @@ from ._base import (
     TRAIT_CAUSAL_ASSOCIATION_ONLY_TERMS,
     TRAIT_CAUSAL_DIRECT_SOURCES,
     TRAIT_CAUSAL_DIRECT_TERMS,
-    TRAIT_GENE_RECORDS_SCHEMA_VERSION,
     _clean_text,
     _contains_any,
     _dedupe_by_key,
@@ -136,7 +135,6 @@ def retrieve_trait_gene_records(
         "agent_decision_required": True,
         "coverage_state": coverage_state,
         "evidence_state": evidence_state,
-        "schema": TRAIT_GENE_RECORDS_SCHEMA_VERSION,
         "query": {
             "trait": query_trait,
             "genes_filter": normalized_genes,

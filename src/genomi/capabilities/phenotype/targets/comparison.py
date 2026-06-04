@@ -28,7 +28,6 @@ from ....runtime.external import utc_now
 
 from ._base import (
     ASSOCIATION_ONLY_SOURCE_TOKENS,
-    DRUG_TARGET_PRIORITIZATION_SCHEMA_VERSION,
     DRUG_TARGET_SOURCE_IDS,
     DRUG_TARGET_SOURCE_TOKENS,
     _any_field_matches,
@@ -106,7 +105,6 @@ def compare_target_gene_evidence(
         warnings=_warnings(records, selected, candidates),
     )
     payload = {
-        "schema": DRUG_TARGET_PRIORITIZATION_SCHEMA_VERSION,
         "status": _status(records, selected, candidates),
         "query": query,
         "source_records": records,

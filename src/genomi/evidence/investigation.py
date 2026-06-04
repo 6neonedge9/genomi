@@ -7,8 +7,6 @@ from ..runtime.external import utc_now
 from .sources import evidence_source_catalog
 from .store import query_research_findings
 
-INVESTIGATION_PACKET_SCHEMA_VERSION = "genomi-investigation-packet-v1"
-
 
 def prepare_investigation_packet(
     evidence_db: str | Path,
@@ -45,7 +43,6 @@ def prepare_investigation_packet(
     target = _target_from_query(stored_research["query"])
     available_operations = _available_operations(target, evidence_db=Path(evidence_db))
     return {
-        "schema": INVESTIGATION_PACKET_SCHEMA_VERSION,
         "purpose": (
             "Target-centric packet for an agent that has already inferred the user's intent. "
             "The packet exposes stored evidence, relevant public sources, available Genomi operations, "

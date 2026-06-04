@@ -53,7 +53,6 @@ def _source_availability(
     else:
         status = "queried_no_source_evidence"
     return {
-        "schema": "genomi-pgx-source-availability-v1",
         "status": status,
         "live_public_evidence_count": live_public_evidence_count,
         "stored_source_evidence_count": stored_source_evidence_count,
@@ -132,7 +131,6 @@ def _evidence_state(
     unanswered_answer_components: list[JsonObject],
 ) -> JsonObject:
     return {
-        "schema": "genomi-pgx-evidence-state-v1",
         "has_public_pgx_evidence": bool(source_evidence_count),
         "has_live_public_pgx_evidence": bool(live_public_evidence_count),
         "has_stored_source_evidence": bool(stored_source_evidence_count),
@@ -232,7 +230,6 @@ def _evidence_envelope(
     else:
         status = "no_public_pgx_evidence_for_selected_targets"
     return {
-        "schema": "genomi-pgx-evidence-scope-v1",
         "model": "bounded_target_scoped_evidence",
         "status": status,
         "scope": {
@@ -428,7 +425,6 @@ def _evidence_components(
         ]
     )
     return {
-        "schema": "genomi-pgx-evidence-components-v1",
         "items": items,
         "answer_basis": {
             "public_evidence": public_state,

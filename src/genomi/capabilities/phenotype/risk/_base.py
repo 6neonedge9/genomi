@@ -31,7 +31,6 @@ from ....evidence.task_profiles import RARE_DISEASE_CANCER_RISK_INVESTIGATION
 from ....runtime.external import utc_now
 from ....runtime.handoff import evidence_context
 
-RISK_INVESTIGATION_SCHEMA_VERSION = "genomi-risk-investigation-v1"
 RISK_INVESTIGATION_TYPES = ("auto", "rare_disease", "cancer_risk")
 
 CANCER_TERMS = (

@@ -360,14 +360,13 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
     def test_resources_list_exposes_public_resources_without_active_indexes(self) -> None:
         result = call_operation("genomi.list_resources")
 
-        self.assertEqual(result["schema"], "genomi-resource-catalog-v1")
         self.assertIn("resource_groups", result)
         self.assertIn("source_adapters", [group["id"] for group in result["resource_groups"]])
         self.assertNotIn("active_genome_index", [group["id"] for group in result["resource_groups"]])
         resource_groups = {group["id"]: group for group in result["resource_groups"]}
         self.assertIn("pharmacogenomics", resource_groups)
         pgx_resources = {resource["id"]: resource for resource in resource_groups["pharmacogenomics"]["resources"]}
-        self.assertEqual(pgx_resources["pgx_capability_inventory"]["capabilities"]["schema"], "genomi-pgx-capabilities-v1")
+        self.assertEqual(pgx_resources["pgx_capability_inventory"]["capabilities"]["status"], "completed")
         self.assertIn("broad_vcf_pgx_calling", pgx_resources["pgx_capability_inventory"]["capabilities"]["capability_axes"])
         self.assertIn("source_catalog", result)
         self.assertIn("context_policy", result)

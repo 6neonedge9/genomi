@@ -6,8 +6,6 @@ from ....retrieval import semantic as retrieval_semantic
 
 from ._constants import (
     CLAIM_LIKE_ENTRY_TYPES,
-    JOURNAL_SCHEMA,
-    MEMORY_ARTIFACT_SCHEMA,
     JournalError,
     JsonObject,
 )
@@ -116,7 +114,6 @@ def append_entry(
         entry = _hydrate_entry(connection, entry_id, include_private_evidence=_include_private_evidence())
 
     return {
-        "schema": JOURNAL_SCHEMA,
         "status": "completed",
         "journal_scope": selected_scope,
         "notebook": _public_notebook(notebook),
@@ -177,7 +174,6 @@ def _append_to_existing_entry(
         entry = _hydrate_entry(connection, entry_id, include_private_evidence=_include_private_evidence())
         notebook = _notebook_for_entry(connection, entry_id)
     result: JsonObject = {
-        "schema": JOURNAL_SCHEMA,
         "status": "completed",
         "journal_scope": selected_scope,
         "notebook": _public_notebook(notebook),
@@ -242,7 +238,6 @@ def search_entries(
         retrieval_payload = semantic_entries["retrieval"]
         semantic_usage = semantic_entries["semantic_context"]
     return {
-        "schema": JOURNAL_SCHEMA,
         "status": "completed",
         "query": {
             "scope": scope or "session_and_project",
@@ -272,7 +267,6 @@ def summarize_notebook(*, scope: str | None = None, limit: int = 8) -> JsonObjec
         if entry["entry_type"] == "unresolved_question" or entry.get("decision_status") in {"unresolved", "unsupported"}
     ]
     return {
-        "schema": JOURNAL_SCHEMA,
         "status": "completed",
         "scope": scope or "session_and_project",
         "entry_count": len(entries),
@@ -328,7 +322,6 @@ def export_memory_artifact(*, scope: str | None = None, include_private_evidence
             }
         )
     return {
-        "schema": MEMORY_ARTIFACT_SCHEMA,
         "status": "completed",
         "format": "memos-compatible-json",
         "generated_at": _now(),

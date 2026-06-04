@@ -13,7 +13,7 @@ class PGxGeneRequirementTests(unittest.TestCase):
         result = pharmacogene_requirements(gene="CYP2D6")
         record = result["records"][0]
 
-        self.assertEqual(result["schema"], "genomi-pgx-gene-requirements-v1")
+        self.assertEqual(result["status"], "completed")
         self.assertEqual(record["gene"], "CYP2D6")
         self.assertEqual(record["category"], "outside_call_recommended")
         self.assertIn("SV/CNV-aware CYP2D6 caller output", record["preferred_evidence"])

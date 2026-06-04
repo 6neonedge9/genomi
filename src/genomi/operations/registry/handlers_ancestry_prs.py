@@ -139,7 +139,6 @@ def _ancestry_missing_library(operation: str, intent: str, genome_build: str) ->
         operation=operation,
         genome_build=genome_build,
     )
-    request["schema"] = "genomi-ancestry-library-required-v1"
     request["reference_panel"] = {
         "panel_id": panel_policy.panel_id,
         "title": panel_policy.title,

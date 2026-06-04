@@ -16,7 +16,6 @@ from .external import utc_now
 from .paths import genomi_data_root
 
 JsonObject = dict[str, Any]
-JOB_SCHEMA = "genomi-background-operation-job-v1"
 JOBS_DIR_NAME = "jobs"
 DEFAULT_BACKGROUND_TIMEOUT_SECONDS = 30.0
 POLL_INTERVAL_SECONDS = 0.25
@@ -73,7 +72,6 @@ def start_operation_job(operation: str, params: JsonObject) -> JsonObject:
     job_path = job_root / f"{job_id}.json"
     log_path = job_root / f"{job_id}.log"
     job = {
-        "schema": JOB_SCHEMA,
         "job_id": job_id,
         "operation": operation,
         "params": safe_params,
@@ -219,7 +217,6 @@ def public_job_status(job: JsonObject, *, timeout_seconds: float | None = None) 
     operation = str(job.get("operation") or "")
     job_id = str(job.get("job_id") or "")
     payload: JsonObject = {
-        "schema": JOB_SCHEMA,
         "status": "in_progress" if status in ACTIVE_STATUSES else status,
         "job_id": job_id,
         "operation": operation,

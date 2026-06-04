@@ -18,7 +18,6 @@ from .. import phenotype, targets
 from ._base import (
     DRUG_TARGET_PRIOR,
     EVIDENCE_PRIORS,
-    GENE_IDENTIFICATION_SCHEMA_VERSION,
     GWAS_PRIOR,
     LOCUS_TO_GENE_PRIOR,
     OPENTARGETS_GRAPHQL_API_URL,
@@ -178,7 +177,6 @@ def compare_candidate_evidence(
         "source_coverage": _comparison_source_coverage(evidence_panels),
         "warnings": _warnings(evidence_panels, trait_gene_records),
         "details": {
-            "schema": GENE_IDENTIFICATION_SCHEMA_VERSION,
             "query": {
                 "phenotype": query_phenotype,
                 "task_text": query_task_text,

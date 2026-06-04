@@ -7,9 +7,6 @@ from pathlib import Path
 from typing import Any
 
 JsonObject = dict[str, Any]
-PHARMCAT_RUN_SCHEMA = "genomi-pharmcat-run-v1"
-PHARMCAT_STATUS_SCHEMA = "genomi-pharmcat-status-v1"
-PHARMCAT_IMPORT_SCHEMA = "genomi-pharmcat-artifact-import-v1"
 PHARMCAT_DOCS = [
     {
         "title": "PharmCAT",

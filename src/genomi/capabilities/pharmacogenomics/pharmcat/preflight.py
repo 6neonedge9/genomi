@@ -21,7 +21,6 @@ def _input_preflight(
     agi_path = Path(agi_path).expanduser()
     if not agi_path.exists():
         return {
-            "schema": "genomi-pharmcat-input-preflight-v1",
             "status": "requires_active_genome_index",
             "input": {"hidden_agi_path": True},
             "warnings": [
@@ -69,7 +68,6 @@ def _input_preflight(
             stats["records_with_gq"] += int(row["genotype_quality"] is not None)
     except (OSError, ValueError, sqlite3.Error) as exc:
         return {
-            "schema": "genomi-pharmcat-input-preflight-v1",
             "status": "header_unavailable" if header is None else "scan_unavailable",
             "input": {"hidden_agi_path": True, "size_bytes": _size(agi_path)},
             "header": _header_preflight(header) if header is not None else None,
@@ -91,7 +89,6 @@ def _input_preflight(
         warnings.append("Scanned records include indels or symbolic ALT records; confirm PharmCAT normalization requirements before synthesis.")
     requirement_checks = _pharmcat_requirement_checks(header, stats)
     return {
-        "schema": "genomi-pharmcat-input-preflight-v1",
         "status": "completed",
         "input": {
             "hidden_agi_path": True,

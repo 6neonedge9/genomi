@@ -14,7 +14,8 @@ class EnvelopeConstructorTests(unittest.TestCase):
             operation="variant.resolve",
             observations={"observation_count": 2},
         )
-        self.assertEqual(e["schema"], "genomi-evidence-envelope-v1")
+        self.assertEqual(e["operation"], "variant.resolve")
+        self.assertEqual(e["headline"], "variant.resolve: evidence_present · answer_supported")
         self.assertEqual(e["finding_state"], "evidence_present")
         self.assertEqual(e["answer_readiness"], "answer_supported")
         self.assertFalse(e["negative_inference"]["allowed"])
