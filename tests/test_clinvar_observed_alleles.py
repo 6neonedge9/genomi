@@ -12,9 +12,25 @@ from genomi.evidence import (
     match_clinvar_variants,
     match_clinvar_variants_from_active_genome_index,
 )
+from genomi.evidence.store.clinvar_match_provenance import (
+    build_clinvar_match_payload,
+    match_basis_from_record,
+)
 
 
 class ClinvarObservedAlleleTests(unittest.TestCase):
+    def test_match_basis_is_required_for_match_payloads(self) -> None:
+        with self.assertRaisesRegex(ValueError, "match_basis is required"):
+            build_clinvar_match_payload(
+                sample_variant={"chrom": "1", "pos": 100, "ref": "A", "alt": "C"},
+                clinvar={"chrom": "1", "pos": 100, "ref": "A", "alt": "C"},
+                match_basis="",
+            )
+        with self.assertRaisesRegex(ValueError, "missing required match_basis"):
+            match_basis_from_record({"sample_variant": {}, "clinvar": {}})
+        with self.assertRaisesRegex(ValueError, "unknown ClinVar match_basis"):
+            match_basis_from_record({"match_basis": "legacy_exact"})
+
     def test_raw_vcf_multiallelic_matching_uses_observed_sample_alleles(self) -> None:
         cases = [
             ("0/1", ["C"], 1),

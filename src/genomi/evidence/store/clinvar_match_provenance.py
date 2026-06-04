@@ -11,21 +11,27 @@ MATCH_BASIS_MULTIALLELIC_ALT = "multiallelic_alt"
 MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE = "consumer_array_allele_inference"
 MATCH_BASIS_LIFTOVER_EXACT_ALLELE = "liftover_exact_allele"
 MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT = "liftover_multiallelic_alt"
-MATCH_BASIS_UNKNOWN = "unknown_match_basis"
+MATCH_BASIS_VALUES = {
+    MATCH_BASIS_EXACT_ALLELE,
+    MATCH_BASIS_MULTIALLELIC_ALT,
+    MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+    MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
+}
 
 
 def build_clinvar_match_payload(
     *,
     sample_variant: dict[str, Any],
     clinvar: dict[str, Any],
-    match_basis: str | None = None,
+    match_basis: str,
     match_kind: str | None = None,
     source_format: str | None = None,
     source_record: dict[str, Any] | None = None,
     inferred_clinvar_allele: dict[str, Any] | None = None,
     liftover: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    basis = match_basis or MATCH_BASIS_UNKNOWN
+    basis = _require_match_basis(match_basis)
     kind = match_kind or basis
     sample = dict(sample_variant)
     source = dict(source_record or {})
@@ -94,11 +100,11 @@ def build_clinvar_match_payload(
 def match_basis_from_record(item: dict[str, Any]) -> str:
     basis = item.get("match_basis")
     if basis:
-        return str(basis)
+        return _require_match_basis(str(basis))
     provenance = item.get("match_provenance")
     if isinstance(provenance, dict) and provenance.get("match_basis"):
-        return str(provenance["match_basis"])
-    return MATCH_BASIS_UNKNOWN
+        return _require_match_basis(str(provenance["match_basis"]))
+    raise ValueError("ClinVar match record is missing required match_basis")
 
 
 def match_kind_from_record(item: dict[str, Any]) -> str:
@@ -221,6 +227,15 @@ def _copy_source_record_field(sample: dict[str, Any], source: dict[str, Any], fi
         sample[f"source_record_{field}"] = value
 
 
+def _require_match_basis(value: str | None) -> str:
+    if not value:
+        raise ValueError("match_basis is required for ClinVar match payloads")
+    basis = str(value)
+    if basis not in MATCH_BASIS_VALUES:
+        raise ValueError(f"unknown ClinVar match_basis: {basis}")
+    return basis
+
+
 def _row_value(row: sqlite3.Row, row_keys: set[str], key: str) -> Any:
     if key not in row_keys:
         return None
@@ -268,8 +283,6 @@ def _inferred_clinvar_allele(row: sqlite3.Row, row_keys: set[str]) -> dict[str, 
 def _evidence_scope_for_match_basis(match_basis: str) -> str:
     if match_basis == MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE:
         return "consumer_array_inferred_allele"
-    if match_basis == MATCH_BASIS_UNKNOWN:
-        return "unknown_match_basis"
     if match_basis.startswith("liftover_"):
         return "liftover_sample_allele"
     if match_basis in {MATCH_BASIS_MULTIALLELIC_ALT, MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT}:

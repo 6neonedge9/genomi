@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexNeed, create_active_genome_index, open_reader
 from genomi.evidence import (
@@ -22,6 +23,67 @@ def _liftover_available() -> bool:
 # GRCh38 chr19:44908684 T>C  <->  GRCh37 chr19:45411941 T>C
 _APOE_GRCH38_POS = 44908684
 _APOE_GRCH37_POS = 45411941
+
+
+class _IdentityLifter:
+    def lift_position_full(self, chrom: str, pos: int) -> tuple[str, int, str]:
+        return (chrom, pos, "+")
+
+
+class CrossBuildClinvarMatchUnitTests(unittest.TestCase):
+    def test_active_genome_index_liftover_counts_multiallelic_observed_alleles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            clinvar_vcf = tmp_path / "clinvar_grch38.vcf"
+            clinvar_vcf.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+                        "1\t100\t12345\tA\tC,G\t.\t.\tALLELEID=999;CLNSIG=Likely_pathogenic;CLNREVSTAT=criteria_provided,_single_submitter;CLNDN=condition;GENEINFO=GENE1:1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            sample_vcf = tmp_path / "sample_grch37.vcf"
+            sample_vcf.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                        "1\t100\trsMulti\tA\tC,G\t.\tPASS\t.\tGT\t1/2",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            db_path = tmp_path / "evidence.sqlite"
+            agi_path = tmp_path / "sample.active-genome-index.sqlite"
+            output_path = tmp_path / "matches.jsonl"
+
+            import_clinvar_vcf(clinvar_vcf, db_path, source_version="fixture", genome_build="GRCh38")
+            create_active_genome_index(sample_vcf, agi_path)
+            reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, genome_build="GRCh37")
+            with mock.patch("genomi.runtime.liftover.get_liftover", return_value=_IdentityLifter()):
+                result = match_clinvar_variants_from_active_genome_index(
+                    reader,
+                    db_path,
+                    output_path,
+                    genome_build="GRCh37",
+                    cache_genome_build="GRCh38",
+                )
+            payloads = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(result["stats"]["queried_alleles"], 2)
+        self.assertEqual(result["stats"]["lifted_alleles"], 2)
+        self.assertEqual(result["stats"]["lift_dropped_alleles"], 0)
+        self.assertEqual(result["stats"]["matched_alleles"], 2)
+        self.assertEqual([payload["match_basis"] for payload in payloads], ["liftover_multiallelic_alt", "liftover_multiallelic_alt"])
+        for payload in payloads:
+            self.assertEqual(payload["match_provenance"]["liftover"]["source_build"], "GRCh37")
+            self.assertEqual(payload["match_provenance"]["liftover"]["target_build"], "GRCh38")
 
 
 @unittest.skipUnless(

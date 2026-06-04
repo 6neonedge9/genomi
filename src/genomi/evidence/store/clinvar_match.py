@@ -565,15 +565,16 @@ def _populate_lifted_selected_active_genome_index_records_table(
         selection_params,
     ).fetchall()
 
-    lifted = 0
-    dropped = 0
+    lifted_alleles = 0
+    dropped_alleles = 0
     insert_buffer: list[tuple[Any, ...]] = []
     for row in source_rows:
+        queried_alleles = _queried_allele_count_for_selected_record(row)
         sample_chrom = row["chrom"]
         sample_pos = int(row["pos"])
         result = lifter.lift_position_full(sample_chrom, sample_pos)
         if result is None or result[2] != "+":
-            dropped += 1
+            dropped_alleles += queried_alleles
             continue
         lifted_chrom, lifted_pos, _strand = result
         insert_buffer.append(
@@ -600,7 +601,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["observed_alleles"],
             )
         )
-        lifted += 1
+        lifted_alleles += queried_alleles
     if insert_buffer:
         connection.executemany(
             """
@@ -613,7 +614,30 @@ def _populate_lifted_selected_active_genome_index_records_table(
             """,
             insert_buffer,
         )
-    return lifted, dropped
+    return lifted_alleles, dropped_alleles
+
+
+def _queried_allele_count_for_selected_record(row: sqlite3.Row) -> int:
+    observed_alleles = _json_list(row["observed_alleles"])
+    if row["record_kind"] == "array_call":
+        return len({allele.upper() for allele in observed_alleles})
+    alts = {alt.upper() for alt in str(row["alt"] or "").split(",") if alt and alt != "."}
+    ref = str(row["ref"] or "").upper()
+    if observed_alleles:
+        return len({allele.upper() for allele in observed_alleles if allele.upper() != ref and allele.upper() in alts})
+    return len(alts)
+
+
+def _json_list(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if str(item)]
 
 
 def _write_clinvar_active_genome_index_direct_matches(

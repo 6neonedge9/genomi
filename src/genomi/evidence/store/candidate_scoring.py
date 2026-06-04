@@ -35,7 +35,6 @@ from .clinvar_query import (
 )
 from .clinvar_match_provenance import (
     MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
-    MATCH_BASIS_EXACT_ALLELE,
     match_basis_from_record,
     match_kind_from_record,
 )
@@ -150,7 +149,9 @@ def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]
     source_record_formats: Counter[str] = Counter(
         source_format for item in records if (source_format := _record_source_record_format(item))
     )
-    primary_match_basis = _primary_counter_value(match_basis) or MATCH_BASIS_EXACT_ALLELE
+    primary_match_basis = _primary_counter_value(match_basis)
+    if primary_match_basis is None:
+        raise ValueError("ClinVar candidate group has no match_basis records")
     return {
         "primary_match_basis": primary_match_basis,
         "primary_match_kind": _primary_counter_value(match_kind) or primary_match_basis,
