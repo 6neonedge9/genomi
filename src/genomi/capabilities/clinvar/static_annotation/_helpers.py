@@ -520,7 +520,6 @@ def _copy_shared_metadata(source: sqlite3.Connection, target: sqlite3.Connection
         where key like 'clinvar_%'
            or key like 'population_%'
            or key like 'gnomad_%'
-           or key = 'schema_version'
         """
     ):
         target.execute(

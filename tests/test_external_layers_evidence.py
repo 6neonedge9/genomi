@@ -57,7 +57,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
 
             self.assertEqual(timeout, SQLITE_BUSY_TIMEOUT_SECONDS * 1000)
 
-    def test_schema_ensure_updates_existing_metadata_version(self) -> None:
+    def test_schema_ensure_creates_tables_and_prunes_obsolete_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "evidence.sqlite"
             with sqlite3.connect(db) as connection:
@@ -66,7 +66,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
 
             summary = evidence_summary(db)
 
-            self.assertEqual(summary["metadata"]["schema_version"], 6)
+            self.assertEqual(summary["metadata"], {})
             self.assertIn("research_findings", summary["tables"])
             self.assertIn("sample_qc", summary["tables"])
 
@@ -75,7 +75,6 @@ class EvidenceImportTests(EvidenceImportTestBase):
             db = Path(tmp) / "evidence.sqlite"
             with sqlite3.connect(db) as connection:
                 connection.execute("create table metadata (key text primary key, value text not null)")
-                connection.execute("insert into metadata(key, value) values('schema_version', ?)", (json.dumps(4),))
                 connection.execute(
                     """
                     create table research_findings (
@@ -106,7 +105,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
 
             summary = evidence_summary(db)
 
-            self.assertEqual(summary["metadata"]["schema_version"], 6)
+            self.assertEqual(summary["tables"]["research_findings"], 0)
             with sqlite3.connect(db) as connection:
                 columns = {row[1] for row in connection.execute("pragma table_info(research_findings)")}
             self.assertIn("drug", columns)
@@ -119,7 +118,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             db = Path(tmp) / "evidence.sqlite"
 
             init = init_evidence_db(db)
-            self.assertEqual(init["schema_version"], 6)
+            self.assertEqual(init, {"evidence_db": str(db)})
 
             result = import_clinvar_vcf(TINY_CLINVAR, db, source_version="fixture")
             self.assertEqual(result["status"], "completed")

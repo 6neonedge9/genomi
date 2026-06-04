@@ -10,7 +10,6 @@ from ...retrieval import hybrid as retrieval_hybrid
 from ...retrieval import semantic as retrieval_semantic
 
 from .constants import (
-    EVIDENCE_SCHEMA_VERSION,
     RESEARCH_FINDING_TEXT_MAX_CHARS,
     RESEARCH_SCOPES,
     RESEARCH_TARGET_TYPES,
@@ -22,7 +21,6 @@ from .helpers import (
 from .connection import (
     _ensure_schema,
     _insert_research_batch,
-    _upsert_metadata,
     connect_evidence,
 )
 
@@ -53,7 +51,6 @@ def record_research_findings(evidence_db: str | Path, payload: dict[str, Any] | 
             )
         }
         _insert_research_batch(connection, [_research_record_to_row(record) for record in records])
-        _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
         connection.commit()
 
     inserted = len([finding_id for finding_id in finding_ids if finding_id not in existing_ids])

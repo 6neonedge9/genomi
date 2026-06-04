@@ -12,7 +12,6 @@ from ...runtime.sqlite_support import (
 )
 
 from .constants import (
-    EVIDENCE_SCHEMA_VERSION,
     RESEARCH_FINDING_COLUMNS,
     SHARED_EVIDENCE_ALIAS,
     SHARED_EVIDENCE_TABLES,
@@ -42,11 +41,9 @@ def init_evidence_db(path: str | Path) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect_evidence(path) as connection:
         _ensure_schema(connection)
-        _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
         connection.commit()
     return {
         "evidence_db": str(path),
-        "schema_version": EVIDENCE_SCHEMA_VERSION,
     }
 
 
@@ -151,7 +148,6 @@ def _read_metadata(connection: sqlite3.Connection) -> dict[str, Any]:
                     where key like 'clinvar_%'
                        or key like 'population_%'
                        or key like 'gnomad_%'
-                       or key = 'schema_version'
                     """
                 )
             }
@@ -169,7 +165,6 @@ def _clinvar_cache_identity(connection: sqlite3.Connection) -> dict[str, Any]:
     metadata = _read_metadata(connection)
     record_count = connection.execute("select count(*) as records from clinvar_variants").fetchone()["records"]
     return {
-        "schema_version": metadata.get("schema_version"),
         "source": metadata.get("clinvar_source"),
         "source_version": metadata.get("clinvar_source_version"),
         "genome_build": metadata.get("clinvar_genome_build"),
@@ -192,7 +187,6 @@ def _population_cache_identity(connection: sqlite3.Connection) -> dict[str, Any]
         )
     ]
     return {
-        "schema_version": _read_metadata(connection).get("schema_version"),
         "sources": rows,
     }
 
@@ -208,7 +202,6 @@ def _private_sample_context_identity(connection: sqlite3.Connection) -> dict[str
             "latest_created_at": row["latest_created_at"],
         }
     return {
-        "schema_version": _read_metadata(connection).get("schema_version"),
         "tables": tables,
     }
 
@@ -374,7 +367,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_research_finding_columns(connection)
-    _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
+    connection.execute("delete from main.metadata where key = 'schema_version'")
     _install_linked_shared_views(connection)
 
 

@@ -10,7 +10,6 @@ from ...runtime.external import file_metadata, matching_manifest, utc_now
 
 from .constants import (
     DEFAULT_POPULATION_LABEL,
-    EVIDENCE_SCHEMA_VERSION,
     GNOMAD_API_URL,
     GNOMAD_VARIANT_QUERY,
 )
@@ -122,7 +121,6 @@ def import_population_vcf(
             )
             connection.execute("delete from main.metadata where key = ?", (metadata_key,))
 
-        _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
         _upsert_metadata(connection, metadata_key, cache_expected)
 
         batch: list[tuple[Any, ...]] = []
@@ -419,7 +417,6 @@ def fetch_gnomad_variant(
         _delete_population_rows_for_sources(connection, chrom, pos, ref, alt, genome_build, source_labels)
         if batch:
             _insert_population_batch(connection, batch)
-        _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
         _upsert_metadata(connection, metadata_key, metadata_payload)
         connection.commit()
 

@@ -8,9 +8,6 @@ from ...runtime.sqlite_support import (
     connect_sqlite,
 )
 
-
-
-EVIDENCE_SCHEMA_VERSION = 6
 CANDIDATE_RULE_SET_VERSION = "clinvar-candidate-inventory-v11"
 CLINVAR_ANNOTATION_INDEX_RULE_SET_VERSION = "clinvar-annotation-index-v1"
 CLINVAR_RSID_INDEX_RULE_SET_VERSION = "clinvar-rsid-index-v1"

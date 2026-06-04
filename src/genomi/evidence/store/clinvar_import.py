@@ -8,7 +8,6 @@ from ...runtime.external import file_metadata, matching_manifest, utc_now
 
 from .constants import (
     CLINVAR_RSID_INDEX_RULE_SET_VERSION,
-    EVIDENCE_SCHEMA_VERSION,
 )
 from .helpers import (
     _clinvar_raw_info_rsids,
@@ -74,7 +73,6 @@ def import_clinvar_vcf(
             connection.execute("delete from main.clinvar_variant_genes")
             connection.execute("delete from main.metadata where key like 'clinvar_%'")
 
-        _upsert_metadata(connection, "schema_version", EVIDENCE_SCHEMA_VERSION)
         _upsert_metadata(connection, "clinvar_source", file_metadata(clinvar_vcf))
         _upsert_metadata(connection, "clinvar_source_header", header_metadata)
         _upsert_metadata(connection, "clinvar_source_version", effective_source_version)
