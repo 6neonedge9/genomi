@@ -41,8 +41,8 @@ PRS, sequence utilities — works the same on every platform. The full
 install caches ~7 GB of public reference libraries under `GENOMI_HOME`
 (defaults to `~/.genomi`).
 
-After install, peek at [`AGENTS.md`](./AGENTS.md) and [`SKILL.md`](./SKILL.md)
-to see what your agent can now do.
+After install, peek at [`SKILL.md`](./SKILL.md) and the focused skill docs to
+see what your agent can now do.
 
 ---
 
@@ -220,8 +220,7 @@ Persist it by calling the **MCP tool** `genomi.set_response_profile` with
 `{"profile": "<id>"}` (`<id>` ∈ `eli5`, `patient`, `literate`, `expert`) — an
 MCP tool from your agent runtime, not a shell command (there is no
 `genomi set-response-profile` CLI). Also record the id in the host's durable
-memory (CLAUDE.md, Codex memory, etc.) as a backup. On "default" /
-"doesn't matter", use `eli5`.
+memory as a backup. On "default" / "doesn't matter", use `eli5`.
 
 ### Step 4: Pre-flight checks
 

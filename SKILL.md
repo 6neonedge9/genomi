@@ -83,9 +83,12 @@ registration. Ask the user to start a new session.
   with a stale Active Genome Index while silently substituting placeholder data; see
   `skills/active-genome-index/SKILL.md` for the full procedure.
 - For search-like operations, pass host-inferred alternate wording in
-  `semantic_context` as described in `AGENTS.md` "Semantic Retrieval Terms".
-  These terms are retrieval inputs, not evidence; Genomi reports source/retrieval
-  hits in `term_matches` and no-hit terms in `term_misses`.
+  `semantic_context` when the current chat reasonably supports alternate
+  biomedical wording. Send the user's original wording as `raw_query`, add
+  `host_expansions` only as retrieval terms, and add `host_entities` for helpful
+  proposed spans such as drug, gene, phenotype, trait_or_condition, variant, or
+  rsid. These terms are retrieval inputs, not evidence; Genomi reports
+  source/retrieval hits in `term_matches` and no-hit terms in `term_misses`.
 
 ## Routing
 

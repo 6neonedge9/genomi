@@ -9,7 +9,7 @@ Version: 0.1.0
 
 ## Core rules
 
-- For installation or setup, read INSTALL_FOR_AGENTS.md first and follow it. Use AGENTS.md after installation for operating rules.
+- For installation or setup, read INSTALL_FOR_AGENTS.md first and follow it. Use SKILL.md and focused skill docs for runtime operating rules.
 - Base tools (genomi.* and journal.*) appear in MCP tools/list directly. Every other capability tool is reached via the genomi.invoke dispatcher after reading the relevant skills/<capability>/SKILL.md.
 - Treat genome source files as optional private context. Public-only genomic questions are valid.
 - After genomi.parse_source, use the Active Genome Index for normal future inquiries.
@@ -22,9 +22,7 @@ Version: 0.1.0
 ### Core entry points
 
 - [INSTALL_FOR_AGENTS.md](https://raw.githubusercontent.com/exon-research/genomi/master/INSTALL_FOR_AGENTS.md): Mandatory agent install path, verification, MCP setup, and first-question flow.
-- [AGENTS.md](https://raw.githubusercontent.com/exon-research/genomi/master/AGENTS.md): Post-install session rules, runtime rules, read order, and common starts.
 - [SKILL.md](https://raw.githubusercontent.com/exon-research/genomi/master/SKILL.md): Top-level Genomi skill contract and runtime axes.
-- [CLAUDE.md](https://raw.githubusercontent.com/exon-research/genomi/master/CLAUDE.md): Short architecture reference for Claude Code and compatible agents.
 - [README.md](https://raw.githubusercontent.com/exon-research/genomi/master/README.md): Project overview, interfaces, architecture, examples, and verification.
 ### Conventions
 

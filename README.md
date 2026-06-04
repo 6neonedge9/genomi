@@ -38,7 +38,7 @@ at scales never seen before. Your genome is exactly that kind of task. And
 for the first time, we have the tools to actually read it at the scale it
 lives at.
 
-Genomi is a an open source AI agent runtime that turns your AI agent into a personal DNA expert. 
+Genomi is an open-source AI agent runtime that turns your AI agent into a personal DNA expert.
 Works with Claude Code, Codex, OpenClaw, Hermes, and any MCP-capable host. It gives the agent a private
 workspace: your variants in a local Active Genome Index, public genetics evidence ready to
 query, memory of what you explored, and report tools that turn DNA questions
@@ -169,9 +169,8 @@ if anything below drifts from it, that doc wins.
    }
    ```
 
-   Reload your host's MCP servers. If the host does not auto-load project
-   instructions, point it at `AGENTS.md`. For URL-based ingestion, `llms.txt`
-   is the compact map and `llms-full.txt` is one inlined reference file.
+   Reload your host's MCP servers. For URL-based ingestion, `llms.txt` is the
+   compact public map and `llms-full.txt` is one inlined reference file.
 
 ## Ask It Things Like
 
