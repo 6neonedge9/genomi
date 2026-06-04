@@ -144,6 +144,12 @@ def _marker_without_sample_context(marker: JsonObject) -> JsonObject:
 
 def _marker_call(marker: JsonObject, lookup: JsonObject) -> JsonObject:
     matches = lookup.get("sample_context", {}).get("matches") or []
+    support_context = lookup.get("support_context") if isinstance(lookup.get("support_context"), dict) else {}
+    genotype_support = [
+        item
+        for item in support_context.get("genotype_support") or []
+        if isinstance(item, dict)
+    ]
     sample_calls = []
     total_effect_count = 0
     called = False
@@ -164,6 +170,7 @@ def _marker_call(marker: JsonObject, lookup: JsonObject) -> JsonObject:
         "evidence_status": evidence_status,
         "effect_allele_count": total_effect_count,
         "sample_calls": sample_calls,
+        "genotype_support": genotype_support,
         "target_inventory": lookup.get("target_inventory") if isinstance(lookup.get("target_inventory"), dict) else {},
         "lookup_summary": {
             "sample_match_count": int(lookup.get("sample_context", {}).get("count") or 0),
@@ -224,6 +231,7 @@ def _called_star_alleles(marker_calls: list[JsonObject]) -> list[JsonObject]:
                     "star_allele": call["star_allele"],
                     "function": call["function"],
                     "support": call["evidence_status"],
+                    "genotype_support": call.get("genotype_support") or [],
                     "rsid": call["rsid"],
                 }
             )

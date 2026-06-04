@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import json
 import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from ....active_genome_index.active_genome_index import ActiveGenomeIndexReader
-from ....active_genome_index.record_kinds import (
-    RECORD_KIND_ARRAY_NO_CALL,
-    infer_record_kind,
-    reference_block_sql,
-)
+from ....active_genome_index.record_kinds import RECORD_KIND_REFERENCE_BLOCK
 from ....runtime.sqlite_support import connect_readonly_sqlite
 from .parsing import _chrom_aliases, _dedupe_records, _target_key
 
@@ -29,140 +24,108 @@ def _query_active_genome_index(
     warnings: list[str],
 ) -> list[JsonObject]:
     try:
-        with reader.connect() as connection:
-            if not _table_exists(connection, "records"):
-                warnings.append(f"Active Genome Index {run.get('agi_id')} has no records table.")
-                return []
-            target_type = target["target_type"]
-            if target_type == "rsid":
-                sql = _record_select_sql("rsid = ?")
-                params: list[Any] = [target["rsid"]]
-                return _record_matches(connection, sql, params, run=run, selection=selection, target=target, include_fail=include_fail, limit=limit)
-            if target_type == "allele":
-                rows: list[JsonObject] = []
-                for chrom_value in _chrom_aliases(str(target["chrom"])):
-                    sql = _record_select_sql("chrom = ? and pos = ? and ref = ? and alt = ?")
-                    params = [chrom_value, int(target["pos"]), target["ref"], target["alt"]]
-                    rows.extend(
-                        _record_matches(connection, sql, params, run=run, selection=selection, target=target, include_fail=include_fail, limit=limit)
+        target_type = target["target_type"]
+        pass_only = not include_fail
+        if target_type == "rsid":
+            return _enrich_active_genome_index_records(
+                reader.query_rsid(str(target["rsid"]), limit=limit, pass_only=pass_only),
+                run=run,
+                selection=selection,
+                target=target,
+            )
+        if target_type == "allele":
+            rows: list[JsonObject] = []
+            for chrom_value in _chrom_aliases(str(target["chrom"])):
+                rows.extend(
+                    reader.query_variant(
+                        chrom_value,
+                        int(target["pos"]),
+                        str(target["ref"]),
+                        str(target["alt"]),
+                        limit=limit,
+                        pass_only=pass_only,
                     )
-                if not rows:
-                    # Allele not observed as a variant call. For gVCF inputs the
-                    # site may be covered by a reference block. Keep that as raw
-                    # sample context only; genotype_support/callability owns any
-                    # negative or homozygous-reference claim.
-                    for chrom_value in _chrom_aliases(str(target["chrom"])):
-                        sql = _record_select_sql(
-                            f"chrom = ? and pos <= ? and end >= ? and ({reference_block_sql()})"
-                        )
-                        params = [chrom_value, int(target["pos"]), int(target["pos"])]
-                        ref_rows = _record_matches(
-                            connection,
-                            sql,
-                            params,
-                            run=run,
-                            selection=selection,
-                            target=target,
-                            include_fail=include_fail,
+                )
+            if not rows:
+                # Allele not observed as a variant call. For gVCF inputs the
+                # site may be covered by a reference block. Keep that as raw
+                # sample context only; genotype_support/callability owns any
+                # negative or homozygous-reference claim.
+                for chrom_value in _chrom_aliases(str(target["chrom"])):
+                    reference_rows = [
+                        row
+                        for row in reader.query_region(
+                            chrom_value,
+                            int(target["pos"]),
+                            int(target["pos"]),
+                            variants_only=False,
+                            pass_only=pass_only,
                             limit=limit,
                         )
-                        rows.extend(ref_rows)
-                return _dedupe_records(rows, ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"))
-            if target_type == "locus":
-                rows = []
-                for chrom_value in _chrom_aliases(str(target["chrom"])):
-                    sql = _record_select_sql("chrom = ? and pos = ?")
-                    rows.extend(
-                        _record_matches(
-                            connection,
-                            sql,
-                            [chrom_value, int(target["pos"])],
-                            run=run,
-                            selection=selection,
-                            target=target,
-                            include_fail=include_fail,
-                            limit=limit,
-                        )
+                        if row.get("record_kind") == RECORD_KIND_REFERENCE_BLOCK
+                    ]
+                    rows.extend(reference_rows)
+            return _dedupe_records(
+                _enrich_active_genome_index_records(rows, run=run, selection=selection, target=target),
+                ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"),
+            )
+        if target_type == "locus":
+            rows = []
+            for chrom_value in _chrom_aliases(str(target["chrom"])):
+                rows.extend(
+                    reader.query_region(
+                        chrom_value,
+                        int(target["pos"]),
+                        int(target["pos"]),
+                        variants_only=False,
+                        pass_only=pass_only,
+                        limit=limit,
                     )
-                return _dedupe_records(rows, ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"))
-            if target_type == "region":
-                rows = []
-                for chrom_value in _chrom_aliases(str(target["chrom"])):
-                    sql = _record_select_sql("chrom = ? and pos <= ? and end >= ?")
-                    rows.extend(
-                        _record_matches(
-                            connection,
-                            sql,
-                            [chrom_value, int(target["end"]), int(target["start"])],
-                            run=run,
-                            selection=selection,
-                            target=target,
-                            include_fail=include_fail,
-                            limit=limit,
-                        )
+                )
+            return _dedupe_records(
+                _enrich_active_genome_index_records(rows, run=run, selection=selection, target=target),
+                ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"),
+            )
+        if target_type == "region":
+            rows = []
+            for chrom_value in _chrom_aliases(str(target["chrom"])):
+                rows.extend(
+                    reader.query_region(
+                        chrom_value,
+                        int(target["start"]),
+                        int(target["end"]),
+                        variants_only=False,
+                        pass_only=pass_only,
+                        limit=limit,
                     )
-                return _dedupe_records(rows, ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"))
+                )
+            return _dedupe_records(
+                _enrich_active_genome_index_records(rows, run=run, selection=selection, target=target),
+                ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"),
+            )
     except sqlite3.Error as exc:
         warnings.append(f"Could not query Active Genome Index {run.get('agi_id')}: {exc}")
     return []
 
 
-def _record_select_sql(where: str) -> str:
-    return f"""
-        select chrom, pos, end, rsid, sample_name, info_genes, ref, alt, qual, filter,
-               is_variant, info as _info_raw, format as _format_raw, genotype, depth, genotype_quality
-        from records
-        where {where}
-    """
-
-
-def _record_matches(
-    connection: sqlite3.Connection,
-    sql: str,
-    params: list[Any],
+def _enrich_active_genome_index_records(
+    rows: list[JsonObject],
     *,
     run: JsonObject,
     selection: str,
     target: JsonObject,
-    include_fail: bool,
-    limit: int,
 ) -> list[JsonObject]:
-    local_sql = sql
-    local_params = list(params)
-    if not include_fail:
-        local_sql += " and filter = 'PASS'"
-    local_sql += " order by chrom, pos limit ?"
-    local_params.append(limit)
-    rows = [_index_record(row) for row in connection.execute(local_sql, local_params)]
-    for row in rows:
+    output: list[JsonObject] = []
+    for record in rows:
+        row = dict(record)
         row["agi_id"] = run.get("agi_id")
         row["sample_slug"] = run.get("sample_slug")
         row["source_format"] = run.get("source_format")
         row["source_kind"] = run.get("source_kind")
         row["selection"] = selection
         row["target"] = _target_key(target)
-        if run.get("source_format") in {"23andme", "ancestrydna", "myheritage", "ftdna", "livingdna"}:
-            semantics_kind = (
-                "consumer_genotype_array_no_call"
-                if row.get("record_kind") == RECORD_KIND_ARRAY_NO_CALL
-                else "consumer_genotype_array_call"
-            )
-            row["observation_semantics"] = {
-                "kind": semantics_kind,
-                "genome_build": run.get("genome_build") or "GRCh37",
-                "source_format": run.get("source_format"),
-                "genotype": row.get("genotype"),
-                "available_evidence": [
-                    "Observed genotype by rsID/locus from the Active Genome Index.",
-                    "Public interpretation can be connected through rsID/locus evidence.",
-                ],
-                "source_boundaries": [
-                    "Sequencing depth, genotype quality, phasing, and reference-block callability require sequencing-derived sources.",
-                    "Exact REF/ALT equivalence requires public source resolution or a sequencing-derived source.",
-                    "Absence wording requires source-specific coverage or assay design evidence.",
-                ],
-            }
-    return rows
+        output.append(row)
+    return output
 
 
 def _query_clinvar_rsid(
@@ -348,20 +311,3 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     ).fetchone()
     return row is not None
 
-
-def _index_record(row: sqlite3.Row) -> JsonObject:
-    item = dict(row)
-    item["record_kind"] = infer_record_kind(
-        format_value=item.pop("_format_raw", None),
-        is_variant=bool(item.get("is_variant")),
-        filter_value=item.get("filter"),
-        info_raw=item.pop("_info_raw", None),
-        genotype_value=item.get("genotype"),
-    )
-    genes_raw = item.get("info_genes")
-    if genes_raw:
-        try:
-            item["info_genes"] = json.loads(str(genes_raw))
-        except json.JSONDecodeError:
-            item["info_genes"] = []
-    return item

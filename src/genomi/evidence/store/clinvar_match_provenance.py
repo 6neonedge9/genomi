@@ -24,7 +24,7 @@ def build_clinvar_match_payload(
     source_record: dict[str, Any] | None = None,
     liftover: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    basis = match_basis or MATCH_BASIS_EXACT_ALLELE
+    basis = match_basis or MATCH_BASIS_UNKNOWN
     kind = match_kind or basis
     sample = dict(sample_variant)
     source = dict(source_record or {})
@@ -98,6 +98,7 @@ def _write_clinvar_match_rows(
     *,
     sample_build: str | None = None,
     cache_build: str | None = None,
+    default_source_format: str | None = None,
 ) -> dict[str, int]:
     matched_batch_ids: set[str] = set()
     written_records = 0
@@ -124,8 +125,10 @@ def _write_clinvar_match_rows(
             row_keys = set(row.keys())
         batch_id = str(row["batch_id"])
         matched_batch_ids.add(batch_id)
-        source_format = _row_value(row, row_keys, "source_format") or _source_format_from_info(
-            _row_value(row, row_keys, "source_record_info")
+        source_format = (
+            _row_value(row, row_keys, "source_format")
+            or default_source_format
+            or _source_format_from_info(_row_value(row, row_keys, "source_record_info"))
         )
         source_record = {
             "chrom": row["sample_chrom"],

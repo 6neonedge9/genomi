@@ -165,10 +165,9 @@ def _normalize_overview(raw: Any) -> JsonObject | None:
     sample_id = _pick(raw, "sampleId", "sample_id", "nickname", "user_nickname") or _deep_pick(
         raw, "run_sample_slug", "sample_slug"
     )
-    variant_count = (
-        _pick(raw, "variantCount", "variant_count")
-        or _deep_pick(raw, "variant_count", "variant_records", "record_count")
-    )
+    variant_count = _pick(raw, "variantCount", "variant_count")
+    if variant_count is None:
+        variant_count = _deep_pick(raw, "variant_count", "variant_records", "record_count")
     if sample_id is None:
         samples = _deep_pick(raw, "samples")
         if isinstance(samples, list) and samples:
@@ -563,7 +562,7 @@ def _safe_evidence(evidence: JsonObject | None) -> JsonObject:
     """Normalize per-panel evidence and validate each supplied panel.
 
     Absent or empty panels are skipped (they render as placeholders in a full
-    render; update-mode clear semantics are handled by ``render_dashboard``).
+    render; update-mode clearing is handled by ``render_dashboard``).
     A panel supplied with real content is normalized and then validated against
     `_PANEL_SCHEMAS`; a content-bearing panel that normalizes to nothing, or
     that fails its schema, raises `panel_schema_mismatch`. Empty journal input

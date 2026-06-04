@@ -28,7 +28,6 @@ class DispatchEnvelopeContractTests(unittest.TestCase):
     def _call_with_stub(self, name: str, stub_result: dict[str, Any]) -> dict[str, Any]:
         """Replace the registered handler with a stub, dispatch, restore."""
         operation = ops.get_operation(name)
-        original = operation.handler
         new = ops.Operation(
             name=operation.name,
             description=operation.description,
@@ -44,27 +43,13 @@ class DispatchEnvelopeContractTests(unittest.TestCase):
             mutating=operation.mutating,
             external_io=operation.external_io,
             data_access=operation.data_access,
+            agi_need=operation.agi_need,
         )
         ops._OPERATION_BY_NAME[name] = new
         try:
             return ops.call_operation(name, {})
         finally:
-            ops._OPERATION_BY_NAME[name] = ops.Operation(
-                name=operation.name,
-                description=operation.description,
-                input_schema=operation.input_schema,
-                handler=original,
-                skill=operation.skill,
-                area=operation.area,
-                requires=operation.requires,
-                produces=operation.produces,
-                context_optional=operation.context_optional,
-                privacy_scope=operation.privacy_scope,
-                operation_scope=operation.operation_scope,
-                mutating=operation.mutating,
-                external_io=operation.external_io,
-                data_access=operation.data_access,
-                )
+            ops._OPERATION_BY_NAME[name] = operation
 
     def test_every_evidence_op_gets_envelope_with_positive_result(self) -> None:
         for name in sorted(ops.EVIDENCE_PRODUCING_OPERATIONS):

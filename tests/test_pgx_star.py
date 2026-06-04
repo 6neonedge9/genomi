@@ -80,6 +80,28 @@ class PGxStarAlleleTests(unittest.TestCase):
         self.assertEqual(result["marker_calls"][0]["effect_allele_count"], 1)
         self.assertEqual(result["called_star_alleles"][0]["star_allele"], "*2")
 
+    def test_called_star_alleles_preserve_genotype_support_status(self) -> None:
+        def fake_lookup(*, rsid, **_kwargs):
+            records = {
+                "rs4244285": {
+                    "sample_context": {"count": 1, "matches": [{"genotype": "0/1", "ref": "G", "alt": "A"}]},
+                    "support_context": {
+                        "genotype_support": [
+                            {"support_status": "supported", "evidence_class": "exact_locus_genotype"}
+                        ]
+                    },
+                },
+                "rs4986893": {"sample_context": {"count": 1, "matches": [{"genotype": "GG", "ref": "G", "alt": "A"}]}},
+                "rs12248560": {"sample_context": {"count": 1, "matches": [{"genotype": "CC", "ref": "C", "alt": "T"}]}},
+            }
+            return {**records[rsid], "public_context": {}, "warnings": []}
+
+        with patch("genomi.capabilities.pharmacogenomics.pgx_star.variant_lookup.lookup_variant", side_effect=fake_lookup):
+            result = call_star_alleles(gene="CYP2C19")
+
+        self.assertEqual(result["marker_calls"][0]["genotype_support"][0]["support_status"], "supported")
+        self.assertEqual(result["called_star_alleles"][0]["genotype_support"][0]["support_status"], "supported")
+
     def test_unsupported_gene_is_explicit(self) -> None:
         result = call_star_alleles(gene="CYP2D6")
 

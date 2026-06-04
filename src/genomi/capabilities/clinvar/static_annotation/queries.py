@@ -9,12 +9,10 @@ from ....active_genome_index.genotype_qc import (
     assess_sample_qc,
 )
 from ....active_genome_index.active_genome_index import (
-    coverage_query,
+    ActiveGenomeIndexNeed,
     default_active_genome_index_path,
     active_genome_index_summary,
-    query_region,
-    query_rsid_filtered,
-    query_variant,
+    open_reader,
 )
 from ....active_genome_index.vcf import parse_region
 from ....evidence import (
@@ -118,7 +116,8 @@ def query_static_variant(
     pass_only: bool = True,
     limit: int = 50,
 ) -> dict[str, Any]:
-    records = query_variant(vcf, chrom, pos, ref, alt, Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf), pass_only=pass_only, limit=limit)
+    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    records = reader.query_variant(chrom, pos, ref, alt, pass_only=pass_only, limit=limit)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "query": {"type": "variant", "chrom": chrom, "pos": pos, "ref": ref, "alt": alt},
@@ -144,12 +143,11 @@ def query_static_region(
     limit: int = 200,
 ) -> dict[str, Any]:
     chrom, start, end = parse_region(region)
-    records = query_region(
-        vcf,
+    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    records = reader.query_region(
         chrom,
         start,
         end,
-        Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf),
         variants_only=variants_only,
         pass_only=pass_only,
         limit=limit,
@@ -177,7 +175,8 @@ def query_static_rsid(
     pass_only: bool = True,
     limit: int = 50,
 ) -> dict[str, Any]:
-    records = query_rsid_filtered(vcf, rsid, Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf), pass_only=pass_only, limit=limit)
+    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    records = reader.query_rsid(rsid, pass_only=pass_only, limit=limit)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "query": {"type": "rsid", "rsid": rsid},
@@ -202,7 +201,8 @@ def query_static_coverage(
     limit: int = 200,
 ) -> dict[str, Any]:
     chrom, start, end = parse_region(region)
-    payload = coverage_query(vcf, chrom, start, end, Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf), limit=limit)
+    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.REFERENCE)
+    payload = reader.coverage(chrom, start, end, limit=limit)
     payload["workflow_area"] = WORKFLOW_AREA_ID
     return attach_evidence_context(
         payload,
@@ -212,6 +212,16 @@ def query_static_coverage(
             "genomi call variant.gather_gene_context --params '{\"db\":\"<evidence.sqlite>\",\"matches\":\"<clinvar.matches.jsonl>\",\"gene\":\"<gene>\"}'",
         ],
     )
+
+
+def _static_reader(
+    vcf: str | Path,
+    active_genome_index_path: str | Path | None,
+    *,
+    need: ActiveGenomeIndexNeed,
+):
+    path = Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf)
+    return open_reader(path, need=need, vcf_path=vcf)
 
 
 def static_db_lookup(

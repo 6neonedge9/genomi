@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import math
-import sqlite3
 from pathlib import Path
 from typing import Any
 
 from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexReader
-from ...active_genome_index.vcf import parse_sample
 from . import policy, reference_panels, source_context
 
 JsonObject = dict[str, Any]
@@ -146,33 +144,32 @@ def collect_sample_genotypes(
     missing_marker_ids: list[str] = []
     missing_marker_reasons: dict[str, int] = {}
     missing_marker_examples: list[JsonObject] = []
-    with reader.connect() as connection:
-        for marker in markers:
-            marker_result = _marker_dosage_result(connection, marker)
-            marker_id = str(marker["marker_id"])
-            if marker_result.get("status") != "matched":
-                missing_marker_ids.append(marker_id)
-                reason = str(marker_result.get("reason") or "unusable_marker")
-                missing_marker_reasons[reason] = missing_marker_reasons.get(reason, 0) + 1
-                if len(missing_marker_examples) < 10:
-                    missing_marker_examples.append(
-                        {
-                            "marker_id": marker_id,
-                            "reason": reason,
-                            **(
-                                {"detail": marker_result["detail"]}
-                                if marker_result.get("detail") is not None
-                                else {}
-                            ),
-                        }
-                    )
-                continue
-            dosage = marker_result.get("dosage")
-            if dosage is None or not math.isfinite(float(dosage)):
-                missing_marker_ids.append(marker_id)
-                missing_marker_reasons["nonfinite_dosage"] = missing_marker_reasons.get("nonfinite_dosage", 0) + 1
-                continue
-            dosages[marker_id] = float(dosage)
+    for marker in markers:
+        marker_result = _marker_dosage_result(reader, marker)
+        marker_id = str(marker["marker_id"])
+        if marker_result.get("status") != "matched":
+            missing_marker_ids.append(marker_id)
+            reason = str(marker_result.get("reason") or "unusable_marker")
+            missing_marker_reasons[reason] = missing_marker_reasons.get(reason, 0) + 1
+            if len(missing_marker_examples) < 10:
+                missing_marker_examples.append(
+                    {
+                        "marker_id": marker_id,
+                        "reason": reason,
+                        **(
+                            {"detail": marker_result["detail"]}
+                            if marker_result.get("detail") is not None
+                            else {}
+                        ),
+                    }
+                )
+            continue
+        dosage = marker_result.get("dosage")
+        if dosage is None or not math.isfinite(float(dosage)):
+            missing_marker_ids.append(marker_id)
+            missing_marker_reasons["nonfinite_dosage"] = missing_marker_reasons.get("nonfinite_dosage", 0) + 1
+            continue
+        dosages[marker_id] = float(dosage)
 
     usable_marker_ids = [str(marker["marker_id"]) for marker in markers if str(marker["marker_id"]) in dosages]
     usable_marker_count = len(usable_marker_ids)
@@ -200,8 +197,8 @@ def collect_sample_genotypes(
     }
 
 
-def _marker_dosage_result(connection: sqlite3.Connection, marker: JsonObject) -> JsonObject:
-    records = _records_for_marker(connection, marker)
+def _marker_dosage_result(reader: ActiveGenomeIndexReader, marker: JsonObject) -> JsonObject:
+    records = _records_for_marker(reader, marker)
     if not records:
         return {"status": "missing", "reason": "no_record_at_locus"}
     ref = str(marker["ref"]).upper()
@@ -224,6 +221,12 @@ def _marker_dosage_result(connection: sqlite3.Connection, marker: JsonObject) ->
                 ),
             }
         )
+    if missing_reasons:
+        return {
+            "status": "missing",
+            "reason": _primary_missing_reason(missing_reasons),
+            "detail": missing_reasons[:3],
+        }
     exact_records = [
         record for record in records
         if int(record["pos"]) == int(marker["pos"]) and str(record["ref"]).upper() == ref
@@ -248,59 +251,18 @@ def _marker_dosage_result(connection: sqlite3.Connection, marker: JsonObject) ->
     return {"status": "missing", "reason": "no_usable_record_at_locus"}
 
 
-def _records_for_marker(connection: sqlite3.Connection, marker: JsonObject) -> list[JsonObject]:
+def _records_for_marker(reader: ActiveGenomeIndexReader, marker: JsonObject) -> list[JsonObject]:
     records: list[JsonObject] = []
     seen: set[tuple[int, int]] = set()
     for chrom in _chrom_candidates(str(marker["chrom"])):
-        rows = connection.execute(
-            """
-            select *
-            from records
-            where chrom = ? and pos = ?
-            order by chrom_sort, pos, offset, sample_index
-            limit 20
-            """,
-            (chrom, int(marker["pos"])),
-        ).fetchall()
-        rows.extend(
-            connection.execute(
-                """
-                select r.*
-                from spans s
-                join records r on r.offset = s.offset and r.sample_index = s.sample_index
-                where s.chrom = ? and s.pos < ? and s.end >= ?
-                order by s.pos desc
-                limit 20
-                """,
-                (chrom, int(marker["pos"]), int(marker["pos"])),
-            ).fetchall()
-        )
+        rows = reader.query_region(chrom, int(marker["pos"]), int(marker["pos"]), variants_only=False, limit=20)
         for row in rows:
             key = (int(row["offset"]), int(row["sample_index"] or 0))
             if key in seen:
                 continue
             seen.add(key)
-            records.append(_record_row_to_dict(row))
+            records.append(dict(row))
     return records
-
-
-def _record_row_to_dict(row: sqlite3.Row) -> JsonObject:
-    alt = "" if row["alt"] == "." else str(row["alt"] or "")
-    return {
-        "chrom": row["chrom"],
-        "pos": int(row["pos"]),
-        "end": int(row["end"]),
-        "ref": row["ref"],
-        "alt": alt,
-        "alts": [value for value in alt.split(",") if value],
-        "filter": row["filter"],
-        "is_variant": bool(row["is_variant"]),
-        "genotype": row["genotype"],
-        "format": str(row["format"] or "").split(":") if row["format"] else [],
-        "sample": parse_sample(str(row["format"] or ""), str(row["sample"] or "")),
-        "offset": int(row["offset"]),
-        "sample_index": int(row["sample_index"] or 0),
-    }
 
 
 def _dosage_from_record(record: JsonObject, *, ref: str, alt: str) -> float | None:
@@ -455,9 +417,13 @@ def _reference_panel_summary(panel: JsonObject) -> JsonObject:
     manifest = panel.get("manifest") or {}
     stats = panel.get("stats") or {}
     genome_build = str(manifest.get("genome_build") or "GRCh38")
+    try:
+        title = source_context.panel_title_for_build(genome_build)
+    except ValueError:
+        title = str(manifest.get("title") or reference_panels.PANEL_TITLE)
     return {
         "panel_id": str(manifest.get("panel_id") or source_context.panel_id_for_build(genome_build)),
-        "title": str(manifest.get("title") or reference_panels.PANEL_TITLE),
+        "title": title,
         "library": str(manifest.get("library") or source_context.panel_library_for_build(genome_build)),
         "genome_build": genome_build,
         "sample_count": int(manifest.get("sample_count") or stats.get("sample_count") or len(panel.get("samples") or [])),

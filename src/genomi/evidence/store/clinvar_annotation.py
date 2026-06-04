@@ -4,14 +4,18 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+from ...active_genome_index.active_genome_index import (
+    ActiveGenomeIndexNeed,
+    ActiveGenomeIndexReader,
+    open_reader,
+)
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
 from ...runtime.sqlite_support import (
     LONG_WRITE_BUSY_TIMEOUT_SECONDS,
-    connect_readonly_sqlite,
     connect_sqlite,
 )
 
@@ -34,6 +38,11 @@ from .connection import (
 from .candidate_scoring import (
     _candidate_evidence_groups,
     _ordered_candidate_evidence_group_counts,
+)
+from .clinvar_match_provenance import (
+    MATCH_BASIS_EXACT_ALLELE,
+    match_basis_from_record,
+    match_kind_from_record,
 )
 
 
@@ -210,11 +219,19 @@ def build_clinvar_annotation_index(
     review_status_counts: Counter[str] = Counter()
     gene_counts: Counter[str] = Counter()
     evidence_group_counts: Counter[str] = Counter()
+    match_basis_counts: Counter[str] = Counter()
+    match_kind_counts: Counter[str] = Counter()
+    exact_match_variants = 0
     for annotation in annotations:
         clinical_significance_counts.update(dict(annotation["clinvar"]["clinical_significance_counts"]))
         review_status_counts.update(dict(annotation["clinvar"]["review_status_counts"]))
         gene_counts.update(annotation["genes"])
         evidence_group_counts.update(annotation["evidence_groups"])
+        provenance = annotation["match_provenance"]
+        match_basis_counts.update(dict(provenance["match_basis_counts"]))
+        match_kind_counts.update(dict(provenance["match_kind_counts"]))
+        if provenance["primary_match_basis"] == MATCH_BASIS_EXACT_ALLELE:
+            exact_match_variants += 1
 
     payload = {
         "status": "completed",
@@ -224,7 +241,7 @@ def build_clinvar_annotation_index(
         "action": {
             "name": "build-clinvar-annotation-index",
             "purpose": (
-                "Materialize every exact ClinVar allele match from stage 1 so downstream "
+                "Materialize every provenance-labeled ClinVar allele match from stage 1 so downstream "
                 "research can recover objective genes, conditions, review "
                 "status, and clinical-significance source fields without applying a report lens."
             ),
@@ -236,7 +253,10 @@ def build_clinvar_annotation_index(
         },
         "summary": {
             "total_match_records": total_match_records,
-            "exact_match_variants": len(annotations),
+            "matched_variants": len(annotations),
+            "exact_match_variants": exact_match_variants,
+            "match_basis_counts": match_basis_counts.most_common(),
+            "match_kind_counts": match_kind_counts.most_common(),
             "gene_counts": gene_counts.most_common(25),
             "clinical_significance_counts": clinical_significance_counts.most_common(),
             "review_status_counts": review_status_counts.most_common(),
@@ -245,7 +265,7 @@ def build_clinvar_annotation_index(
         "annotations": annotations,
         "evidence_context": evidence_context(
             "research",
-            reason="Exact ClinVar annotations are static source fields; interpretation still belongs in intent research.",
+            reason="ClinVar annotations are static source fields with explicit match provenance; interpretation still belongs in intent research.",
             commands=[
                 "genomi call variant.gather_allele_context --params '{\"db\":\"<evidence.sqlite>\",\"matches\":\"<clinvar.matches.jsonl>\",\"chrom\":\"<chrom>\",\"pos\":123,\"ref\":\"<ref>\",\"alt\":\"<alt>\"}'",
                 "genomi call variant.gather_gene_context --params '{\"db\":\"<evidence.sqlite>\",\"matches\":\"<clinvar.matches.jsonl>\",\"gene\":\"<gene>\"}'",
@@ -281,6 +301,8 @@ def _build_clinvar_annotation(group: dict[str, Any]) -> dict[str, Any]:
     )
     conditions = _ordered_unique(record.get("conditions") for record in clinvar_records if record.get("conditions"))
     clinvar_ids = _ordered_unique(record.get("clinvar_id") for record in clinvar_records if record.get("clinvar_id"))
+    match_basis = Counter(match_basis_from_record(item) for item in records)
+    match_kind = Counter(match_kind_from_record(item) for item in records)
     return {
         "variant": {
             "chrom": sample.get("chrom"),
@@ -295,6 +317,12 @@ def _build_clinvar_annotation(group: dict[str, Any]) -> dict[str, Any]:
         },
         "genes": genes,
         "evidence_groups": _candidate_evidence_groups(clinical_significance),
+        "match_provenance": {
+            "primary_match_basis": _primary_counter_value(match_basis),
+            "primary_match_kind": _primary_counter_value(match_kind),
+            "match_basis_counts": match_basis.most_common(),
+            "match_kind_counts": match_kind.most_common(),
+        },
         "clinvar": {
             "match_records": len(records),
             "clinical_significance_counts": clinical_significance.most_common(),
@@ -315,8 +343,14 @@ def _clinvar_annotation_sort_key(annotation: dict[str, Any]) -> tuple[str, int, 
     )
 
 
+def _primary_counter_value(counter: Counter[str]) -> str | None:
+    if not counter:
+        return None
+    return counter.most_common(1)[0][0]
+
+
 def build_clinvar_rsid_annotation_index(
-    active_genome_index_path: str | Path,
+    active_genome_index: ActiveGenomeIndexReader | str | Path,
     evidence_db: str | Path,
     output_path: str | Path | None = None,
     *,
@@ -332,7 +366,12 @@ def build_clinvar_rsid_annotation_index(
     from the shared ClinVar source.
     """
 
-    active_genome_index_path = Path(active_genome_index_path)
+    reader = (
+        active_genome_index
+        if isinstance(active_genome_index, ActiveGenomeIndexReader)
+        else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
+    )
+    active_genome_index_path = reader.active_genome_index_path
     evidence_db = Path(evidence_db)
     if not active_genome_index_path.exists():
         raise FileNotFoundError(active_genome_index_path)
@@ -370,9 +409,9 @@ def build_clinvar_rsid_annotation_index(
     matched_rsids = 0
     clinical_significance_counts: Counter[str] = Counter()
     gene_counts: Counter[str] = Counter()
-    with connect_readonly_sqlite(active_genome_index_path) as active_genome_index_connection, connect_evidence(evidence_db) as evidence_connection:
+    with connect_evidence(evidence_db) as evidence_connection:
         _ensure_schema(evidence_connection)
-        for sample_by_rsid in _iter_sample_rsid_batches(active_genome_index_connection, batch_size=batch_size):
+        for sample_by_rsid in reader.iter_pass_variant_rsid_batches(batch_size=batch_size):
             queried_rsids += len(sample_by_rsid)
             sample_variant_count += sum(len(records) for records in sample_by_rsid.values())
             clinvar_by_rsid = _query_clinvar_by_rsid(
@@ -436,32 +475,6 @@ def build_clinvar_rsid_annotation_index(
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     payload["manifest_path"] = str(manifest_path)
     return payload
-
-
-def _iter_sample_rsid_batches(
-    connection: sqlite3.Connection,
-    *,
-    batch_size: int,
-) -> Iterator[dict[str, list[dict[str, Any]]]]:
-    sample_by_rsid: dict[str, list[dict[str, Any]]] = {}
-    for row in connection.execute(
-        """
-        select chrom, pos, rsid, ref, alt, filter, genotype, depth, genotype_quality
-        from records
-        where rsid is not null
-          and rsid glob 'rs*'
-          and is_variant = 1
-          and filter = 'PASS'
-        order by rsid, chrom_sort, pos
-        """
-    ):
-        rsid = str(row["rsid"])
-        sample_by_rsid.setdefault(rsid, []).append(dict(row))
-        if len(sample_by_rsid) >= batch_size:
-            yield sample_by_rsid
-            sample_by_rsid = {}
-    if sample_by_rsid:
-        yield sample_by_rsid
 
 
 def _query_clinvar_by_rsid(

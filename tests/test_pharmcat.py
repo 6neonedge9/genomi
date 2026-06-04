@@ -582,7 +582,15 @@ class PharmCATIntegrationTests(unittest.TestCase):
                 "10\t94761900\trs4244285\tG\tA\t.\tPASS\t.\tGT\t0/1\n",
                 encoding="utf-8",
             )
-            call_operation("active_genome_index.assign_user_genome", {"nickname": "Test user", "source": str(vcf)})
+            parsed = call_operation("genomi.parse_source", {"source": str(vcf), "force": True})
+            call_operation(
+                "active_genome_index.assign_user_genome",
+                {
+                    "nickname": "Test user",
+                    "source": str(vcf),
+                    "active_genome_index_path": parsed["outputs"]["active_genome_index_path"],
+                },
+            )
 
             result = call_operation("pharmacogenomics.preflight_pharmcat")
 
@@ -593,8 +601,21 @@ class PharmCATIntegrationTests(unittest.TestCase):
     def test_call_operation_uses_active_genome_index_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf = Path(tmp) / "sample.vcf"
-            vcf.write_text("##fileformat=VCFv4.2\n", encoding="utf-8")
-            call_operation("active_genome_index.assign_user_genome", {"nickname": "Test user", "source": str(vcf)})
+            vcf.write_text(
+                "##fileformat=VCFv4.2\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n"
+                "10\t94761900\trs4244285\tG\tA\t.\tPASS\t.\tGT\t0/1\n",
+                encoding="utf-8",
+            )
+            parsed = call_operation("genomi.parse_source", {"source": str(vcf), "force": True})
+            call_operation(
+                "active_genome_index.assign_user_genome",
+                {
+                    "nickname": "Test user",
+                    "source": str(vcf),
+                    "active_genome_index_path": parsed["outputs"]["active_genome_index_path"],
+                },
+            )
 
             with patch(
                 "genomi.operations.pharmcat.run_pharmcat",
@@ -605,6 +626,10 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["status"], "planned")
         runner.assert_called_once()
         self.assertEqual(Path(runner.call_args.kwargs["vcf"]).resolve(strict=False), vcf.resolve(strict=False))
+        self.assertEqual(
+            Path(runner.call_args.kwargs["active_genome_index_path"]).resolve(strict=False),
+            Path(parsed["outputs"]["active_genome_index_path"]).resolve(strict=False),
+        )
 
 
 if __name__ == "__main__":

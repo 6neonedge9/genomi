@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexIncomplete
 from tests._external_layers_helpers import (
     SQLITE_BUSY_TIMEOUT_SECONDS,
     TINY_CLINVAR,
@@ -478,8 +479,8 @@ class EvidenceImportTests(EvidenceImportTestBase):
                     create index records_rsid_idx on records(rsid);
                     """
                 )
-            with self.assertRaisesRegex(RuntimeError, "Active Genome Index is incomplete"):
-                    match_clinvar_variants_from_active_genome_index(incomplete_active_genome_index, db, Path(tmp) / "incomplete.jsonl")
+            with self.assertRaises(ActiveGenomeIndexIncomplete):
+                match_clinvar_variants_from_active_genome_index(incomplete_active_genome_index, db, Path(tmp) / "incomplete.jsonl")
 
             summary = summarize_clinvar_matches(output, Path(tmp) / "summary.json")
             self.assertEqual(summary["total_clinvar_match_records"], 2)
@@ -490,8 +491,11 @@ class EvidenceImportTests(EvidenceImportTestBase):
 
             annotations = build_clinvar_annotation_index(output, Path(tmp) / "annotations.json")
             self.assertEqual(annotations["summary"]["total_match_records"], 2)
+            self.assertEqual(annotations["summary"]["matched_variants"], 2)
             self.assertEqual(annotations["summary"]["exact_match_variants"], 2)
+            self.assertEqual(annotations["summary"]["match_basis_counts"], [("exact_allele", 2)])
             self.assertEqual(annotations["annotations"][0]["genes"], ["GENE1"])
+            self.assertEqual(annotations["annotations"][0]["match_provenance"]["primary_match_basis"], "exact_allele")
             self.assertEqual(annotations["annotations"][0]["clinvar"]["clinical_significance_counts"], [("Benign", 1)])
             cached_annotations = build_clinvar_annotation_index(output, Path(tmp) / "annotations.json")
             self.assertEqual(cached_annotations["status"], "cached")
@@ -514,6 +518,55 @@ class EvidenceImportTests(EvidenceImportTestBase):
             )
             cached_after_record = match_clinvar_variants(TINY_VCF, db, output)
             self.assertEqual(cached_after_record["status"], "cached")
+
+    def test_clinvar_annotation_index_preserves_array_inference_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            matches = Path(tmp) / "array.matches.jsonl"
+            matches.write_text(
+                json.dumps(
+                    {
+                        "match_basis": "consumer_array_allele_inference",
+                        "match_kind": "consumer_array_allele_inference",
+                        "source_format": "23andme",
+                        "sample_variant": {
+                            "chrom": "1",
+                            "pos": 200,
+                            "ref": "T",
+                            "alt": "G",
+                            "genotype": "TG",
+                            "filter": "PASS",
+                            "source_format": "23andme",
+                            "source_record_ref": ".",
+                            "source_record_alt": ".",
+                            "source_record_format": "GT_ARRAY",
+                        },
+                        "clinvar": {
+                            "chrom": "1",
+                            "pos": 200,
+                            "ref": "T",
+                            "alt": "G",
+                            "clinical_significance": "Pathogenic",
+                            "review_status": "criteria provided, single submitter",
+                            "gene_info": "GENE2:2",
+                            "conditions": "condition",
+                            "clinvar_id": "RCV0002",
+                        },
+                        "match_provenance": {"match_basis": "consumer_array_allele_inference"},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            annotations = build_clinvar_annotation_index(matches, Path(tmp) / "annotations.json")
+
+        self.assertEqual(annotations["summary"]["matched_variants"], 1)
+        self.assertEqual(annotations["summary"]["exact_match_variants"], 0)
+        self.assertEqual(annotations["summary"]["match_basis_counts"], [("consumer_array_allele_inference", 1)])
+        self.assertEqual(
+            annotations["annotations"][0]["match_provenance"]["primary_match_basis"],
+            "consumer_array_allele_inference",
+        )
 
     def test_clinvar_match_report_marks_multiallelic_source_alt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

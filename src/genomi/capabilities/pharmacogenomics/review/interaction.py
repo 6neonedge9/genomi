@@ -412,7 +412,6 @@ def review_medication_interaction(
         star_allele_calls=star_allele_calls,
         public_evidence_count=total_source_evidence_count,
         sample_lookups=sample_lookups,
-        technical_support_count=technical_support_count,
         active_genome_index_context_available=active_genome_index_context_available,
     )
     unanswered_answer_components = _unanswered_answer_components(

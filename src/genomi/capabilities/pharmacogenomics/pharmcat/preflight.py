@@ -5,20 +5,23 @@ from pathlib import Path
 from typing import Any
 
 from ....active_genome_index.active_genome_index import (
+    ActiveGenomeIndexNeed,
     default_active_genome_index_path,
-    read_header_from_active_genome_index,
-)
-from ....active_genome_index.active_genome_index import (
-    connect_existing as connect_active_genome_index_existing,
+    open_reader,
 )
 from ._common import JsonObject, _size
 
 
-def _input_preflight(vcf_path: Path, *, scan_records: int = 100) -> JsonObject:
+def _input_preflight(
+    vcf_path: Path,
+    *,
+    active_genome_index_path: str | Path | None = None,
+    scan_records: int = 100,
+) -> JsonObject:
     # Self-sufficient: read the header and a record sample from the structured
     # Active Genome Index alone — never the intake or the canonical bgzip.
-    active_genome_index_path = default_active_genome_index_path(vcf_path)
-    if not Path(active_genome_index_path).exists():
+    agi_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    if not agi_path.exists():
         return {
             "schema": "genomi-pharmcat-input-preflight-v1",
             "status": "requires_active_genome_index",
@@ -44,17 +47,9 @@ def _input_preflight(vcf_path: Path, *, scan_records: int = 100) -> JsonObject:
     filters: dict[str, int] = {}
     header = None
     try:
-        with connect_active_genome_index_existing(active_genome_index_path) as connection:
-            header = read_header_from_active_genome_index(connection)
-            rows = connection.execute(
-                """
-                select chrom, ref, alt, filter, is_variant, format, genotype, depth, genotype_quality
-                from records
-                order by chrom_sort, pos, offset, sample_index
-                limit ?
-                """,
-                (scan_records,),
-            ).fetchall()
+        reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, vcf_path=vcf_path)
+        header = reader.header()
+        rows = reader.preflight_records(limit=scan_records)
         for row in rows:
             chrom = str(row["chrom"])
             filt = str(row["filter"])
@@ -113,11 +108,6 @@ def _input_preflight(vcf_path: Path, *, scan_records: int = 100) -> JsonObject:
         "filters_observed": filters,
         "pharmcat_requirement_checks": requirement_checks,
         "warnings": warnings,
-        "semantics": [
-            "Preflight summarizes local VCF structure without exposing the raw intake path.",
-            "PharmCAT coverage sufficiency is judged from execution artifacts; inspect missing PGx positions after execution.",
-            "PharmCAT expects GRCh38, GT sample fields, required PGx positions, normalized representation, and chr-prefixed chromosome names.",
-        ],
     }
 
 

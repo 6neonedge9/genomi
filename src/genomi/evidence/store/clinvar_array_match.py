@@ -70,7 +70,7 @@ def clinvar_array_direct_select_sql(
             from selected_records r
             cross join {table_name} as cv indexed by clinvar_variant_idx
             where 1 = 1
-              and upper(coalesce(r.format, '')) = 'GT_ARRAY'
+              and r.record_kind = 'array_call'
               and upper(cv.ref) in ('A', 'C', 'G', 'T')
               and upper(cv.alt) in ('A', 'C', 'G', 'T')
               and r.genotype is not null

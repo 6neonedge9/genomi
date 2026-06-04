@@ -567,6 +567,59 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             [{"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}],
         )
 
+    def test_supported_pgx_locus_does_not_suppress_unresolved_followup_loci(self) -> None:
+        clinpgx_result = {
+            "source": {"source_id": "clinpgx"},
+            "summary": {"guideline_annotation_count": 1, "clinical_annotation_count": 0, "label_annotation_count": 0},
+            "sample_follow_up_targets": {"rsids": ["rs111111111", "rs222222222"], "genes": []},
+            "clinical_verification": {"requires_before_personal_actionability": []},
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+        pgxdb_result = {
+            "source": {"source_id": "pgxdb"},
+            "summary": {"pgx_record_count": 0},
+            "pgx_records": [],
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+
+        def fake_variant_lookup(*, rsid: str, genome_build: str, **_: object) -> dict[str, object]:
+            if rsid == "rs111111111":
+                return {
+                    "query": {"rsid": rsid, "genome_build": genome_build},
+                    "sample_context": {"count": 1, "matches": [{"rsid": rsid, "source_format": "vcf", "genotype": "0/1"}]},
+                    "support_context": {"genotype_support": [{"support_status": "supported"}]},
+                    "target_inventory": {
+                        "genotype_support_loci": [
+                            {"chrom": "1", "pos": 111, "ref": "A", "alt": "G", "genome_build": genome_build}
+                        ]
+                    },
+                }
+            return {
+                "query": {"rsid": rsid, "genome_build": genome_build},
+                "sample_context": {"count": 1, "matches": [{"rsid": rsid, "source_format": "vcf", "genotype": "0/1"}]},
+                "support_context": {"genotype_support": []},
+                "target_inventory": {
+                    "genotype_support_loci": [
+                        {"chrom": "2", "pos": 222, "ref": "C", "alt": "T", "genome_build": genome_build}
+                    ]
+                },
+            }
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.review.clinpgx.lookup_clinpgx", return_value=clinpgx_result),
+            patch("genomi.capabilities.pharmacogenomics.review.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
+            patch("genomi.capabilities.pharmacogenomics.review.variant_lookup.lookup_variant", side_effect=fake_variant_lookup),
+        ):
+            result = review_medication_interaction(drug="clopidogrel", include_active_genome_index=True)
+
+        self.assertEqual(result["sample_evidence"]["technical_support_count"], 1)
+        self.assertEqual(
+            result["target_inventory"]["genotype_support_loci"],
+            [{"chrom": "2", "pos": 222, "ref": "C", "alt": "T", "genome_build": "GRCh38"}],
+        )
+
     def test_answer_support_matches_separator_genotype_expressions(self) -> None:
         clinpgx_result = {
             "source": {"source_id": "clinpgx"},

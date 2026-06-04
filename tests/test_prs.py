@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gzip
+import json
 import os
 import sqlite3
 import tempfile
@@ -344,6 +345,87 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(result["pgs_id"], "PGS900888")
         self.assertTrue((target_dir / "manifest.json").exists())
         self.assertTrue((target_dir / "variants.sqlite").exists())
+
+    def test_import_replaces_invalid_existing_score_cache(self) -> None:
+        scoring_file = self._write_scoring_file(
+            filename="PGS900889_hmPOS_GRCh38.txt",
+            pgs_id="PGS900889",
+        )
+        target_dir = prs_scoring_files.prs_score_dir("PGS900889", "GRCh38")
+        target_dir.mkdir(parents=True)
+        stale_variant = {
+            "variant_id": "rsStale",
+            "rsid": "rsStale",
+            "chrom": "1",
+            "pos": 100,
+            "effect_allele": "C",
+            "other_allele": "A",
+            "effect_weight": 0.5,
+            "harmonized": False,
+            "palindromic": False,
+            "source_row_number": 2,
+        }
+        prs_scoring_files.write_variants_db(target_dir / "variants.sqlite", [stale_variant])
+        (target_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "pgs_id": "PGS900889",
+                    "genome_build": "GRCh38",
+                    "variant_count": 99,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = call_operation(
+            "prs.import_scoring_file",
+            {"pgs_id": "PGS900889", "scoring_file": str(scoring_file), "genome_build": "GRCh38"},
+        )
+
+        self.assertEqual(result["status"], "completed", result)
+        self.assertEqual(result["pgs_id"], "PGS900889")
+        validation = prs_scoring_files.validate_score_cache(
+            target_dir,
+            expected_pgs_id="PGS900889",
+            expected_genome_build="GRCh38",
+        )
+        self.assertTrue(validation["valid"], validation)
+        self.assertEqual(validation["variant_count"], 4)
+
+    def test_resolve_score_cache_rejects_wrong_manifest_identity(self) -> None:
+        target_dir = prs_scoring_files.prs_score_dir("PGS900890", "GRCh38")
+        target_dir.mkdir(parents=True)
+        variant = {
+            "variant_id": "rs1",
+            "rsid": "rs1",
+            "chrom": "1",
+            "pos": 100,
+            "effect_allele": "C",
+            "other_allele": "A",
+            "effect_weight": 0.5,
+            "harmonized": False,
+            "palindromic": False,
+            "source_row_number": 2,
+        }
+        prs_scoring_files.write_variants_db(target_dir / "variants.sqlite", [variant])
+        (target_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "pgs_id": "PGS000000",
+                    "genome_build": "GRCh38",
+                    "variant_count": 1,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = prs_scoring_files.resolve_score_cache(pgs_id="PGS900890", genome_build="GRCh38")
+
+        self.assertEqual(result["status"], "requires_score_import")
+        self.assertFalse(result["score_cache_status"]["installed"])
+        self.assertEqual(result["score_cache_status"]["validation"]["reason"], "pgs_id_mismatch")
 
     def test_variant_db_write_failure_preserves_existing_database(self) -> None:
         db_path = Path(self._home_tmp.name) / "variants.sqlite"
@@ -767,6 +849,8 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
                 filter text not null,
                 format text,
                 genotype text not null,
+                record_kind text not null,
+                observed_alleles text,
                 offset integer not null,
                 sample_index integer not null
             );
@@ -791,12 +875,30 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         alt: str,
         genotype: str,
     ) -> None:
+        record_kind, observed_alleles = self._vcf_record_observation(ref=ref, alt=alt, genotype=genotype)
         connection.execute(
             """
-            insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype, offset, sample_index)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into records(
+                chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype,
+                record_kind, observed_alleles, offset, sample_index
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("1", 1, pos, pos, ref, alt, "PASS", "GT", genotype, pos, 0),
+            (
+                "1",
+                1,
+                pos,
+                pos,
+                ref,
+                alt,
+                "PASS",
+                "GT",
+                genotype,
+                record_kind,
+                json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
+                pos,
+                0,
+            ),
         )
 
     def _insert_array_prs_record(
@@ -807,13 +909,56 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         genotype: str,
         filter_value: str = "PASS",
     ) -> None:
+        is_called = filter_value == "PASS" and genotype not in {"", ".", "--", "00", "NN"}
+        record_kind = "array_call" if is_called else "array_no_call"
+        observed_alleles = list(genotype) if is_called else None
         connection.execute(
             """
-            insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype, offset, sample_index)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into records(
+                chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype,
+                record_kind, observed_alleles, offset, sample_index
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("1", 1, pos, pos, "N", genotype, filter_value, "GT_ARRAY", genotype, pos, 0),
+            (
+                "1",
+                1,
+                pos,
+                pos,
+                ".",
+                ".",
+                filter_value,
+                "GT_ARRAY",
+                genotype,
+                record_kind,
+                json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
+                pos,
+                0,
+            ),
         )
+
+    def _vcf_record_observation(
+        self,
+        *,
+        ref: str,
+        alt: str,
+        genotype: str,
+    ) -> tuple[str, list[str] | None]:
+        tokens = [token for token in genotype.replace("|", "/").split("/") if token]
+        if not tokens or any(token == "." for token in tokens):
+            return "no_call", None
+        alts = [] if alt == "." else alt.split(",")
+        observed: list[str] = []
+        for token in tokens:
+            if token == "0":
+                observed.append(ref)
+                continue
+            try:
+                observed.append(alts[int(token) - 1])
+            except (IndexError, ValueError):
+                return "no_call", None
+        record_kind = "variant_call" if any(token != "0" for token in tokens) and alts else "reference_block"
+        return record_kind, observed
 
     def _score_variant(self, *, pos: int, effect_allele: str, other_allele: str) -> dict[str, object]:
         return {

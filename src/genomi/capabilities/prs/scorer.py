@@ -178,12 +178,10 @@ def collect_score_context(
     matched: list[JsonObject] = []
     missing: list[JsonObject] = []
     excluded: list[JsonObject] = list(liftover_excluded)
-    with reader.connect() as connection:
-        dosages = harmonize.dosage_for_variants(
-            connection,
-            variants,
-            skip_ambiguous_palindromic=skip_ambiguous_palindromic,
-        )
+    dosages = reader.dosage_for_variants(
+        variants,
+        skip_ambiguous_palindromic=skip_ambiguous_palindromic,
+    )
     for dosage in dosages:
         if dosage["status"] == "matched":
             matched.append(dosage)

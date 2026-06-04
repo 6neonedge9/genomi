@@ -410,7 +410,7 @@ def _star_allele_evidence_items(star_allele_calls: list[JsonObject]) -> list[Jso
                     "observed_marker_count": len(observed_markers),
                     "marker_count": len(marker_calls),
                     "called_star_alleles": [
-                        _compact_selected_fields(item, ("star_allele", "function", "rsid", "support"))
+                        _compact_selected_fields(item, ("star_allele", "function", "rsid", "support", "genotype_support"))
                         for item in call.get("called_star_alleles") or []
                     ],
                 },

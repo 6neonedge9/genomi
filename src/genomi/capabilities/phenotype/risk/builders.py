@@ -266,6 +266,10 @@ def _active_candidate_summary(candidate: dict[str, Any], *, genes: list[str], co
     target_match_status = _target_match_status(candidate_genes, conditions, genes=genes, condition=condition)
     return {
         "candidate_id": _variant_candidate_id(variant),
+        "match_basis": candidate.get("match_basis"),
+        "match_kind": candidate.get("match_kind"),
+        "match_provenance": candidate.get("match_provenance") or {},
+        "source_format": candidate.get("source_format") or variant.get("source_format"),
         "variant": {
             "chrom": variant.get("chrom"),
             "pos": variant.get("pos"),
@@ -273,6 +277,10 @@ def _active_candidate_summary(candidate: dict[str, Any], *, genes: list[str], co
             "alt": variant.get("alt"),
             "genotype": variant.get("genotype"),
             "filter": variant.get("filter"),
+            "source_record_ref": variant.get("source_record_ref"),
+            "source_record_alt": variant.get("source_record_alt"),
+            "source_record_format": variant.get("source_record_format"),
+            "source_record_genotype": variant.get("source_record_genotype"),
         },
         "genes": candidate_genes,
         "conditions": conditions,
@@ -421,6 +429,8 @@ def _sample_variant_lane(candidate: dict[str, Any]) -> str:
         return NEGATIVE_OR_CONFLICTING_EVIDENCE
     if "clinvar_risk_association_protective" in set(candidate.get("evidence_groups") or []):
         return NEARBY_TRAIT_MATCH
+    if candidate.get("match_basis") == "consumer_array_allele_inference":
+        return SAME_GENE_OR_LOCUS
     return DIRECT_SOURCE_MATCH
 
 
@@ -429,6 +439,8 @@ def _sample_variant_score(candidate: dict[str, Any], best_lane: str) -> float:
         return 0.9
     if best_lane == NEARBY_TRAIT_MATCH:
         return 0.65
+    if best_lane == SAME_GENE_OR_LOCUS:
+        return 0.6
     return 0.35
 
 
@@ -437,7 +449,9 @@ def _sample_variant_text(candidate: dict[str, Any]) -> str:
         f"{label}:{count}" for label, count in (candidate.get("clinical_significance_counts") or [])[:3]
     )
     genes = ", ".join(candidate.get("genes") or [])
-    return f"{candidate['candidate_id']} {genes} {significance}".strip()
+    basis = candidate.get("match_basis")
+    provenance_note = "consumer-array allele inference" if basis == "consumer_array_allele_inference" else str(basis or "")
+    return f"{candidate['candidate_id']} {genes} {significance} {provenance_note}".strip()
 
 
 def _sample_variant_counter_evidence(candidate: dict[str, Any]) -> list[dict[str, Any]]:

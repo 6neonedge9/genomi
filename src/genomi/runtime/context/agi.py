@@ -624,9 +624,12 @@ def _is_digitized_run(run: JsonObject) -> bool:
 
 def _active_genome_index_state(run: JsonObject) -> JsonObject | None:
     active_genome_index_path = run.get("active_genome_index_path")
-    if not active_genome_index_path or str(run.get("source_format") or "") not in {"vcf", "gvcf"}:
+    if not active_genome_index_path:
         return None
-    return active_genome_index_readiness(str(active_genome_index_path))
+    path = Path(str(active_genome_index_path))
+    if not path.exists():
+        return None
+    return active_genome_index_readiness(path)
 
 
 def _active_user(context: JsonObject, registry: JsonObject) -> JsonObject | None:

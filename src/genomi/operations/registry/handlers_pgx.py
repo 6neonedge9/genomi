@@ -154,6 +154,7 @@ def _pgx_pharmcat(params: JsonObject) -> JsonObject:
     resolved = dict(params)
     return pharmcat.run_pharmcat(
         vcf=reader.vcf_path,
+        active_genome_index_path=reader.active_genome_index_path,
         output_dir=resolved.get("output_dir"),
         base_filename=resolved.get("base_filename"),
         mode=_str(resolved, "mode", "auto"),
@@ -178,7 +179,7 @@ def _pgx_pharmcat(params: JsonObject) -> JsonObject:
 
 def _pgx_pharmcat_preflight(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading raw or parsed Active Genome Index artifacts", params=params)
-    return pharmcat.pharmcat_preflight(vcf=reader.vcf_path)
+    return pharmcat.pharmcat_preflight(vcf=reader.vcf_path, active_genome_index_path=reader.active_genome_index_path)
 
 
 def _pgx_pharmcat_import(params: JsonObject) -> JsonObject:

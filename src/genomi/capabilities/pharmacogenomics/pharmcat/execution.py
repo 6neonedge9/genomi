@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from ....active_genome_index.export import export_variants
@@ -60,7 +61,7 @@ def pharmcat_status(
     }
 
 
-def pharmcat_preflight(*, vcf: str | Path) -> JsonObject:
+def pharmcat_preflight(*, vcf: str | Path, active_genome_index_path: str | Path | None = None) -> JsonObject:
     """Inspect VCF structure needed for broad PharmCAT PGx calling without running PharmCAT."""
 
     vcf_path = Path(vcf).expanduser()
@@ -76,6 +77,46 @@ def pharmcat_preflight(*, vcf: str | Path) -> JsonObject:
                 "definition_and_guideline_sources": PHARMCAT_DOCS,
             },
         }
+    if active_genome_index_path is not None:
+        with tempfile.TemporaryDirectory(prefix="genomi-pharmcat-preflight-") as tmp:
+            out_dir = Path(tmp)
+            prepared = _prepare_pharmcat_input(
+                vcf_path=vcf_path,
+                active_genome_index_path=active_genome_index_path,
+                out_dir=out_dir,
+                base_filename="preflight",
+                input_preflight={"status": "skipped_agi_export_preflight"},
+                selected_mode="preflight",
+                dry_run=False,
+            )
+            surfaced = _surface_vcf_normalization(prepared)
+            if not prepared.get("remediated") or not prepared.get("input_path"):
+                return {
+                    "schema": "genomi-pharmcat-preflight-v1",
+                    "ok": False,
+                    "status": prepared.get("status") or "active_genome_index_input_unavailable",
+                    "input_preflight": {"status": "skipped_input_unavailable"},
+                    "vcf_normalization": surfaced,
+                    "traceability": {
+                        "source_tool": "PharmCAT",
+                        "definition_and_guideline_sources": PHARMCAT_DOCS,
+                    },
+                }
+            preflight = _input_preflight(
+                Path(str(prepared["input_path"])),
+                active_genome_index_path=active_genome_index_path,
+            )
+            return {
+                "schema": "genomi-pharmcat-preflight-v1",
+                "ok": preflight.get("status") == "completed",
+                "status": preflight.get("status") or "unknown",
+                "input_preflight": preflight,
+                "vcf_normalization": surfaced,
+                "traceability": {
+                    "source_tool": "PharmCAT",
+                    "definition_and_guideline_sources": PHARMCAT_DOCS,
+                },
+            }
     preflight = _input_preflight(vcf_path)
     return {
         "schema": "genomi-pharmcat-preflight-v1",
@@ -92,6 +133,7 @@ def pharmcat_preflight(*, vcf: str | Path) -> JsonObject:
 def run_pharmcat(
     *,
     vcf: str | Path,
+    active_genome_index_path: str | Path | None = None,
     output_dir: str | Path | None = None,
     base_filename: str | None = None,
     mode: str = "auto",
@@ -168,6 +210,7 @@ def run_pharmcat(
     input_preflight = _input_preflight(vcf_path)
     vcf_normalization = _prepare_pharmcat_input(
         vcf_path=vcf_path,
+        active_genome_index_path=active_genome_index_path,
         out_dir=out_dir,
         base_filename=base,
         input_preflight=input_preflight,
@@ -485,6 +528,7 @@ def _unavailable_result(
 def _prepare_pharmcat_input(
     *,
     vcf_path: Path,
+    active_genome_index_path: str | Path | None,
     out_dir: Path,
     base_filename: str,
     input_preflight: JsonObject,
@@ -501,8 +545,8 @@ def _prepare_pharmcat_input(
     intake VCF is never handed to the matcher.
     """
 
-    active_genome_index_path = default_active_genome_index_path(vcf_path)
-    if not Path(active_genome_index_path).exists():
+    resolved_active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    if not resolved_active_genome_index_path.exists():
         return {
             "status": "requires_active_genome_index",
             "remediated": False,
@@ -542,7 +586,7 @@ def _prepare_pharmcat_input(
         export = export_variants(
             vcf_path,
             normalized_path,
-            active_genome_index_path=active_genome_index_path,
+            active_genome_index_path=resolved_active_genome_index_path,
             pass_only=True,
             primary_contigs_only=True,
             chrom_style="chr",
@@ -557,6 +601,23 @@ def _prepare_pharmcat_input(
             "warnings": [
                 "PharmCAT-compatible VCF could not be derived from the Active Genome Index; "
                 "the matcher cannot be invoked safely. No intake fallback is permitted.",
+            ],
+        }
+    if int(export.get("exported_records") or 0) <= 0:
+        return {
+            "status": "no_pharmcat_vcf_records",
+            "remediated": False,
+            "method": "active_genome_index_export",
+            "intake_path_hidden": True,
+            "manifest_path": export.get("manifest_path"),
+            "candidate_records": export.get("candidate_records"),
+            "exported_records": export.get("exported_records"),
+            "reason": (
+                "The selected Active Genome Index did not contain VCF-encodable variant_call records "
+                "for PharmCAT. Consumer-array observations are not passed to PharmCAT as fake VCF alleles."
+            ),
+            "warnings": [
+                "Use targeted PGx variant evidence or an explicit PharmCAT-compatible VCF/sequence-derived Active Genome Index for broad PharmCAT calling."
             ],
         }
     return {

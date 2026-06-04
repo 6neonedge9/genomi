@@ -36,6 +36,28 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
             if produces & decision_shapes:
                 self.assertIn("decision_evidence", produces, tool["name"])
 
+    def test_reference_dependent_operations_declare_agi_need_metadata(self) -> None:
+        by_name = {tool["name"]: tool for tool in all_operations()}
+        expected_reference = {
+            "active_genome_index.classify_callset_qc",
+            "active_genome_index.classify_genotype_support",
+            "active_genome_index.classify_region_callability",
+            "ancestry.check_sample_overlap",
+            "ancestry.project_pca",
+            "ancestry.estimate_population_context",
+            "prs.check_score_overlap",
+            "prs.calculate_score",
+            "pharmacogenomics.preflight_pharmcat",
+        }
+
+        actual_reference = {
+            name
+            for name, tool in by_name.items()
+            if tool["annotations"].get("agiNeed") == "reference"
+        }
+
+        self.assertEqual(actual_reference, expected_reference)
+
     def test_public_only_risk_investigation_uses_shared_evidence_by_default(self) -> None:
         result = call_operation(
             "phenotype.plan_risk_investigation",
@@ -213,7 +235,8 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
 
                 self.assertEqual(result["status"], "completed")
                 materialize.assert_called_once()
-                self.assertEqual(Path(materialize.call_args.args[0]).resolve(), index.resolve())
+                reader = materialize.call_args.args[0]
+                self.assertEqual(reader.active_genome_index_path.resolve(), index.resolve())
                 self.assertEqual(Path(materialize.call_args.kwargs["evidence_db"]).resolve(), evidence_db.resolve())
                 self.assertEqual(Path(materialize.call_args.kwargs["output"]).resolve(), matches.resolve())
                 scan.assert_called_once()

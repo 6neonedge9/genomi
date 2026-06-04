@@ -19,7 +19,6 @@ from ...runtime.sqlite_support import connect_sqlite
 from . import pgs_catalog, source_context
 
 JsonObject = dict[str, Any]
-SCHEMA_VERSION = "genomi-prs-score-cache-v1"
 MANIFEST_NAME = "manifest.json"
 VARIANTS_DB_NAME = "variants.sqlite"
 SOURCE_FILE_NAME = "scoring_file.txt.gz"
@@ -75,7 +74,7 @@ def import_scoring_file(
 
     if clean_pgs_id:
         known_dir = prs_score_dir(clean_pgs_id, authoritative_build)
-        if _complete_cache_exists(known_dir) and not force:
+        if validate_score_cache(known_dir, expected_pgs_id=clean_pgs_id, expected_genome_build=authoritative_build)["valid"] and not force:
             return _already_imported(known_dir, requested_genome_build=requested_build, source_choice=source_choice)
 
     staging_dir: Path | None = None
@@ -151,7 +150,7 @@ def import_scoring_file(
                 "next_actions": [{"action": "provide_valid_pgs_scoring_file"}],
             }
         out_dir = prs_score_dir(score_id, authoritative_build)
-        if _complete_cache_exists(out_dir) and not force:
+        if validate_score_cache(out_dir, expected_pgs_id=score_id, expected_genome_build=authoritative_build)["valid"] and not force:
             return _already_imported(out_dir, requested_genome_build=requested_build, source_choice=source_choice)
 
         db_path = variants_db_path(staging_dir)
@@ -251,8 +250,91 @@ def _resolve_score_id(declared_id: str, parsed_id: str, inferred_id: str) -> Jso
     return {"status": "completed", "pgs_id": score_id}
 
 
-def _complete_cache_exists(score_dir: Path) -> bool:
-    return bool(manifest_path(score_dir).exists() and variants_db_path(score_dir).exists())
+def validate_score_cache(
+    score_dir: str | Path,
+    *,
+    expected_pgs_id: str | None = None,
+    expected_genome_build: str | None = None,
+) -> JsonObject:
+    directory = Path(score_dir)
+    manifest = read_manifest(directory)
+    if not manifest:
+        return {"valid": False, "reason": "missing_or_invalid_manifest"}
+    manifest_pgs_id = pgs_catalog.normalize_pgs_id(manifest.get("pgs_id"))
+    clean_expected_id = pgs_catalog.normalize_pgs_id(expected_pgs_id)
+    if clean_expected_id and manifest_pgs_id != clean_expected_id:
+        return {
+            "valid": False,
+            "reason": "pgs_id_mismatch",
+            "manifest": manifest,
+            "expected_pgs_id": clean_expected_id,
+        }
+    manifest_build = normalize_build(str(manifest.get("genome_build") or ""))
+    expected_build = normalize_build(expected_genome_build) if expected_genome_build else ""
+    if expected_build and manifest_build != expected_build:
+        return {
+            "valid": False,
+            "reason": "genome_build_mismatch",
+            "manifest": manifest,
+            "expected_genome_build": expected_build,
+        }
+    try:
+        manifest_variant_count = int(manifest.get("variant_count"))
+    except (TypeError, ValueError):
+        return {"valid": False, "reason": "manifest_variant_count_invalid", "manifest": manifest}
+    if manifest_variant_count <= 0:
+        return {"valid": False, "reason": "manifest_variant_count_empty", "manifest": manifest}
+    db_path = variants_db_path(directory)
+    if not db_path.exists():
+        return {"valid": False, "reason": "missing_variants_db", "manifest": manifest}
+    try:
+        db_variant_count = _score_variants_row_count(db_path)
+    except (OSError, sqlite3.DatabaseError) as exc:
+        return {
+            "valid": False,
+            "reason": "invalid_variants_db",
+            "manifest": manifest,
+            "error": str(exc),
+        }
+    if db_variant_count != manifest_variant_count:
+        return {
+            "valid": False,
+            "reason": "variant_count_mismatch",
+            "manifest": manifest,
+            "manifest_variant_count": manifest_variant_count,
+            "db_variant_count": db_variant_count,
+        }
+    return {
+        "valid": True,
+        "reason": "valid",
+        "manifest": manifest,
+        "variant_count": db_variant_count,
+    }
+
+
+def _score_variants_row_count(db_path: Path) -> int:
+    required_columns = {
+        "variant_index",
+        "variant_id",
+        "rsid",
+        "chrom",
+        "pos",
+        "effect_allele",
+        "other_allele",
+        "effect_weight",
+        "harmonized",
+        "palindromic",
+        "source_row_number",
+    }
+    with connect_sqlite(db_path) as connection:
+        columns = {
+            str(row[1])
+            for row in connection.execute("pragma table_info(score_variants)").fetchall()
+        }
+        if required_columns - columns:
+            raise sqlite3.DatabaseError("score_variants schema is missing required columns")
+        row = connection.execute("select count(*) from score_variants").fetchone()
+    return int(row[0] if row else 0)
 
 
 def _new_staging_dir(genome_build: str) -> Path:
@@ -277,7 +359,17 @@ def _write_json_atomic(path: Path, payload: JsonObject) -> None:
 def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
     target_dir.parent.mkdir(parents=True, exist_ok=True)
     if target_dir.exists():
-        if _complete_cache_exists(target_dir) and not force:
+        staging_manifest = read_manifest(staging_dir)
+        expected_pgs_id = str(staging_manifest.get("pgs_id") or "") or None
+        expected_build = str(staging_manifest.get("genome_build") or "") or None
+        if (
+            validate_score_cache(
+                target_dir,
+                expected_pgs_id=expected_pgs_id,
+                expected_genome_build=expected_build,
+            )["valid"]
+            and not force
+        ):
             return "already_exists"
         backup = _unique_replacement_backup(target_dir)
         target_dir.replace(backup)
@@ -329,9 +421,15 @@ def resolve_score_cache(
         if not clean:
             return _requires_score_import(pgs_id=pgs_id, genome_build=genome_build)
         directory = prs_score_dir(clean, normalize_build(genome_build))
-    manifest = read_manifest(directory)
-    if not manifest or not variants_db_path(directory).exists():
+    clean_expected = pgs_catalog.normalize_pgs_id(pgs_id)
+    validation = validate_score_cache(
+        directory,
+        expected_pgs_id=clean_expected or None,
+        expected_genome_build=normalize_build(genome_build) if not score_dir or pgs_id else None,
+    )
+    if not validation["valid"]:
         return _requires_score_import(pgs_id=pgs_id, genome_build=genome_build, score_dir=directory)
+    manifest = validation["manifest"]
     return {
         "status": "installed",
         "score_dir": str(directory),
@@ -349,8 +447,13 @@ def score_cache_status(
     clean = pgs_catalog.normalize_pgs_id(pgs_id)
     normalized_build = normalize_build(genome_build)
     directory = Path(score_dir).expanduser() if score_dir else prs_score_dir(clean or str(pgs_id or "unknown"), normalized_build)
-    manifest = read_manifest(directory)
-    installed = bool(manifest and variants_db_path(directory).exists())
+    validation = validate_score_cache(
+        directory,
+        expected_pgs_id=clean or None,
+        expected_genome_build=normalized_build if not score_dir or clean else None,
+    )
+    manifest = validation.get("manifest") if isinstance(validation.get("manifest"), dict) else read_manifest(directory)
+    installed = bool(validation["valid"])
     score_id = clean or str(pgs_id or manifest.get("pgs_id") or "").strip()
     title = f"PGS Catalog score {score_id}" if score_id else "PGS Catalog score"
     command = import_scoring_file_command(score_id, normalized_build) if score_id else ""
@@ -364,6 +467,7 @@ def score_cache_status(
         "score_dir": str(directory),
         "manifest_path": str(manifest_path(directory)),
         "variants_db": str(variants_db_path(directory)),
+        "validation": {key: value for key, value in validation.items() if key != "manifest"},
         "install_command": command,
         "helps": helps,
     }
@@ -406,7 +510,10 @@ def read_manifest(score_dir: str | Path) -> JsonObject:
     path = manifest_path(score_dir)
     if not path.exists():
         return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return {}
     return payload if isinstance(payload, dict) else {}
 
 
@@ -576,6 +683,7 @@ def _requires_score_import(
             }
         ],
         "missing_library": status,
+        "score_cache_status": status,
         "how_it_helps": status["helps"],
         "source_urls": source_context.source_urls(),
         "limitations": source_context.limitations(),
@@ -641,7 +749,6 @@ def _manifest(
     rest_metadata: JsonObject,
 ) -> JsonObject:
     return {
-        "schema": SCHEMA_VERSION,
         "pgs_id": score_id,
         "genome_build": genome_build,
         "requested_genome_build": requested_genome_build,

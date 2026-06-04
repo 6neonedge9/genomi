@@ -72,6 +72,7 @@ def build_grch37_panel_from_grch38(
             "schema": PANEL_BUILD_SCHEMA,
             "status": "cached",
             "panel_id": source_context.PANEL_ID_GRCH37,
+            "title": source_context.PANEL_TITLE_GRCH37,
             "library": source_context.PANEL_LIBRARY_GRCH37,
             "genome_build": "GRCh37",
             "panel_dir": str(target_dir),

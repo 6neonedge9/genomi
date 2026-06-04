@@ -34,6 +34,7 @@ class Operation:
     mutating: bool | None = None
     external_io: tuple[str, ...] = ()
     data_access: tuple[str, ...] = ()
+    agi_need: str | None = None
 
     def __post_init__(self) -> None:
         catalog = TOOL_CATALOG_OPERATIONS.get(self.name)
@@ -94,6 +95,7 @@ class Operation:
                 "mutating": mutating,
                 "externalIO": list(external_io),
                 "dataAccess": list(data_access),
+                **({"agiNeed": self.agi_need} if self.agi_need else {}),
                 "trustBoundary": "local_cli_or_stdio_mcp_host",
                 "flow": "agent-composed",
                 "toolCapability": _operation_capability(self),

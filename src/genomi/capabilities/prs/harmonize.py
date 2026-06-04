@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
-from ...active_genome_index.array_genotypes import ARRAY_NO_CALLS, count_array_allele, is_array_genotype_record
-from ...active_genome_index.record_kinds import ARRAY_NO_CALL_FILTER
+from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
+from ...active_genome_index.record_kinds import RECORD_KIND_ARRAY_NO_CALL
 from ...runtime.liftover import LiftoverConfigurationError, get_liftover
 
 JsonObject = dict[str, Any]
@@ -82,7 +83,10 @@ def lift_score_variants(
 # two SQLite queries per score variant (~1.2M round-trips for a 600K-variant
 # score); these are replaced with two temp-table joins.
 
-_MINIMAL_COLUMNS = "r.chrom, r.pos, r.end, r.ref, r.alt, r.filter, r.format, r.genotype, r.offset, r.sample_index, r.chrom_sort"
+_MINIMAL_COLUMNS = (
+    "r.chrom, r.pos, r.end, r.ref, r.alt, r.filter, r.format, r.genotype, "
+    "r.record_kind, r.observed_alleles, r.offset, r.sample_index, r.chrom_sort"
+)
 
 
 def dosage_for_variants(
@@ -241,6 +245,8 @@ def _row_to_record_dict(row: sqlite3.Row) -> JsonObject:
         "filter": row["filter"],
         "format": row["format"],
         "genotype": row["genotype"],
+        "record_kind": row["record_kind"],
+        "observed_alleles": _json_list(row["observed_alleles"]),
         "offset": int(row["offset"]),
         "sample_index": int(row["sample_index"] or 0),
     }
@@ -249,7 +255,7 @@ def _row_to_record_dict(row: sqlite3.Row) -> JsonObject:
 def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
     genotype = str(record.get("genotype") or "")
     if is_array_genotype_record(record):
-        if _is_array_no_call_record(record, genotype):
+        if _is_array_no_call_record(record):
             return _missing(variant, "no_call", record=record)
         if str(record.get("filter") or "") not in {"PASS", "."}:
             return _excluded(variant, "filter_fail", record=record)
@@ -352,10 +358,8 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
     }
 
 
-def _is_array_no_call_record(record: JsonObject, genotype: str) -> bool:
-    if str(record.get("filter") or "") == ARRAY_NO_CALL_FILTER:
-        return True
-    return genotype.strip().upper() in ARRAY_NO_CALLS
+def _is_array_no_call_record(record: JsonObject) -> bool:
+    return record.get("record_kind") == RECORD_KIND_ARRAY_NO_CALL
 
 
 def _chrom_candidates(chrom: str) -> list[str]:
@@ -394,3 +398,13 @@ def _nonmatch(status: str, variant: JsonObject, reason: str, *, record: JsonObje
             "genotype": record.get("genotype"),
         }
     return payload
+
+
+def _json_list(value: Any) -> list[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return [str(item) for item in parsed] if isinstance(parsed, list) else []

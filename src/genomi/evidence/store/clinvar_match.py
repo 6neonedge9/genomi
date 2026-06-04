@@ -4,6 +4,11 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+from ...active_genome_index.active_genome_index import (
+    ActiveGenomeIndexNeed,
+    ActiveGenomeIndexReader,
+    open_reader,
+)
 from ...active_genome_index.vcf import parse_sample
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
@@ -253,7 +258,7 @@ def match_clinvar_variants(
 
 
 def match_clinvar_variants_from_active_genome_index(
-    active_genome_index_path: str | Path,
+    active_genome_index: ActiveGenomeIndexReader | str | Path,
     evidence_db: str | Path,
     output_path: str | Path,
     *,
@@ -265,7 +270,12 @@ def match_clinvar_variants_from_active_genome_index(
     batch_size: int = 25_000,
     force: bool = False,
 ) -> dict[str, Any]:
-    active_genome_index_path = Path(active_genome_index_path)
+    reader = (
+        active_genome_index
+        if isinstance(active_genome_index, ActiveGenomeIndexReader)
+        else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
+    )
+    active_genome_index_path = reader.active_genome_index_path
     evidence_db = Path(evidence_db)
     output_path = Path(output_path)
     if not active_genome_index_path.exists():
@@ -323,7 +333,7 @@ def match_clinvar_variants_from_active_genome_index(
     created_at = utc_now()
     with connect_evidence(evidence_db) as evidence_connection, output_path.open("w", encoding="utf-8") as handle:
         _ensure_schema(evidence_connection)
-        evidence_connection.execute("attach database ? as sample_active_genome_index", (str(active_genome_index_path),))
+        reader.attach_to(evidence_connection, "sample_active_genome_index")
         _ensure_active_genome_index_ready_for_clinvar_match(evidence_connection, active_genome_index_path)
         selection_params = (max_records,) if max_records is not None else ()
         stats_row = evidence_connection.execute(
@@ -334,6 +344,10 @@ def match_clinvar_variants_from_active_genome_index(
                 coalesce(
                     sum(
                         case
+                            when record_kind = 'array_call'
+                                 and genotype is not null
+                                 and upper(genotype) not in ('', '.', '--', '00', 'NN')
+                                then 1
                             when alt is null or alt in ('', '.') then 0
                             else 1 + length(alt) - length(replace(alt, ',', ''))
                         end
@@ -415,7 +429,7 @@ def _selected_active_genome_index_records_cte_sql(
             with selected_records as (
                 select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                        info,
-                       sample_index, sample_name, format, genotype, depth, genotype_quality,
+                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
                        sample_chrom_original, sample_pos_original
                 from temp.lifted_selected_records
             )
@@ -424,9 +438,9 @@ def _selected_active_genome_index_records_cte_sql(
             with selected_records as (
                 select rowid as record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                        info,
-                       sample_index, sample_name, format, genotype, depth, genotype_quality
+                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind
                 from sample_active_genome_index.records
-                where is_variant = 1
+                where record_kind in ('variant_call', 'array_call')
         """
     if pass_only:
         sql += " and filter in ('PASS', '.')"
@@ -481,7 +495,8 @@ def _populate_lifted_selected_active_genome_index_records_table(
             format text,
             genotype text,
             depth integer,
-            genotype_quality integer
+            genotype_quality integer,
+            record_kind text
         );
         create index lifted_selected_records_locus_idx
             on lifted_selected_records(chrom, pos);
@@ -527,6 +542,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["genotype"],
                 row["depth"],
                 row["genotype_quality"],
+                row["record_kind"],
             )
         )
         lifted += 1
@@ -536,9 +552,9 @@ def _populate_lifted_selected_active_genome_index_records_table(
             insert into temp.lifted_selected_records (
                 record_rowid, sample_chrom_original, sample_pos_original,
                 chrom, chrom_sort, pos, rsid, ref, alt, info, qual, filter,
-                sample_index, sample_name, format, genotype, depth, genotype_quality
+                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             insert_buffer,
         )
@@ -583,6 +599,7 @@ def _write_clinvar_active_genome_index_direct_matches(
     sample_build: str | None = None,
 ) -> dict[str, int]:
     source_selects: list[str] = []
+    source_format = _selected_active_genome_index_source_format(connection)
     sample_chrom_style = _selected_active_genome_index_chrom_style(
         connection,
         pass_only=pass_only,
@@ -663,6 +680,7 @@ def _write_clinvar_active_genome_index_direct_matches(
         rows,
         sample_build=sample_build,
         cache_build=genome_build if cross_build else None,
+        default_source_format=source_format,
     )
 
 
@@ -675,6 +693,22 @@ def _clinvar_index_source_tables(connection: sqlite3.Connection) -> list[str]:
         if _table_has_rows(connection, shared_table):
             tables.append(shared_table)
     return tables
+
+
+def _selected_active_genome_index_source_format(connection: sqlite3.Connection) -> str | None:
+    try:
+        row = connection.execute(
+            "select value from sample_active_genome_index.metadata where key = 'source_format'"
+        ).fetchone()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    try:
+        parsed = json.loads(str(row["value"]))
+    except (TypeError, json.JSONDecodeError):
+        parsed = row["value"]
+    return str(parsed) if parsed else None
 
 
 def _table_has_rows(connection: sqlite3.Connection, table_name: str) -> bool:

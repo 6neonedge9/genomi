@@ -127,6 +127,9 @@ from .handlers_vcf_variant import (
 )
 
 
+_AGI_REFERENCE = "reference"
+
+
 OPERATIONS: list[Operation] = [
     Operation('genomi.check_background_job', _runtime_check_background_job),
     Operation('genomi.install', _genomi_install),
@@ -148,23 +151,23 @@ OPERATIONS: list[Operation] = [
     Operation('genomi.parse_source', _genomi_parse_source),
     Operation('active_genome_index.build_reference_pass', _agi_build_reference_pass),
     Operation('active_genome_index.summarize', _vcf_summary),
-    Operation('active_genome_index.classify_callset_qc', _vcf_qc),
-    Operation('active_genome_index.classify_genotype_support', _vcf_genotype_support),
-    Operation('active_genome_index.classify_region_callability', _vcf_callability),
+    Operation('active_genome_index.classify_callset_qc', _vcf_qc, agi_need=_AGI_REFERENCE),
+    Operation('active_genome_index.classify_genotype_support', _vcf_genotype_support, agi_need=_AGI_REFERENCE),
+    Operation('active_genome_index.classify_region_callability', _vcf_callability, agi_need=_AGI_REFERENCE),
     Operation('variant.resolve', _variant_lookup),
     Operation('clinvar.match_variants', _clinvar_match),
     Operation('clinvar.scan_candidates', _clinvar_scan),
     Operation('ancestry.list_reference_panels', _ancestry_list_reference_panels),
-    Operation('ancestry.check_sample_overlap', _ancestry_check_sample_overlap),
-    Operation('ancestry.project_pca', _ancestry_project_pca),
-    Operation('ancestry.estimate_population_context', _ancestry_estimate_population_context),
+    Operation('ancestry.check_sample_overlap', _ancestry_check_sample_overlap, agi_need=_AGI_REFERENCE),
+    Operation('ancestry.project_pca', _ancestry_project_pca, agi_need=_AGI_REFERENCE),
+    Operation('ancestry.estimate_population_context', _ancestry_estimate_population_context, agi_need=_AGI_REFERENCE),
     Operation('ancestry.build_source_context', _ancestry_build_source_context),
     Operation('prs.search_scores', _prs_search_scores),
     Operation('prs.fetch_score_metadata', _prs_fetch_score_metadata),
     Operation('prs.import_scoring_file', _prs_import_scoring_file),
     Operation('prs.list_imported_scores', _prs_list_imported_scores),
-    Operation('prs.check_score_overlap', _prs_check_score_overlap),
-    Operation('prs.calculate_score', _prs_calculate_score),
+    Operation('prs.check_score_overlap', _prs_check_score_overlap, agi_need=_AGI_REFERENCE),
+    Operation('prs.calculate_score', _prs_calculate_score, agi_need=_AGI_REFERENCE),
     Operation('prs.build_source_context', _prs_build_source_context),
     Operation('nutrigenomics.list_domains', _nutrigenomics_list_domains),
     Operation('nutrigenomics.build_source_context', _nutrigenomics_build_source_context),
@@ -202,7 +205,7 @@ OPERATIONS: list[Operation] = [
     Operation('journal.export_memory', _journal_export_memory_artifact),
     Operation('pharmacogenomics.describe_gene_requirements', _pgx_gene_requirements),
     Operation('pharmacogenomics.review_medication', _pgx_medication_review),
-    Operation('pharmacogenomics.preflight_pharmcat', _pgx_pharmcat_preflight),
+    Operation('pharmacogenomics.preflight_pharmcat', _pgx_pharmcat_preflight, agi_need=_AGI_REFERENCE),
     Operation('pharmacogenomics.validate_outside_call_tsv', _pgx_outside_call_validate),
     Operation('pharmacogenomics.import_pharmcat_artifacts', _pgx_pharmcat_import),
     Operation('pharmacogenomics.prepare_outside_call_tsv', _pgx_outside_call_prepare),
@@ -308,30 +311,11 @@ def get_operation(name: str) -> Operation:
         raise OperationError("unknown_operation", f"Unknown operation: {name}") from exc
 
 
-# Operations whose result depends on the reference-block surface of the Active
-# Genome Index (coverage, callability, hom-ref / genotype support, callset QC,
-# reference-overlap scoring). While a two-phase gVCF parse is still appending
-# its reference tail (`variants_ready`, not yet `completed`), a negative or
-# empty answer from these is provisional, so the chokepoint stamps the result
-# `reference_pending` — in ONE place — instead of every handler doing it.
-REFERENCE_DEPENDENT_OPERATIONS: frozenset[str] = frozenset(
-    {
-        "active_genome_index.classify_region_callability",
-        "active_genome_index.classify_genotype_support",
-        "active_genome_index.classify_callset_qc",
-        "ancestry.check_sample_overlap",
-        "ancestry.project_pca",
-        "ancestry.estimate_population_context",
-        "prs.check_score_overlap",
-        "prs.calculate_score",
-        "pharmacogenomics.preflight_pharmcat",
-    }
-)
-
-
 def _stamp_reference_pending_if_due(name: str, params: JsonObject, result: object) -> object:
+    operation = _OPERATION_BY_NAME.get(name)
     if (
-        name not in REFERENCE_DEPENDENT_OPERATIONS
+        operation is None
+        or operation.agi_need != _AGI_REFERENCE
         or not isinstance(result, dict)
         or "reference_pending" in result
     ):

@@ -199,12 +199,6 @@ def _answer_support(
         "user_provided_sample_pgx_summaries": user_sample_summaries,
         "source_recommendation_summaries": _source_recommendation_summaries(clinpgx_result, pgxdb_result, fda_result, stored_research),
         "clinical_boundary": "informational_evidence_review",
-        "semantics": [
-            "This section links selected sample evidence to source evidence for host-agent synthesis.",
-            "Sample variant evidence needs genotype-support follow-up before stronger personal actionability language.",
-            "User-provided sample PGx facts are treated as supplied evidence and need independent confirmation for clinical use.",
-            "Clinical medication decisions require clinician or pharmacist confirmation.",
-        ],
     }
 
 
@@ -375,6 +369,7 @@ def _star_diplotype_summaries(star_allele_calls: list[JsonObject]) -> list[JsonO
                         "function": item.get("function"),
                         "rsid": item.get("rsid"),
                         "support": item.get("support"),
+                        "genotype_support": item.get("genotype_support") or [],
                     }
                     for item in call.get("called_star_alleles") or []
                 ],
@@ -527,15 +522,13 @@ def _target_inventory(
     star_allele_calls: list[JsonObject],
     public_evidence_count: int,
     sample_lookups: list[JsonObject],
-    technical_support_count: int,
     active_genome_index_context_available: bool,
 ) -> JsonObject:
     implemented_marker_definition_genes = [target for target in star_genes if target in pgx_star.implemented_marker_definition_genes()]
     outside_call_genes = sorted(gene_name for gene_name in star_genes if gene_name in pgx_requirements.OUTSIDE_CALL_GENES)
     genotype_support_loci = []
-    if not technical_support_count:
-        genotype_support_loci.extend(_genotype_support_loci(sample_lookups))
-        genotype_support_loci.extend(_star_marker_genotype_support_loci(star_allele_calls))
+    genotype_support_loci.extend(_genotype_support_loci(sample_lookups))
+    genotype_support_loci.extend(_star_marker_genotype_support_loci(star_allele_calls))
     return {
         "schema": "genomi-pgx-target-inventory-v1",
         "drug": drug,
@@ -562,6 +555,8 @@ def _target_inventory(
 def _genotype_support_loci(sample_lookups: list[JsonObject]) -> list[JsonObject]:
     loci: list[JsonObject] = []
     for lookup in sample_lookups:
+        if _lookup_has_supported_genotype_support(lookup):
+            continue
         genome_build = str(lookup.get("query", {}).get("genome_build") or "GRCh38")
         target_inventory = lookup.get("target_inventory")
         if isinstance(target_inventory, dict):
@@ -581,6 +576,13 @@ def _genotype_support_loci(sample_lookups: list[JsonObject]) -> list[JsonObject]
             if params:
                 loci.append(params)
     return loci[:5]
+
+
+def _lookup_has_supported_genotype_support(lookup: JsonObject) -> bool:
+    for support in lookup.get("support_context", {}).get("genotype_support") or []:
+        if str(support.get("support_status") or "") == "supported":
+            return True
+    return False
 
 
 def _star_marker_genotype_support_loci(star_allele_calls: list[JsonObject]) -> list[JsonObject]:

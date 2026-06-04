@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ...active_genome_index.active_genome_index import ActiveGenomeIndexNeed
+from ...active_genome_index.active_genome_index import ActiveGenomeIndexNeed, ActiveGenomeIndexReader
 from ...capabilities.clinvar import static_annotation
 from .agi_access import open_agi
 from .coerce import (
@@ -29,7 +29,7 @@ def _clinvar_match(params: JsonObject) -> JsonObject:
         )
     output = resolved.get("output") or str(agi_path.with_name("clinvar.matches.jsonl"))
     return static_annotation.match_static_clinvar_from_active_genome_index(
-        agi_path,
+        reader,
         evidence_db=_path(resolved, "db"),
         output=Path(str(output)),
         genome_build=_str(resolved, "genome_build", "GRCh38"),
@@ -44,7 +44,7 @@ def _clinvar_scan(params: JsonObject) -> JsonObject:
     if matches_path is None or not matches_path.exists():
         # No prebuilt matches file: materialize one from the Active Genome Index
         # (pure-SQLite, variant sites only — never an iteration of the raw VCF).
-        materialized = _materialize_clinvar_matches_for_scan(reader.active_genome_index_path, resolved, matches_path)
+        materialized = _materialize_clinvar_matches_for_scan(reader, resolved, matches_path)
         if isinstance(materialized, dict):
             return materialized
         matches_path = materialized
@@ -58,8 +58,9 @@ def _clinvar_scan(params: JsonObject) -> JsonObject:
 
 
 def _materialize_clinvar_matches_for_scan(
-    agi_path: Path, resolved: JsonObject, matches_path: Path | None
+    reader: ActiveGenomeIndexReader, resolved: JsonObject, matches_path: Path | None
 ) -> Path | JsonObject:
+    agi_path = reader.active_genome_index_path
     if not agi_path.exists():
         raise OperationError(
             "needs_active_genome_index",
@@ -67,7 +68,7 @@ def _materialize_clinvar_matches_for_scan(
         )
     output_path = matches_path or agi_path.with_name("clinvar.matches.jsonl")
     materialized = static_annotation.match_static_clinvar_from_active_genome_index(
-        agi_path,
+        reader,
         evidence_db=_path(resolved, "db"),
         output=output_path,
         genome_build=_str(resolved, "genome_build", "GRCh38"),

@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from ....active_genome_index.active_genome_index import (
+    ActiveGenomeIndexNeed,
+    ActiveGenomeIndexReader,
     create_active_genome_index,
     default_active_genome_index_path,
+    open_reader,
     preflight,
 )
 from ....active_genome_index.genotype_qc import assess_sample_qc
@@ -347,8 +350,14 @@ def build_static_annotation(
             )
         )
         matches = run_output_path(vcf_path, "clinvar.matches.jsonl")
-        match_result = match_clinvar_variants_from_active_genome_index(
+        active_genome_index_reader = open_reader(
             active_genome_index_path,
+            need=ActiveGenomeIndexNeed.VARIANT,
+            vcf_path=vcf_path,
+            genome_build=effective_genome_build,
+        )
+        match_result = match_clinvar_variants_from_active_genome_index(
+            active_genome_index_reader,
             public_read_db_path,
             matches,
             genome_build=effective_genome_build,
@@ -393,7 +402,7 @@ def build_static_annotation(
             workflow_step(
                 "index-clinvar-rsid-annotations",
                 build_clinvar_rsid_annotation_index(
-                    active_genome_index_path,
+                    active_genome_index_reader,
                     public_read_db_path,
                     run_output_path(vcf_path, "clinvar.rsid-annotations.json"),
                     genome_build=effective_genome_build,
@@ -517,14 +526,19 @@ def match_static_clinvar(
 
 
 def match_static_clinvar_from_active_genome_index(
-    active_genome_index_path: str | Path,
+    active_genome_index: ActiveGenomeIndexReader | str | Path,
     *,
     evidence_db: str | Path,
     output: str | Path,
     genome_build: str = "GRCh38",
     force: bool = False,
 ) -> dict[str, Any]:
-    active_genome_index_path = Path(active_genome_index_path)
+    reader = (
+        active_genome_index
+        if isinstance(active_genome_index, ActiveGenomeIndexReader)
+        else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
+    )
+    active_genome_index_path = reader.active_genome_index_path
     db_path = Path(evidence_db)
     output_path = Path(output)
     effective_genome_build = resolve_genome_build(active_genome_index_path, genome_build)
@@ -539,7 +553,7 @@ def match_static_clinvar_from_active_genome_index(
         return missing_library
     return attach_evidence_context(
         match_clinvar_variants_from_active_genome_index(
-            active_genome_index_path,
+            reader,
             db_path,
             output_path,
             genome_build=effective_genome_build,

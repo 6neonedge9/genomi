@@ -45,7 +45,6 @@ from .parsing import (
 )
 from .queries import (
     _connect_readonly,
-    _index_record,
     _query_active_genome_index,
     _query_clinvar_allele,
     _query_clinvar_locus,
@@ -57,8 +56,6 @@ from .queries import (
     _query_research_by_target_id,
     _query_research_topic,
     _query_research_variant,
-    _record_matches,
-    _record_select_sql,
     _table_exists,
 )
 from .runs import (
@@ -93,7 +90,6 @@ __all__ = [
     "_dedupe_targets",
     "_effective_genome_build",
     "_has_any_context_evidence",
-    "_index_record",
     "_inferred_allele_targets",
     "_int_or_none",
     "_locus_target",
@@ -112,8 +108,6 @@ __all__ = [
     "_query_research_by_target_id",
     "_query_research_topic",
     "_query_research_variant",
-    "_record_matches",
-    "_record_select_sql",
     "_region_target",
     "_resolve_targets",
     "_run_summary",
