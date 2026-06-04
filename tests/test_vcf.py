@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from genomi.active_genome_index.export import export_variants
+from genomi.active_genome_index.genotype_qc import assess_region_callability
 from genomi.active_genome_index.record_kinds import RECORD_KIND_NO_CALL
 from genomi.active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
@@ -409,6 +410,36 @@ class IndexTests(unittest.TestCase):
         self.assertEqual(variant_records, [])
         self.assertEqual(export_result["candidate_records"], 0)
         self.assertEqual(exported_rows, [])
+
+    def test_variant_call_depth_does_not_satisfy_reference_callability(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf_path = Path(tmp) / "variant-with-reference-context.g.vcf"
+            agi_path = Path(tmp) / "variant-with-reference-context.sqlite"
+            vcf_path.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                        "1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=99\tGT:DP:GQ\t0/0:35:50",
+                        "1\t100\trs100\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:42:99",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = assess_region_callability(
+                vcf_path,
+                "1:100-100",
+                agi_path=agi_path,
+                min_covered_fraction=0.1,
+            )
+
+        self.assertEqual(result["matched_records"][0]["record_kind"], "variant_call")
+        self.assertEqual(result["covered_bases"], 0)
+        self.assertEqual(result["callability_status"], "not_callable")
+        self.assertFalse(result["can_support_negative_or_reference_claim"])
 
     def test_parallel_index_preserves_query_behavior(self) -> None:
         # The canonical is bgzip with a `.gzi`, so the parse partitions it by

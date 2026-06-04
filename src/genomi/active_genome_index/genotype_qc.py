@@ -18,7 +18,7 @@ from .active_genome_index import (
     read_header_from_active_genome_index,
 )
 from .active_genome_index import connect_existing as connect_active_genome_index_existing
-from .record_kinds import array_no_call_sql, reference_block_sql
+from .record_kinds import array_no_call_sql, is_reference_block_record, reference_block_sql
 from .vcf import parse_region
 
 DEFAULT_MIN_DEPTH = 10
@@ -494,6 +494,8 @@ def _classify_callability(
             depth = _optional_int(record.get("depth"))
             if depth is None:
                 depth_missing = True
+                continue
+            if not is_reference_block_record(record):
                 continue
             if depth < min_depth:
                 continue

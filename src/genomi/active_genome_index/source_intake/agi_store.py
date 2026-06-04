@@ -20,7 +20,7 @@ from .._agi_schema import (
     ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS,
     REQUIRED_QUERY_OBJECTS,
 )
-from ..active_genome_index import SCHEMA_VERSION, _chrom_sort
+from ..active_genome_index import ActiveGenomeIndexSchemaTooNew, SCHEMA_VERSION, _chrom_sort
 from ..active_genome_index import connect as connect_active_genome_index
 from ..record_kinds import (
     ARRAY_FORMAT,
@@ -259,8 +259,19 @@ def _cached_array_active_genome_index_if_usable(
             }
     except (sqlite3.Error, ValueError, json.JSONDecodeError):
         return None
-    if metadata.get("schema_version") != SCHEMA_VERSION:
+    try:
+        stored_schema_version = int(metadata.get("schema_version"))
+    except (TypeError, ValueError):
         return None
+    if stored_schema_version < SCHEMA_VERSION:
+        return None
+    if stored_schema_version > SCHEMA_VERSION:
+        raise ActiveGenomeIndexSchemaTooNew(
+            f"Active Genome Index at {agi_path} has schema_version="
+            f"{stored_schema_version}; this Genomi runtime only supports up to "
+            f"schema_version={SCHEMA_VERSION}. Upgrade Genomi before reading "
+            "this Active Genome Index."
+        )
     if metadata.get("source") != str(source_path):
         return None
     if metadata.get("source_format") != source_format:
