@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..active_genome_index.vcf import read_header
+from ..active_genome_index.vcf import VcfHeader, read_header
 
 
 def resolve_genome_build(vcf: str | Path, requested: str | None) -> str:
@@ -20,10 +20,38 @@ def resolve_genome_build(vcf: str | Path, requested: str | None) -> str:
 
 
 def infer_genome_build_from_vcf(vcf: str | Path) -> str | None:
+    header = _read_vcf_header_for_build_inference(vcf)
+    if header is None:
+        return None
+    return _infer_genome_build_from_header(header)
+
+
+def _read_vcf_header_for_build_inference(vcf: str | Path) -> VcfHeader | None:
     try:
-        header = read_header(vcf)
+        return read_header(vcf)
+    except Exception:
+        pass
+    try:
+        from ..active_genome_index.source_intake.text_io import open_genomic_binary
+
+        meta: list[str] = []
+        with open_genomic_binary(Path(vcf)) as handle:
+            while True:
+                line = handle.readline()
+                if not line:
+                    return None
+                text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                if text.startswith("##"):
+                    meta.append(text)
+                    continue
+                if text.startswith("#CHROM"):
+                    return VcfHeader(meta=meta, columns=text.split("\t"))
+                return None
     except Exception:
         return None
+
+
+def _infer_genome_build_from_header(header: VcfHeader) -> str | None:
     text = " ".join(
         value or ""
         for value in [

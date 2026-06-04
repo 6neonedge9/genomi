@@ -156,6 +156,39 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_parse_source_rebuilds_capped_vcf_index_for_later_full_request(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                vcf = Path("sample.vcf")
+                vcf.write_text(
+                    "##fileformat=VCFv4.2\n"
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
+                    "1\t100\trs1\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:31:99\n"
+                    "1\t200\trs2\tC\tT\t50\tPASS\t.\tGT:DP:GQ\t0/1:29:80\n",
+                    encoding="utf-8",
+                )
+
+                self.approve_access()
+                capped = call_operation(
+                    "genomi.parse_source",
+                    {"source": str(vcf), "genome_build": "GRCh38", "max_records": 1},
+                )
+                self.assertEqual(capped["steps"][0]["result"]["stats"]["total_records"], 1)
+
+                full = call_operation(
+                    "genomi.parse_source",
+                    {"source": str(vcf), "genome_build": "GRCh38"},
+                )
+                self.assertIn(full["steps"][0]["result"]["status"], {"variants_ready", "completed"})
+                self.assertEqual(full["steps"][0]["result"]["stats"]["total_records"], 2)
+
+                lookup = call_operation("variant.resolve", {"rsid": "rs2"})
+                self.assertEqual(lookup["sample_context"]["count"], 1)
+            finally:
+                os.chdir(previous)
+
     def test_active_genome_index_parse_accepts_23andme_raw_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.getcwd()
@@ -623,6 +656,48 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_fastq_parse_materializes_paired_reads_from_zip_archive(self) -> None:
+        from genomi.active_genome_index import source_intake
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                archive = Path("fastq-pair.zip")
+                short_seq = "ACGT" * 37 + "AC"
+                r1_record = f"@r1\n{short_seq}\n+\n{'I' * len(short_seq)}\n".encode("utf-8")
+                r2_record = f"@r2\n{short_seq}\n+\n{'I' * len(short_seq)}\n".encode("utf-8")
+                with zipfile.ZipFile(archive, "w") as bundle:
+                    bundle.writestr("reads/sample_R1_001.fastq.gz", gzip.compress(r1_record))
+                    bundle.writestr("reads/sample_R2_001.fastq.gz", gzip.compress(r2_record))
+                reference = Path("reference.fa")
+                reference.write_text(">chr1\n" + "A" * 200 + "\n", encoding="utf-8")
+
+                with mock.patch(
+                    "genomi.active_genome_index.source_intake.sequencing.align_fastq_to_bam",
+                    return_value={
+                        "status": "requires_library_install",
+                        "missing_libraries": [{"binary": "bwa-mem2", "install_library": "bwa-mem2-binary"}],
+                        "message": "stubbed missing aligner",
+                    },
+                ) as align:
+                    result = source_intake.parse_source(
+                        archive,
+                        reference_fasta=reference,
+                        auto_reference_fasta=False,
+                    )
+
+                self.assertEqual(result["status"], "requires_library_install")
+                self.assertEqual(result["source_format"], "fastq")
+                r1_arg, r2_arg = (Path(value) for value in align.call_args.args[:2])
+                self.assertNotEqual(r1_arg.parent, archive.parent)
+                self.assertEqual(r1_arg.read_text(encoding="utf-8"), r1_record.decode())
+                self.assertEqual(r2_arg.read_text(encoding="utf-8"), r2_record.decode())
+                self.assertEqual(Path(result["fastq"]["r1"]), r1_arg)
+                self.assertEqual(Path(result["fastq"]["r2"]), r2_arg)
+            finally:
+                os.chdir(previous)
+
     def test_fastq_parse_raises_when_r2_sibling_missing(self) -> None:
         from genomi.active_genome_index import source_intake
 
@@ -705,6 +780,64 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(current["active_genome_index"]["source_format"], "bam")
                 self.assertTrue(current["active_genome_index"]["digitized"])
                 self.assertNotIn(str(bam.resolve(strict=False)), json.dumps(current))
+            finally:
+                os.chdir(previous)
+
+    def test_active_genome_index_parse_accepts_zipped_bam_member(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                archive = Path("alignment.zip")
+                with zipfile.ZipFile(archive, "w") as bundle:
+                    bundle.writestr("nested/sample.bam", b"BAM\x01")
+                reference = Path("reference.fa")
+                reference.write_text(">chr1\n" + "A" * 200 + "\n", encoding="utf-8")
+
+                seen_bam_paths: list[Path] = []
+
+                def fake_materialize_bam_variant_vcf(
+                    bam_path: Path,
+                    reference_fasta: Path,
+                    output_vcf: Path,
+                    *,
+                    force: bool = False,
+                ) -> dict[str, object]:
+                    del reference_fasta, force
+                    seen_bam_paths.append(Path(bam_path))
+                    self.assertEqual(Path(bam_path).read_bytes(), b"BAM\x01")
+                    Path(output_vcf).write_text(
+                        "##fileformat=VCFv4.2\n"
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA12878\n"
+                        "1\t100\trs555\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:31:99\n",
+                        encoding="utf-8",
+                    )
+                    return {
+                        "status": "completed",
+                        "output": str(output_vcf),
+                        "manifest_path": str(Path(f"{output_vcf}.genomi-manifest.json")),
+                    }
+
+                with (
+                    mock.patch("genomi.active_genome_index.source_intake.sequencing.infer_genome_build_from_bam", return_value="GRCh38"),
+                    mock.patch(
+                        "genomi.active_genome_index.source_intake.sequencing.materialize_bam_variant_vcf",
+                        side_effect=fake_materialize_bam_variant_vcf,
+                    ),
+                ):
+                    self.approve_access()
+                    parsed = call_operation(
+                        "genomi.parse_source",
+                        {"source": str(archive), "reference_fasta": str(reference)},
+                    )
+
+                self.assertEqual(parsed["status"], "completed")
+                self.assertEqual(parsed["source_format"], "bam")
+                self.assertIn("materialize-bam-archive-member", [step["name"] for step in parsed["steps"]])
+                self.assertEqual(len(seen_bam_paths), 1)
+                self.assertNotEqual(seen_bam_paths[0], archive)
+                lookup = call_operation("variant.resolve", {"rsid": "rs555"})
+                self.assertEqual(lookup["sample_context"]["count"], 1)
             finally:
                 os.chdir(previous)
 

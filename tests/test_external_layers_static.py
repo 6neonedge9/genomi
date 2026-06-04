@@ -286,6 +286,33 @@ class StaticRunTests(EvidenceImportTestBase):
             self.assertEqual(infer_genome_build_from_vcf(vcf), "GRCh37")
             self.assertEqual(resolve_genome_build(vcf, "auto"), "GRCh37")
 
+    def test_static_run_infers_g1k37_from_wrapped_vcf_reference(self) -> None:
+        import bz2
+        import lzma
+        import zipfile
+
+        body = (
+            "##fileformat=VCFv4.2\n"
+            "##reference=file:///references/G1K.37.fa\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n"
+            "1\t100\trs1\tA\tG\t.\tPASS\t.\tGT\t0/1\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bz2_path = root / "sample.vcf.bz2"
+            bz2_path.write_bytes(bz2.compress(body.encode()))
+            xz_path = root / "sample.vcf.xz"
+            xz_path.write_bytes(lzma.compress(body.encode()))
+            zip_path = root / "sample.zip"
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.writestr("README.txt", "not genomic")
+                archive.writestr("sample.vcf", body)
+
+            for path in (bz2_path, xz_path, zip_path):
+                with self.subTest(path=path.name):
+                    self.assertEqual(infer_genome_build_from_vcf(path), "GRCh37")
+                    self.assertEqual(resolve_genome_build(path, "auto"), "GRCh37")
+
     def test_investigation_packet_bundles_stored_research_sources_and_writeback_template(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "evidence.sqlite"

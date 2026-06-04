@@ -13,7 +13,6 @@ from ..runtime.external import (
     check_tool,
     file_metadata,
     matching_manifest,
-    require_tools,
     run_command,
     utc_now,
     write_manifest,
@@ -94,17 +93,22 @@ def detect_paired_fastq(source_path: Path) -> tuple[Path, Path] | None:
     next to the R1 input.
     """
 
-    name = source_path.name
-    match = _FASTQ_R1_TOKEN.match(name)
-    if not match:
+    r2_name = paired_fastq_r2_name(source_path.name)
+    if r2_name is None:
         return None
-    marker = match.group("marker")
-    r2_marker = "R2" if marker.upper() == "R1" else "2"
-    r2_name = f"{match.group('stem')}{match.group('sep')}{r2_marker}{match.group('suffix')}"
     r2_path = source_path.with_name(r2_name)
     if r2_path.exists():
         return (source_path, r2_path)
     return None
+
+
+def paired_fastq_r2_name(r1_name: str) -> str | None:
+    match = _FASTQ_R1_TOKEN.match(Path(r1_name).name)
+    if not match:
+        return None
+    marker = match.group("marker")
+    r2_marker = "R2" if marker.upper() == "R1" else "2"
+    return f"{match.group('stem')}{match.group('sep')}{r2_marker}{match.group('suffix')}"
 
 
 def align_fastq_to_bam(
@@ -340,7 +344,24 @@ def materialize_bam_variant_vcf(
         }
 
     checks = [check_tool("samtools", ["--version"]), check_tool("bcftools", ["--version"])]
-    require_tools(checks)
+    missing = [check.name for check in checks if not check.available]
+    if missing:
+        return {
+            "status": "requires_library_install",
+            "schema": BAM_VARIANT_CALL_SCHEMA,
+            "dependency": "bam_derived_variant_vcf",
+            "source_format": "bam",
+            "missing_libraries": [
+                {"binary": name, "install_library": name}
+                for name in missing
+            ],
+            "message": (
+                "BAM-derived variant calling requires "
+                + ", ".join(missing)
+                + ". Install the alignment/variant-calling tools or place the binaries on PATH."
+            ),
+            "tools": [check.to_dict() for check in checks],
+        }
     quickcheck = run_command(["samtools", "quickcheck", "-v", str(bam_path)])
     check_returncode(quickcheck)
     index_result = ensure_bam_index(bam_path)

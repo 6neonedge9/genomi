@@ -152,15 +152,31 @@ def select_archive_member(path: Path) -> str | None:
 
 
 def _wrap_member_compression(stream: BinaryIO, member_name: str) -> BinaryIO:
-    """Peel a member's own compression, keyed on its (reliable, in-archive) name."""
+    """Peel a member's own compression by content, with its name as a fallback."""
+    buffered = io.BufferedReader(stream)
+    try:
+        head = buffered.peek(6)[:6]
+    except OSError:
+        head = b""
+    if head.startswith(_GZIP_MAGIC):
+        return gzip.GzipFile(fileobj=buffered)  # type: ignore[return-value]
+    if head.startswith(_BZIP2_MAGIC):
+        return bz2.BZ2File(buffered)  # type: ignore[return-value]
+    if head.startswith(_XZ_MAGIC):
+        return lzma.LZMAFile(buffered)  # type: ignore[return-value]
     lowered = member_name.lower()
     if lowered.endswith((".gz", ".bgz")):
-        return gzip.GzipFile(fileobj=stream)  # type: ignore[return-value]
+        return gzip.GzipFile(fileobj=buffered)  # type: ignore[return-value]
     if lowered.endswith(".bz2"):
-        return bz2.BZ2File(stream)  # type: ignore[return-value]
+        return bz2.BZ2File(buffered)  # type: ignore[return-value]
     if lowered.endswith(".xz"):
-        return lzma.LZMAFile(stream)  # type: ignore[return-value]
-    return stream
+        return lzma.LZMAFile(buffered)  # type: ignore[return-value]
+    return buffered
+
+
+def archive_member_names(path: Path) -> list[str]:
+    """Names of regular genomic archive members, preserving archive paths."""
+    return [name for name, _size in _archive_entries(path)]
 
 
 def _open_bare_compressed(path: Path, compression: str | None) -> BinaryIO:

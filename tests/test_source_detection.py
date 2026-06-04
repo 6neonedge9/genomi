@@ -177,6 +177,23 @@ class BinaryFormatTests(unittest.TestCase):
                 pass
             self.assertEqual(detect_source(path).source_format, "bam")
 
+    def test_zipped_bam_member_is_detected_after_bgzf_decompression(self) -> None:
+        import pysam
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bam = root / "sample.bam"
+            header = {"HD": {"VN": "1.6"}, "SQ": [{"SN": "1", "LN": 1000}]}
+            with pysam.AlignmentFile(str(bam), "wb", header=header):
+                pass
+            archive_path = root / "alignment.zip"
+            with zipfile.ZipFile(archive_path, "w") as archive:
+                archive.write(bam, "reads/sample.bam")
+
+            detection = detect_source(archive_path)
+            self.assertEqual(detection.source_format, "bam")
+            self.assertEqual(detection.member_name, "reads/sample.bam")
+
     def test_cram_magic_raises_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reads.bin"

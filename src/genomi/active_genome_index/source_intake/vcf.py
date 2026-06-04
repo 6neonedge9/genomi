@@ -61,13 +61,6 @@ def _parse_vcf_active_genome_index(
         source_evidence_db=source_evidence_db,
         shared_evidence_db=shared_db,
     )
-    # The structured Active Genome Index is self-sufficient: once built, no
-    # capability reopens the intake or the canonical to understand a genome.
-    # If a complete, current-schema index already exists we skip touching the
-    # source entirely (it may even be gone). Otherwise we materialize a
-    # canonical bgzip ONLY to parse it into the index, then delete it to
-    # reclaim disk — the index is the sole source of truth afterward.
-    #
     # Every source parses in two phases on one unified path: Phase A stores
     # every variant and returns variants_ready (the whole interpretation surface
     # is live in minutes); Phase B appends the reference-block tail. A gVCF is
@@ -79,13 +72,7 @@ def _parse_vcf_active_genome_index(
     readiness = active_genome_index_readiness(active_genome_index_path)
     two_phase = max_records is None
     reference_job: JsonObject | None = None
-    if readiness.get("complete") and not force:
-        active_genome_index_result = {
-            "status": "cached",
-            "active_genome_index_complete": True,
-            "active_genome_index_path": str(active_genome_index_path),
-        }
-    elif two_phase and readiness.get("variants_ready") and not force:
+    if two_phase and readiness.get("variants_ready") and not readiness.get("complete") and not force:
         # Phase A already done from a prior call; just make sure the reference
         # tail is (still) being built instead of rebuilding variants.
         active_genome_index_result = {
