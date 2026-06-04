@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+from typing import Any
 
 from ._common import (
     JsonObject,
@@ -59,7 +60,7 @@ def import_pharmcat_artifacts(
     return {
         "ok": status == "completed",
         "status": status,
-        "artifacts": artifacts,
+        "artifacts": _hide_private_paths(artifacts),
         "record_research_payloads": record_payloads,
         "interpretation_readiness": _readiness(0 if status == "completed" else 1, artifacts),
         "traceability": {
@@ -70,7 +71,14 @@ def import_pharmcat_artifacts(
     }
 
 
-def _summarize_outputs(output_dir: Path, base_filename: str, *, max_files: int = 200, max_calls: int = 200) -> JsonObject:
+def _summarize_outputs(
+    output_dir: Path,
+    base_filename: str,
+    *,
+    max_files: int = 200,
+    max_calls: int = 200,
+    hide_paths: bool = True,
+) -> JsonObject:
     files = []
     if output_dir.exists():
         for path in sorted(output_dir.rglob("*")):
@@ -83,7 +91,7 @@ def _summarize_outputs(output_dir: Path, base_filename: str, *, max_files: int =
     match_json = [item for item in files if item["artifact_type"] == "named_allele_match_json"]
     phenotype_json = [item for item in files if item["artifact_type"] == "phenotype_json"]
     missing_pgx = [item for item in files if item["artifact_type"] == "missing_pgx_positions_vcf"]
-    return {
+    payload = {
         "output_dir": str(output_dir.expanduser().resolve(strict=False)),
         "base_filename": base_filename,
         "file_count": len(files),
@@ -94,6 +102,7 @@ def _summarize_outputs(output_dir: Path, base_filename: str, *, max_files: int =
         "report_json": _summarize_json(Path(report_json[0]["path"])) if report_json else {"available": False},
         "missing_pgx_positions": _summarize_missing_pgx_vcf(Path(missing_pgx[0]["path"])) if missing_pgx else {"available": False},
     }
+    return _hide_private_paths(payload) if hide_paths else payload
 
 
 def _import_artifacts(
@@ -108,7 +117,7 @@ def _import_artifacts(
 ) -> JsonObject:
     base = _clean_base_filename(base_filename) or ""
     if output_dir:
-        artifacts = _summarize_outputs(Path(output_dir).expanduser(), base or "*")
+        artifacts = _summarize_outputs(Path(output_dir).expanduser(), base or "*", hide_paths=False)
     else:
         artifacts = {
             "output_dir": None,
@@ -146,6 +155,23 @@ def _import_artifacts(
         artifacts["files"] = _dedupe_file_descriptors([*explicit_files, *list(artifacts.get("files") or [])])
         artifacts["file_count"] = len(artifacts["files"])
     return artifacts
+
+
+def _hide_private_paths(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_hide_private_paths(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    hidden: JsonObject = {}
+    for key, item in value.items():
+        if key == "path" and item not in (None, ""):
+            hidden["path_hidden"] = True
+            continue
+        if key == "output_dir" and item not in (None, ""):
+            hidden["output_dir_hidden"] = True
+            continue
+        hidden[key] = _hide_private_paths(item)
+    return hidden
 
 
 def _explicit_artifact_descriptor(path: Path, artifact_type: str) -> JsonObject:

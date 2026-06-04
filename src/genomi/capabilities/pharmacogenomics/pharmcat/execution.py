@@ -266,7 +266,10 @@ def run_pharmcat(
             pharmcat_input=surfaced_pharmcat_input,
         )
 
-    command_redactions = {pharmcat_input_path: "[derived_pharmcat_input]"}
+    command_redactions = {
+        pharmcat_input_path: "[derived_pharmcat_input]",
+        out_dir: "[hidden_output_dir]",
+    }
     for private_value in (outside_call_file, sample_file, sample_metadata):
         if private_value:
             command_redactions[Path(private_value).expanduser()] = "[hidden_private_path]"
@@ -554,7 +557,7 @@ def _unavailable_result(
     outside_call_validation: JsonObject,
     pharmcat_input: JsonObject | None = None,
 ) -> JsonObject:
-    example = ["pharmcat_pipeline", "[derived_pharmcat_input]", "-o", str(output_dir), "-bf", base_filename, "-reporterJson", "-reporterCallsOnlyTsv"]
+    example = ["pharmcat_pipeline", "[derived_pharmcat_input]", "-o", "[hidden_output_dir]", "-bf", base_filename, "-reporterJson", "-reporterCallsOnlyTsv"]
     if sample:
         example.extend(["-s", str(sample)])
     if sample_file:
@@ -745,7 +748,7 @@ def _base_result(
             "hidden_agi_path": True,
             "content_sha256": _file_sha256(agi_path),
         },
-        "output_dir": str(out_dir.expanduser().resolve(strict=False)),
+        "output_dir_hidden": True,
         "base_filename": _selected_base_filename(base_filename, agi_path),
         "traceability": {
             "source_tool": "PharmCAT",

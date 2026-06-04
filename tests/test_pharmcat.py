@@ -55,6 +55,8 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["status"], "planned")
         self.assertEqual(result["execution"]["mode"], "pipeline")
         self.assertIn("[derived_pharmcat_input]", result["execution"]["command"])
+        self.assertEqual(result["execution"]["command"][result["execution"]["command"].index("-o") + 1], "[hidden_output_dir]")
+        self.assertTrue(result["output_dir_hidden"])
         self.assertIn("version_probe", result["execution"])
         self.assertEqual(result["input_preflight"]["status"], "completed")
         self.assertTrue(result["input_preflight"]["input"]["hidden_agi_path"])
@@ -189,6 +191,8 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertTrue(result["output_dir_hidden"])
+        self.assertTrue(result["artifacts"]["output_dir_hidden"])
         self.assertEqual(result["execution"]["version_probe"]["version_text"], "PharmCAT 3.2.0")
         self.assertEqual(result["artifacts"]["calls_only"]["genes"], ["CYP2C19"])
         calls_hash = result["artifacts"]["calls_only"]["artifact"]["content_sha256"]
@@ -199,10 +203,12 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["artifacts"]["calls_only"]["artifact"]["artifact_id"], f"pharmcat_artifact_sha256:{calls_hash}")
         report_descriptor = next(item for item in result["artifacts"]["files"] if item["artifact_type"] == "report_json")
         self.assertEqual(report_descriptor["content_sha256"], report_hash)
+        self.assertTrue(report_descriptor["path_hidden"])
         self.assertEqual(result["artifacts"]["calls_only"]["rows"][0]["Source Diplotype"], "*1/*2")
         self.assertEqual(result["artifacts"]["report_json"]["metadata"]["pharmcat_version"], "3.2.0")
         self.assertEqual(result["artifacts"]["report_json"]["artifact"]["content_sha256"], report_hash)
         self.assertEqual(result["artifacts"]["report_json"]["metadata"]["genome_build"], "GRCh38")
+        self.assertTrue(result["artifacts"]["report_json"]["path_hidden"])
         recommendations = result["artifacts"]["report_json"]["recommendations"]
         self.assertEqual(recommendations["record_count"], 1)
         self.assertEqual(recommendations["records"][0]["drug"], "clopidogrel")
@@ -407,6 +413,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["artifacts"]["calls_only"]["genes"], ["CYP2C19"])
+        self.assertTrue(result["artifacts"]["calls_only"]["path_hidden"])
         calls_hash = result["artifacts"]["calls_only"]["artifact"]["content_sha256"]
         match_hash = result["artifacts"]["named_allele_match_json"]["artifact"]["content_sha256"]
         phenotype_hash = result["artifacts"]["phenotype_json"]["artifact"]["content_sha256"]
@@ -422,6 +429,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["artifacts"]["named_allele_match_json"]["records"][0]["diplotypes"][0]["name"], "*1/*2")
         self.assertEqual(result["artifacts"]["phenotype_json"]["records"][0]["source_diplotypes"][0]["phenotypes"], ["Intermediate Metabolizer"])
         self.assertEqual(result["artifacts"]["report_json"]["metadata"]["pharmcat_version"], "3.2.0")
+        self.assertTrue(result["artifacts"]["report_json"]["path_hidden"])
         payloads_by_type = {item["finding"]["type"]: item for item in result["record_research_payloads"]}
         self.assertIn("pharmcat_sample_pgx_call", payloads_by_type)
         self.assertIn("pharmcat_sample_pgx_match", payloads_by_type)
