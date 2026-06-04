@@ -126,10 +126,14 @@ def _agi_map(container: object) -> JsonObject:
 
 def _normalize_agi_record(record: JsonObject, agi_id_hint: str | None = None) -> JsonObject:
     normalized = dict(record)
+    legacy_keys = [key for key in _legacy_agi_record_keys() if key in normalized]
+    if legacy_keys:
+        raise ValueError(
+            "legacy_active_genome_index_record_keys: "
+            f"{', '.join(sorted(legacy_keys))}; use agi_* persisted context fields"
+        )
     agi_id = normalized.get("agi_id") or agi_id_hint or normalized.get("sample_slug")
     normalized["agi_id"] = str(agi_id) if agi_id not in (None, "") else ""
-    for key in _removed_agi_record_keys():
-        normalized.pop(key, None)
     normalized.pop("run" + "_id", None)
     normalized.pop("nickname", None)
     normalized.pop("default", None)
@@ -137,7 +141,7 @@ def _normalize_agi_record(record: JsonObject, agi_id_hint: str | None = None) ->
     return normalized
 
 
-def _removed_agi_record_keys() -> tuple[str, ...]:
+def _legacy_agi_record_keys() -> tuple[str, ...]:
     return (
         "source",
         "source_format",

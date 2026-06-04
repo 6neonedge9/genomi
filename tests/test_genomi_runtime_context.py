@@ -414,6 +414,25 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertEqual(active["intake_source"]["role"], "ingestion_source_for_digitization")
         self.assertFalse(active["intake_source"]["available_for_rebuild"])
 
+    def test_context_normalization_rejects_legacy_agi_record_keys(self) -> None:
+        with self.assertRaisesRegex(ValueError, "legacy_active_genome_index_record_keys"):
+            runtime_context.save_context(
+                {
+                    "active_agi_id": "legacy-agi",
+                    "agis": {
+                        "legacy-agi": {
+                            "agi_id": "legacy-agi",
+                            "sample_slug": "legacy-agi",
+                            "status": "parsed",
+                            "source": "/tmp/legacy-source.vcf",
+                            "source_format": "vcf",
+                            "vcf_path": "/tmp/legacy-source.vcf",
+                            "agi_path": "/tmp/legacy-active-genome-index.sqlite",
+                        }
+                    },
+                }
+            )
+
     def test_record_research_accepts_inline_payload_for_shared_evidence(self) -> None:
         payload = {
             "target": {"type": "drug", "drug": "clopidogrel"},
