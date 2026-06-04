@@ -12,6 +12,7 @@ from typing import Any, Sequence
 from ...retrieval import hybrid as retrieval_hybrid
 from ...retrieval import index as retrieval_index
 from ...retrieval import semantic as retrieval_semantic
+from ...runtime.libraries import manager as library_manager
 from . import source_context
 
 JsonObject = dict[str, Any]
@@ -34,6 +35,12 @@ class SourceUnavailable(RuntimeError):
         super().__init__(message)
         self.source = source
         self.message = message
+
+
+class ScoreMetadataUnavailable(RuntimeError):
+    def __init__(self, payload: JsonObject):
+        super().__init__(str(payload.get("status") or "score metadata unavailable"))
+        self.payload = payload
 
 
 def normalize_pgs_id(value: str | None) -> str:
@@ -110,6 +117,8 @@ def search_scores(
 
     try:
         rows = _fetch_score_metadata_rows()
+    except ScoreMetadataUnavailable as exc:
+        return exc.payload
     except SourceUnavailable as exc:
         cached = _search_cached_score_index(
             query=query,
@@ -573,7 +582,24 @@ def _search_next_actions(results: list[JsonObject]) -> list[JsonObject]:
 
 
 def _fetch_score_metadata_rows() -> list[JsonObject]:
-    text = _fetch_text(source_context.PGS_CATALOG_METADATA_CSV)
+    status = library_manager.ensure(
+        "pgs-catalog-score-metadata",
+        intent="searching published PGS Catalog score metadata",
+        operation="prs.search_scores",
+    )
+    if status.get("status") != "available":
+        raise ScoreMetadataUnavailable(status)
+    paths = status.get("required_paths")
+    if not isinstance(paths, list) or not paths:
+        raise SourceUnavailable(
+            source_context.PGS_CATALOG_METADATA_CSV,
+            "PGS Catalog score metadata library did not report an installed CSV path",
+        )
+    path = Path(str(paths[0]))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SourceUnavailable(source_context.PGS_CATALOG_METADATA_CSV, str(exc)) from exc
     with io.StringIO(text) as handle:
         return [dict(row) for row in csv.DictReader(handle)]
 

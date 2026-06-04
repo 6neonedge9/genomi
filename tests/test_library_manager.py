@@ -72,18 +72,21 @@ class StatusAndInventoryTests(unittest.TestCase):
 
     def test_inventory_counts(self) -> None:
         inv = manager.inventory(root=self.root)
-        # 18 offline-family (incl. derived + manual) + 5 online = 23.
-        self.assertEqual(inv["summary"]["library_count"], 23)
+        # 19 offline-family (incl. derived + manual) + 5 online = 24.
+        self.assertEqual(inv["summary"]["library_count"], 24)
         # The 5 online sources count as installed; everything offline is missing here.
         self.assertEqual(inv["summary"]["installed_count"], 5)
-        self.assertEqual(inv["summary"]["missing_count"], 18)
+        self.assertEqual(inv["summary"]["missing_count"], 19)
         ids = {item["library"] for item in inv["libraries"]}
         self.assertIn("gnomad", ids)
 
     def test_install_command_and_resolve_selection(self) -> None:
         self.assertEqual(manager.install_command(["hpo", "gencc"]), "genomi install --libraries hpo,gencc")
-        self.assertEqual(manager.resolve_selection("common-questions"), ["clinvar-grch38", "hpo", "gencc"])
-        self.assertEqual(len(manager.resolve_selection("everything")), 17)
+        self.assertEqual(
+            manager.resolve_selection("common-questions"),
+            ["clinvar-grch38", "hpo", "gencc", "pgs-catalog-score-metadata"],
+        )
+        self.assertEqual(len(manager.resolve_selection("everything")), 18)
         self.assertIn("everything", manager.purposes())
 
 

@@ -29,8 +29,8 @@ class LibraryRegistryTests(unittest.TestCase):
 
     def test_everything_excludes_manual_and_online(self) -> None:
         everything = set(registry.purposes()["everything"])
-        # 17 installable offline-family libraries, no manual or online-only sources.
-        self.assertEqual(len(everything), 17)
+        # 18 installable offline-family libraries, no manual or online-only sources.
+        self.assertEqual(len(everything), 18)
         self.assertEqual({registry.get(item).kind for item in everything}, {Kind.OFFLINE, Kind.DERIVED})
 
     def test_paths_are_relative_and_resolve_under_a_temp_home(self) -> None:
@@ -71,8 +71,21 @@ class LibraryRegistryTests(unittest.TestCase):
         self.assertIs(spec.kind, Kind.PARAMETERIZED)
         self.assertEqual(spec.source.derived_from, ("pgs-catalog",))
 
+    def test_pgs_catalog_score_metadata_is_installable(self) -> None:
+        spec = registry.get("pgs-catalog-score-metadata")
+        self.assertIs(spec.kind, Kind.OFFLINE)
+        self.assertEqual(
+            spec.source.urls,
+            ("https://ftp.ebi.ac.uk/pub/databases/spot/pgs/metadata/pgs_all_metadata_scores.csv",),
+        )
+        self.assertEqual(spec.required_paths, spec.targets)
+        self.assertIn("pgs-catalog-score-metadata", registry.purposes()["common-questions"])
+
     def test_resolve_selection_purpose_ids_and_errors(self) -> None:
-        self.assertEqual(registry.resolve_selection("common-questions"), ["clinvar-grch38", "hpo", "gencc"])
+        self.assertEqual(
+            registry.resolve_selection("common-questions"),
+            ["clinvar-grch38", "hpo", "gencc", "pgs-catalog-score-metadata"],
+        )
         self.assertEqual(registry.resolve_selection("clinvar-grch38,hpo"), ["clinvar-grch38", "hpo"])
         self.assertEqual(registry.resolve_selection(""), [])
         with self.assertRaises(ValueError):

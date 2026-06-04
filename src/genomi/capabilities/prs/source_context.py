@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...runtime.libraries import registry as library_registry
+
 JsonObject = dict[str, Any]
 CAPABILITY_ID = "polygenic-score"
-PGS_CATALOG_REST = "https://www.pgscatalog.org/rest"
-PGS_CATALOG_DOWNLOADS = "https://www.pgscatalog.org/downloads/"
-PGS_CATALOG_METADATA_CSV = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/metadata/pgs_all_metadata_scores.csv"
-PGS_CATALOG_ANCESTRY_DOCS = "https://www.pgscatalog.org/docs/ancestry/"
-PGS_CATALOG_FAQ = "https://www.pgscatalog.org/docs/faq/"
+_PGS_CATALOG = library_registry.get("pgs-catalog")
+_PGS_SCORE_METADATA = library_registry.get("pgs-catalog-score-metadata")
+PGS_CATALOG_REST = str(_PGS_CATALOG.source.api_base or "")
+PGS_CATALOG_DOWNLOADS = _PGS_CATALOG.source.urls[0]
+PGS_CATALOG_ANCESTRY_DOCS = _PGS_CATALOG.source.urls[1]
+PGS_CATALOG_FAQ = _PGS_CATALOG.source.urls[2]
+PGS_CATALOG_METADATA_CSV = _PGS_SCORE_METADATA.source.urls[0]
 
 
 def source_urls() -> JsonObject:

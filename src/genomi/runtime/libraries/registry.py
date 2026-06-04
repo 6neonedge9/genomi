@@ -95,6 +95,17 @@ _SPECS: tuple[LibrarySpec, ...] = (
         required_paths=(_p("resources", "gencc", "gencc-submissions.tsv"),),
     ),
     LibrarySpec(
+        id="pgs-catalog-score-metadata",
+        title="PGS Catalog bulk score metadata CSV",
+        helps="supports polygenic score search over published PGS Catalog score metadata without hidden capability-local downloads",
+        kind=Kind.OFFLINE,
+        size_class="~25 MB",
+        purposes=("common-questions",),
+        source=Source(urls=("https://ftp.ebi.ac.uk/pub/databases/spot/pgs/metadata/pgs_all_metadata_scores.csv",)),
+        targets=(_p("resources", "prs", "pgs_all_metadata_scores.csv"),),
+        required_paths=(_p("resources", "prs", "pgs_all_metadata_scores.csv"),),
+    ),
+    LibrarySpec(
         id="gencode-grch38",
         title="GENCODE transcript annotation GTF for GRCh38",
         helps="annotates genomic regions with transcript and gene features on GRCh38",
@@ -305,7 +316,14 @@ _SPECS: tuple[LibrarySpec, ...] = (
         helps="fetches polygenic score metadata and scoring-file references from the PGS Catalog REST API",
         kind=Kind.ONLINE,
         size_class="online",
-        source=Source(api_base="https://www.pgscatalog.org/rest"),
+        source=Source(
+            api_base="https://www.pgscatalog.org/rest",
+            urls=(
+                "https://www.pgscatalog.org/downloads/",
+                "https://www.pgscatalog.org/docs/ancestry/",
+                "https://www.pgscatalog.org/docs/faq/",
+            ),
+        ),
         freshness=Freshness.LIVE,
     ),
     LibrarySpec(
@@ -354,7 +372,7 @@ _REGISTRY: dict[str, LibrarySpec] = {spec.id: spec for spec in _SPECS}
 # all installable offline ids except manual-source ones — see purposes().
 _PURPOSES: dict[str, tuple[str, ...]] = {
     "setup-only": (),
-    "common-questions": ("clinvar-grch38", "hpo", "gencc"),
+    "common-questions": ("clinvar-grch38", "hpo", "gencc", "pgs-catalog-score-metadata"),
     "medication-response": ("clinvar-grch38", "hpo", "gencc", "pharmcat"),
     "ancestry-context": ("ancestry-1000g-30x-grch38", "ancestry-1000g-30x-grch37"),
     "sequence-and-regions": ("clinvar-grch38", "reference-grch38", "gencode-grch38", "encode-ccre-grch38"),

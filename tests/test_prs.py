@@ -183,6 +183,15 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(listed["search_results"][0]["source"], "pgs_scores")
         self.assertEqual(listed["search_results"][0]["hits"][0]["doc_id"], "PGS001987")
 
+    def test_search_scores_requires_installed_metadata_library(self) -> None:
+        result = call_operation("prs.search_scores", {"query": "balding", "limit": 1})
+
+        self.assertEqual(result["status"], "requires_library_install")
+        self.assertFalse(result["tool_will_work"])
+        self.assertEqual(result["missing_library"]["library"], "pgs-catalog-score-metadata")
+        self.assertEqual(result["operation"], "prs.search_scores")
+        self.assertIn("install_command", result["ask_user"])
+
     def test_private_tools_require_approval_for_existing_active_context(self) -> None:
         vcf = Path(self._home_tmp.name) / "sample.vcf"
         runtime_context.set_active_genome_index(
