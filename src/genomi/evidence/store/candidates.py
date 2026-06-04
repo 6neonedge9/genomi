@@ -186,6 +186,14 @@ def extract_clinvar_candidates(
             clinical_significance[clinvar.get("clinical_significance") or "missing"] += 1
             review_status[clinvar.get("review_status") or "missing"] += 1
             match_basis_counts[match_basis_from_record(item)] += 1
+    total_exact_allele_match_variants = _candidate_count_by_match_basis(
+        all_candidates,
+        {MATCH_BASIS_EXACT_ALLELE, MATCH_BASIS_LIFTOVER_EXACT_ALLELE},
+    )
+    total_consumer_array_inferred_match_variants = _candidate_count_by_match_basis(
+        all_candidates,
+        {MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE},
+    )
     candidate_evidence = _clinvar_candidate_evidence_view(
         emitted_candidates,
         genome_build=genome_build,
@@ -227,15 +235,9 @@ def extract_clinvar_candidates(
         "summary": {
             "total_match_records": total_match_records,
             "total_match_variants": len(grouped),
-            "total_exact_match_variants": len(grouped),
-            "total_exact_allele_match_variants": _candidate_count_by_match_basis(
-                all_candidates,
-                {MATCH_BASIS_EXACT_ALLELE, MATCH_BASIS_LIFTOVER_EXACT_ALLELE},
-            ),
-            "total_consumer_array_inferred_match_variants": _candidate_count_by_match_basis(
-                all_candidates,
-                {MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE},
-            ),
+            "total_exact_match_variants": total_exact_allele_match_variants,
+            "total_exact_allele_match_variants": total_exact_allele_match_variants,
+            "total_consumer_array_inferred_match_variants": total_consumer_array_inferred_match_variants,
             "selected_candidate_variants": len(candidates),
             "emitted_candidate_variants": len(emitted_candidates),
             "truncated": len(candidates) > limit,
@@ -268,7 +270,7 @@ def extract_clinvar_candidates(
             "candidate_buckets are evidence summary groups, not diagnoses.",
             "clinvar_triage_score is only a ClinVar evidence-strength display aid, not a clinical priority score.",
             "Use match_basis_counts and each candidate's match_provenance before treating a ClinVar hit as an exact VCF allele observation.",
-            "summary.total_exact_match_variants is retained for legacy consumers; summary.total_match_variants and match_basis_counts describe the provenance-marked inventory.",
+            "summary.total_exact_match_variants counts exact allele provenance only; use summary.total_match_variants for all provenance-marked matches.",
             "Population frequency tags are facts for the agent to interpret against user intent; clinvar_triage_score remains a ClinVar evidence-strength display aid.",
             "Missing population evidence means run a population evidence tool if the candidate is worth investigating.",
         ],

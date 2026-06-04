@@ -277,11 +277,9 @@ def _write_json_atomic(path: Path, payload: JsonObject) -> None:
 def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
     target_dir.parent.mkdir(parents=True, exist_ok=True)
     if target_dir.exists():
-        if not force:
+        if _complete_cache_exists(target_dir) and not force:
             return "already_exists"
-        backup = target_dir.with_name(f".{target_dir.name}.replace-backup")
-        if backup.exists():
-            shutil.rmtree(backup)
+        backup = _unique_replacement_backup(target_dir)
         target_dir.replace(backup)
         try:
             staging_dir.replace(target_dir)
@@ -293,6 +291,12 @@ def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
         return "published"
     staging_dir.replace(target_dir)
     return "published"
+
+
+def _unique_replacement_backup(target_dir: Path) -> Path:
+    backup = Path(tempfile.mkdtemp(prefix=f".{target_dir.name}.replace-", dir=target_dir.parent))
+    backup.rmdir()
+    return backup
 
 
 def list_imported_scores(root: str | Path | None = None) -> JsonObject:

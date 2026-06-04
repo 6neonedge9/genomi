@@ -277,6 +277,58 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["answer_support"]["technical_sample_support"]["status"], "needs_genotype_support")
         variant_lookup.assert_not_called()
 
+    def test_star_marker_array_target_inventory_produces_genotype_support_followups(self) -> None:
+        clinpgx_result = {
+            "source": {"source_id": "clinpgx"},
+            "summary": {"guideline_annotation_count": 1, "clinical_annotation_count": 0, "label_annotation_count": 0},
+            "sample_follow_up_targets": {"rsids": [], "genes": [{"symbol": "CYP2C19"}]},
+            "clinical_verification": {"requires_before_personal_actionability": []},
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+        pgxdb_result = {
+            "source": {"source_id": "pgxdb"},
+            "summary": {"pgx_record_count": 0},
+            "pgx_records": [],
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+        star_result = {
+            "schema": "genomi-pgx-star-allele-call-v1",
+            "ok": True,
+            "status": "completed",
+            "gene": "CYP2C19",
+            "genome_build": "GRCh37",
+            "marker_calls": [
+                {
+                    "rsid": "rs4244285",
+                    "evidence_status": "observed_effect_allele",
+                    "sample_calls": [{"source_format": "23andme", "genotype": "GA", "ref": "N", "alt": "GA"}],
+                    "target_inventory": {
+                        "genotype_support_loci": [
+                            {"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}
+                        ]
+                    },
+                }
+            ],
+            "called_star_alleles": [{"star_allele": "*2", "function": "no_function", "rsid": "rs4244285"}],
+            "diplotype": {"marker_support_status": "common_marker_subset_observed", "possible_diplotype": "*1/*2"},
+        }
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.review.clinpgx.lookup_clinpgx", return_value=clinpgx_result),
+            patch("genomi.capabilities.pharmacogenomics.review.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
+            patch("genomi.capabilities.pharmacogenomics.review.variant_lookup.lookup_variant") as variant_lookup,
+            patch("genomi.capabilities.pharmacogenomics.review.pgx_star.call_star_alleles", return_value=star_result),
+        ):
+            result = review_medication_interaction(drug="clopidogrel", gene="CYP2C19", has_active_genome_index_context=True)
+
+        self.assertEqual(
+            result["target_inventory"]["genotype_support_loci"],
+            [{"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}],
+        )
+        variant_lookup.assert_not_called()
+
     def test_medication_review_uses_active_genome_index_without_source_path_leak(self) -> None:
         clinpgx_result = {
             "source": {"source_id": "clinpgx"},
@@ -465,6 +517,51 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["answer_support"]["technical_sample_support"]["status"], "observed_genotype_available")
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
         self.assertEqual(components["technical_sample_support"]["state"], "observed")
+        self.assertEqual(
+            result["target_inventory"]["genotype_support_loci"],
+            [{"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}],
+        )
+
+    def test_no_call_genotype_support_does_not_suppress_followup_loci(self) -> None:
+        clinpgx_result = {
+            "source": {"source_id": "clinpgx"},
+            "summary": {"guideline_annotation_count": 1, "clinical_annotation_count": 0, "label_annotation_count": 0},
+            "sample_follow_up_targets": {"rsids": ["rs4244285"], "genes": []},
+            "clinical_verification": {"requires_before_personal_actionability": []},
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+        pgxdb_result = {
+            "source": {"source_id": "pgxdb"},
+            "summary": {"pgx_record_count": 0},
+            "pgx_records": [],
+            "raw_calls": [],
+            "record_research_payloads": [],
+        }
+        variant_result = {
+            "query": {"rsid": "rs4244285", "genome_build": "GRCh37"},
+            "sample_context": {
+                "count": 1,
+                "searched_active_genome_indexes": [{"source_format": "23andme"}],
+                "matches": [{"source_format": "23andme", "genotype": "--"}],
+            },
+            "support_context": {"genotype_support": [{"support_status": "no_call"}]},
+            "target_inventory": {
+                "genotype_support_loci": [
+                    {"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}
+                ]
+            },
+        }
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.review.clinpgx.lookup_clinpgx", return_value=clinpgx_result),
+            patch("genomi.capabilities.pharmacogenomics.review.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
+            patch("genomi.capabilities.pharmacogenomics.review.variant_lookup.lookup_variant", return_value=variant_result),
+        ):
+            result = review_medication_interaction(drug="clopidogrel", rsid="rs4244285", include_active_genome_index=True)
+
+        self.assertFalse(result["evidence_state"]["has_genotype_support"])
+        self.assertTrue(result["target_inventory"]["pharmcat_context"]["active_genome_index_context_available"])
         self.assertEqual(
             result["target_inventory"]["genotype_support_loci"],
             [{"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}],

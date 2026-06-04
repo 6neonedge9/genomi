@@ -326,6 +326,25 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         score_dirs = sorted(path.name for path in prs_root.iterdir() if path.is_dir() and not path.name.startswith("."))
         self.assertEqual(score_dirs, ["PGS900777"])
 
+    def test_import_replaces_incomplete_score_cache_directory(self) -> None:
+        scoring_file = self._write_scoring_file(
+            filename="PGS900888_hmPOS_GRCh38.txt",
+            pgs_id="PGS900888",
+        )
+        target_dir = prs_scoring_files.prs_score_dir("PGS900888", "GRCh38")
+        target_dir.mkdir(parents=True)
+        (target_dir / "manifest.json").write_text('{"status":"incomplete"}\n', encoding="utf-8")
+
+        result = call_operation(
+            "prs.import_scoring_file",
+            {"pgs_id": "PGS900888", "scoring_file": str(scoring_file), "genome_build": "GRCh38"},
+        )
+
+        self.assertEqual(result["status"], "completed", result)
+        self.assertEqual(result["pgs_id"], "PGS900888")
+        self.assertTrue((target_dir / "manifest.json").exists())
+        self.assertTrue((target_dir / "variants.sqlite").exists())
+
     def test_variant_db_write_failure_preserves_existing_database(self) -> None:
         db_path = Path(self._home_tmp.name) / "variants.sqlite"
         variant = {
@@ -635,6 +654,16 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "genotype_allele_outside_score_alleles")
 
+    def test_array_harmonization_treats_no_call_as_missing_not_filter_exclusion(self) -> None:
+        connection = self._memory_prs_index()
+        self._insert_array_prs_record(connection, pos=100, genotype="--", filter_value="NO_CALL")
+        variant = self._score_variant(pos=100, effect_allele="G", other_allele="A")
+
+        result = prs_harmonize.dosage_for_variant(connection, variant)
+
+        self.assertEqual(result["status"], "missing")
+        self.assertEqual(result["reason"], "no_call")
+
     def _write_scoring_file(
         self,
         *,
@@ -776,13 +805,14 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         *,
         pos: int,
         genotype: str,
+        filter_value: str = "PASS",
     ) -> None:
         connection.execute(
             """
             insert into records(chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype, offset, sample_index)
             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            ("1", 1, pos, pos, "N", genotype, "PASS", "GT_ARRAY", genotype, pos, 0),
+            ("1", 1, pos, pos, "N", genotype, filter_value, "GT_ARRAY", genotype, pos, 0),
         )
 
     def _score_variant(self, *, pos: int, effect_allele: str, other_allele: str) -> dict[str, object]:

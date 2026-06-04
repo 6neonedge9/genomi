@@ -11,6 +11,7 @@ MATCH_BASIS_MULTIALLELIC_ALT = "multiallelic_alt"
 MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE = "consumer_array_allele_inference"
 MATCH_BASIS_LIFTOVER_EXACT_ALLELE = "liftover_exact_allele"
 MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT = "liftover_multiallelic_alt"
+MATCH_BASIS_UNKNOWN = "unknown_match_basis"
 
 
 def build_clinvar_match_payload(
@@ -78,7 +79,7 @@ def match_basis_from_record(item: dict[str, Any]) -> str:
     provenance = item.get("match_provenance")
     if isinstance(provenance, dict) and provenance.get("match_basis"):
         return str(provenance["match_basis"])
-    return MATCH_BASIS_EXACT_ALLELE
+    return MATCH_BASIS_UNKNOWN
 
 
 def match_kind_from_record(item: dict[str, Any]) -> str:
@@ -211,6 +212,8 @@ def _source_format_from_info(value: Any) -> str | None:
 def _evidence_scope_for_match_basis(match_basis: str) -> str:
     if match_basis == MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE:
         return "consumer_array_inferred_allele"
+    if match_basis == MATCH_BASIS_UNKNOWN:
+        return "unknown_match_basis"
     if match_basis.startswith("liftover_"):
         return "liftover_sample_allele"
     if match_basis in {MATCH_BASIS_MULTIALLELIC_ALT, MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT}:

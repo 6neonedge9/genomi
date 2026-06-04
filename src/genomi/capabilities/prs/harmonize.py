@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
+from ...active_genome_index.array_genotypes import ARRAY_NO_CALLS, count_array_allele, is_array_genotype_record
+from ...active_genome_index.record_kinds import ARRAY_NO_CALL_FILTER
 from ...runtime.liftover import LiftoverConfigurationError, get_liftover
 
 JsonObject = dict[str, Any]
@@ -54,6 +55,15 @@ def lift_score_variants(
         new_variant = dict(variant)
         new_variant["chrom"] = target_chrom
         new_variant["pos"] = target_pos
+        new_variant["liftover"] = {
+            "source_build": source_build,
+            "target_build": target_build,
+            "source_chrom": str(chrom),
+            "source_pos": pos_int,
+            "target_chrom": target_chrom,
+            "target_pos": target_pos,
+            "strand": strand,
+        }
         old_auto_id = f"{chrom}:{pos_int}:{variant.get('effect_allele')}:{variant.get('other_allele') or ''}"
         if variant.get("variant_id") == old_auto_id:
             new_variant["variant_id"] = (
@@ -237,14 +247,14 @@ def _row_to_record_dict(row: sqlite3.Row) -> JsonObject:
 
 
 def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
-    if str(record.get("filter") or "") not in {"PASS", "."}:
-        return _excluded(variant, "filter_fail", record=record)
     genotype = str(record.get("genotype") or "")
-    if not genotype or "." in genotype:
-        return _missing(variant, "missing_genotype", record=record)
-    effect = str(variant["effect_allele"]).upper()
-    other = str(variant.get("other_allele") or "").upper()
     if is_array_genotype_record(record):
+        if _is_array_no_call_record(record, genotype):
+            return _missing(variant, "no_call", record=record)
+        if str(record.get("filter") or "") not in {"PASS", "."}:
+            return _excluded(variant, "filter_fail", record=record)
+        effect = str(variant["effect_allele"]).upper()
+        other = str(variant.get("other_allele") or "").upper()
         allowed = [effect, other] if other else None
         array_dosage = count_array_allele(record, target_allele=effect, allowed_alleles=allowed)
         if array_dosage["status"] != "matched":
@@ -255,6 +265,8 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
                 reason = "score_allele_model_not_supported_by_array_genotype"
             elif reason == "array_target_allele_not_single_base":
                 reason = "effect_allele_not_supported_by_array_genotype"
+            elif reason == "missing_genotype":
+                reason = "no_call"
             return _missing(variant, reason, record=record)
         dosage = float(array_dosage["dosage"])
         return {
@@ -279,6 +291,12 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
             },
             "match_type": "consumer_array_letter_count",
         }
+    if str(record.get("filter") or "") not in {"PASS", "."}:
+        return _excluded(variant, "filter_fail", record=record)
+    if not genotype or "." in genotype:
+        return _missing(variant, "missing_genotype", record=record)
+    effect = str(variant["effect_allele"]).upper()
+    other = str(variant.get("other_allele") or "").upper()
     ref = str(record.get("ref") or "").upper()
     alts = [str(value).upper() for value in record.get("alts") or []]
     allele_bases: list[str] = []
@@ -332,6 +350,12 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
         },
         "match_type": match_type,
     }
+
+
+def _is_array_no_call_record(record: JsonObject, genotype: str) -> bool:
+    if str(record.get("filter") or "") == ARRAY_NO_CALL_FILTER:
+        return True
+    return genotype.strip().upper() in ARRAY_NO_CALLS
 
 
 def _chrom_candidates(chrom: str) -> list[str]:

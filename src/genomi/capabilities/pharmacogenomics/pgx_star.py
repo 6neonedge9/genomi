@@ -164,6 +164,7 @@ def _marker_call(marker: JsonObject, lookup: JsonObject) -> JsonObject:
         "evidence_status": evidence_status,
         "effect_allele_count": total_effect_count,
         "sample_calls": sample_calls,
+        "target_inventory": lookup.get("target_inventory") if isinstance(lookup.get("target_inventory"), dict) else {},
         "lookup_summary": {
             "sample_match_count": int(lookup.get("sample_context", {}).get("count") or 0),
             "public_context_keys": sorted((lookup.get("public_context") or {}).keys()),

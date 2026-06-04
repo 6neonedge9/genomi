@@ -58,7 +58,9 @@ def _is_observed_star_marker(marker: JsonObject) -> bool:
 def _technical_support_count(sample_lookups: list[JsonObject]) -> int:
     total = 0
     for lookup in sample_lookups:
-        total += len(lookup.get("support_context", {}).get("genotype_support") or [])
+        for support in lookup.get("support_context", {}).get("genotype_support") or []:
+            if str(support.get("support_status") or "") == "supported":
+                total += 1
     return total
 
 
@@ -74,12 +76,10 @@ def _sequencing_sample_match_count(sample_lookups: list[JsonObject]) -> int:
 def _has_active_genome_index_context(sample_lookups: list[JsonObject]) -> bool:
     for lookup in sample_lookups:
         sample_context = lookup.get("sample_context") or {}
-        for active_genome_index in sample_context.get("searched_active_genome_indexes") or []:
-            if active_genome_index.get("source_format") in {"vcf", "gvcf"}:
-                return True
-        for match in sample_context.get("matches") or []:
-            if match.get("source_format") in {"vcf", "gvcf"}:
-                return True
+        if sample_context.get("searched_active_genome_indexes"):
+            return True
+        if sample_context.get("matches"):
+            return True
     return False
 
 
@@ -588,6 +588,17 @@ def _star_marker_genotype_support_loci(star_allele_calls: list[JsonObject]) -> l
     for call in star_allele_calls:
         genome_build = str(call.get("genome_build") or "GRCh38")
         for marker in call.get("marker_calls") or []:
+            target_inventory = marker.get("target_inventory")
+            if isinstance(target_inventory, dict):
+                for item in target_inventory.get("genotype_support_loci") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    params = _genotype_support_params(
+                        {**item, "genome_build": item.get("genome_build") or genome_build},
+                        genome_build=str(item.get("genome_build") or genome_build),
+                    )
+                    if params:
+                        loci.append(params)
             for sample_call in marker.get("sample_calls") or []:
                 if sample_call.get("source_format") not in {"vcf", "gvcf"}:
                     continue
