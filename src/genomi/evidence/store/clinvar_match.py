@@ -4,11 +4,11 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+from ...clinvar_match_model import match_basis_sql_expression
 from ...active_genome_index.active_genome_index import (
     ActiveGenomeIndexReader,
 )
-from ...active_genome_index.clinvar import stage_clinvar_match_records
-from ...active_genome_index.observations import observed_alleles_from_record, observed_alleles_from_vcf_genotype
+from ...active_genome_index.observations import observed_alleles_from_vcf_genotype
 from ...active_genome_index.vcf import parse_sample
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
@@ -32,9 +32,6 @@ from .connection import (
 from .clinvar_query import (
     _query_clinvar_exact_rows,
 )
-from .clinvar_array_match import (
-    clinvar_array_direct_select_sql,
-)
 from .clinvar_match_provenance import (
     MATCH_BASIS_EXACT_ALLELE,
     MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
@@ -44,12 +41,39 @@ from .clinvar_match_provenance import (
     build_clinvar_match_payload,
 )
 
-_SELECTED_AGI_RECORD_COLUMNS = """
-                record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                info,
-                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
-                observed_alleles
-"""
+_SELECTED_AGI_RECORD_COLUMN_NAMES = (
+    "record_rowid",
+    "chrom",
+    "chrom_sort",
+    "pos",
+    "rsid",
+    "ref",
+    "alt",
+    "qual",
+    "filter",
+    "info",
+    "sample_index",
+    "sample_name",
+    "format",
+    "genotype",
+    "depth",
+    "genotype_quality",
+    "record_kind",
+    "observed_alleles",
+    "clinvar_batch_id",
+    "clinvar_match_mode",
+    "clinvar_match_alt",
+)
+_SOURCE_AGI_RECORD_COLUMN_NAMES = _SELECTED_AGI_RECORD_COLUMN_NAMES[:-3]
+_SELECTED_AGI_RECORD_COLUMNS = ", ".join(_SELECTED_AGI_RECORD_COLUMN_NAMES)
+_SOURCE_AGI_RECORD_COLUMNS = ", ".join(_SOURCE_AGI_RECORD_COLUMN_NAMES)
+
+
+def _selected_agi_record_columns(alias: str | None = None) -> str:
+    if alias is None:
+        return _SELECTED_AGI_RECORD_COLUMNS
+    return ", ".join(f"{alias}.{column}" for column in _SELECTED_AGI_RECORD_COLUMN_NAMES)
+
 
 def match_clinvar_variants(
     vcf_path: str | Path,
@@ -341,10 +365,7 @@ def match_clinvar_variants_from_active_genome_index(
     created_at = utc_now()
     with connect_evidence(evidence_db) as evidence_connection, output_path.open("w", encoding="utf-8") as handle:
         _ensure_schema(evidence_connection)
-        staged = stage_clinvar_match_records(
-            reader,
-            evidence_connection,
-        )
+        staged = reader.stage_clinvar_match_records(evidence_connection)
         skipped_non_pass = _count_selected_non_pass_records(
             evidence_connection,
             pass_only=pass_only,
@@ -355,28 +376,8 @@ def match_clinvar_variants_from_active_genome_index(
             f"""
             {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records)}
             select
-                count(*) as scanned_records,
-                coalesce(
-                    sum(
-                        case
-                            when record_kind = 'array_call'
-                                then (
-                                    select count(distinct upper(observed.value))
-                                    from json_each(observed_alleles) as observed
-                                )
-                            when alt is null or alt in ('', '.') then 0
-                            when observed_alleles is not null then (
-                                select count(distinct observed.value)
-                                from json_each(observed_alleles) as observed
-                                where upper(observed.value) <> upper(ref)
-                                  and instr(',' || upper(alt) || ',', ',' || upper(observed.value) || ',') > 0
-                            )
-                            else 1 + length(alt) - length(replace(alt, ',', ''))
-                        end
-                    ),
-                    0
-                ) as queried_alleles
-            from selected_records
+                (select count(*) from selected_source_records) as scanned_records,
+                (select count(distinct clinvar_batch_id) from selected_records) as queried_alleles
             """,
             selection_params,
         ).fetchone()
@@ -458,22 +459,30 @@ def _selected_active_genome_index_records_cte_sql(
     source_cte = _source_active_genome_index_records_cte_sql(max_records=max_records)
     sql = """
             with """ + source_cte + """,
-            selected_records as (
-                select """ + _SELECTED_AGI_RECORD_COLUMNS + """
+            selected_source_records as (
+                select *
                 from source_records
                 where 1 = 1
         """
     if pass_only:
         sql += " and filter in ('PASS', '.')"
-    sql += ")"
+    sql += """
+            ),
+            selected_records as (
+                select """ + _selected_agi_record_columns("a") + """
+                from temp.selected_active_genome_index_records as a
+                join selected_source_records as s
+                  on s.record_rowid = a.record_rowid
+            )
+        """
     return sql
 
 
 def _source_active_genome_index_records_cte_sql(*, max_records: int | None) -> str:
     sql = """
             source_records as (
-                select """ + _SELECTED_AGI_RECORD_COLUMNS + """
-                from temp.selected_active_genome_index_records
+                select """ + _SOURCE_AGI_RECORD_COLUMNS + """
+                from temp.selected_active_genome_index_source_records
                 where record_kind in ('variant_call', 'array_call')
         """
     if max_records is not None:
@@ -550,7 +559,10 @@ def _populate_lifted_selected_active_genome_index_records_table(
             depth integer,
             genotype_quality integer,
             record_kind text,
-            observed_alleles text
+            observed_alleles text,
+            clinvar_batch_id text not null,
+            clinvar_match_mode text not null,
+            clinvar_match_alt text not null
         );
         create index lifted_selected_records_locus_idx
             on lifted_selected_records(chrom, pos);
@@ -569,12 +581,11 @@ def _populate_lifted_selected_active_genome_index_records_table(
     dropped_alleles = 0
     insert_buffer: list[tuple[Any, ...]] = []
     for row in source_rows:
-        queried_alleles = _queried_allele_count_for_selected_record(row)
         sample_chrom = row["chrom"]
         sample_pos = int(row["pos"])
         result = lifter.lift_position_full(sample_chrom, sample_pos)
         if result is None or result[2] != "+":
-            dropped_alleles += queried_alleles
+            dropped_alleles += 1
             continue
         lifted_chrom, lifted_pos, _strand = result
         insert_buffer.append(
@@ -599,45 +610,26 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["genotype_quality"],
                 row["record_kind"],
                 row["observed_alleles"],
+                row["clinvar_batch_id"],
+                row["clinvar_match_mode"],
+                row["clinvar_match_alt"],
             )
         )
-        lifted_alleles += queried_alleles
+        lifted_alleles += 1
     if insert_buffer:
         connection.executemany(
             """
             insert into temp.lifted_selected_records (
                 record_rowid, sample_chrom_original, sample_pos_original,
                 chrom, chrom_sort, pos, rsid, ref, alt, info, qual, filter,
-                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind, observed_alleles
+                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind, observed_alleles,
+                clinvar_batch_id, clinvar_match_mode, clinvar_match_alt
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             insert_buffer,
         )
     return lifted_alleles, dropped_alleles
-
-
-def _queried_allele_count_for_selected_record(row: sqlite3.Row) -> int:
-    observed_alleles = _json_list(row["observed_alleles"])
-    if row["record_kind"] == "array_call":
-        return len({allele.upper() for allele in observed_alleles})
-    alts = {alt.upper() for alt in str(row["alt"] or "").split(",") if alt and alt != "."}
-    ref = str(row["ref"] or "").upper()
-    if observed_alleles:
-        return len({allele.upper() for allele in observed_alleles if allele.upper() != ref and allele.upper() in alts})
-    return len(alts)
-
-
-def _json_list(value: Any) -> list[str]:
-    if value in (None, ""):
-        return []
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed if str(item)]
 
 
 def _write_clinvar_active_genome_index_direct_matches(
@@ -671,24 +663,6 @@ def _write_clinvar_active_genome_index_direct_matches(
                     table_name,
                     chrom_expression=chrom_expression,
                     extra_where=extra_where,
-                    multiallelic=False,
-                    cross_build=cross_build,
-                )
-            )
-            source_selects.append(
-                clinvar_array_direct_select_sql(
-                    table_name,
-                    chrom_expression=chrom_expression,
-                    extra_where=extra_where,
-                    cross_build=cross_build,
-                )
-            )
-            source_selects.append(
-                _clinvar_index_direct_select_sql(
-                    table_name,
-                    chrom_expression=chrom_expression,
-                    extra_where=extra_where,
-                    multiallelic=True,
                     cross_build=cross_build,
                 )
             )
@@ -820,29 +794,19 @@ def _clinvar_index_direct_select_sql(
     *,
     chrom_expression: str,
     extra_where: str | None = None,
-    multiallelic: bool,
     cross_build: bool = False,
 ) -> str:
-    batch_id = "cast(r.record_rowid as text)"
-    sample_ref = "r.ref"
-    sample_alt = "r.alt"
-    match_basis = f"'{MATCH_BASIS_LIFTOVER_EXACT_ALLELE}'" if cross_build else f"'{MATCH_BASIS_EXACT_ALLELE}'"
-    observed_alt_where = "and exists (select 1 from json_each(r.observed_alleles) as observed where upper(observed.value) = upper(cv.alt))"
-    alt_where = f"and r.alt not in ('', '.') and instr(r.alt, ',') = 0 and cv.alt = r.alt {observed_alt_where}"
-    ref_where = "and cv.ref = r.ref"
-    if multiallelic:
-        batch_id = "cast(r.record_rowid as text) || ':' || cv.alt"
-        sample_alt = "cv.alt"
-        match_basis = (
-            f"'{MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT}'"
-            if cross_build
-            else f"'{MATCH_BASIS_MULTIALLELIC_ALT}'"
-        )
-        alt_where = f"and instr(r.alt, ',') > 0 and instr(',' || r.alt || ',', ',' || cv.alt || ',') > 0 {observed_alt_where}"
+    match_basis = match_basis_sql_expression("r.clinvar_match_mode", cross_build=cross_build)
     where = f"""
               and cv.chrom = {chrom_expression}
               and cv.pos = r.pos
-              {ref_where}
+              and cv.alt = r.clinvar_match_alt
+              and (
+                  (r.record_kind = 'array_call'
+                   and upper(cv.ref) in ('A', 'C', 'G', 'T')
+                   and upper(cv.alt) in ('A', 'C', 'G', 'T'))
+                  or (r.record_kind = 'variant_call' and cv.ref = r.ref)
+              )
               and cv.genome_build = ?
         """
     if extra_where is not None:
@@ -862,16 +826,19 @@ def _clinvar_index_direct_select_sql(
         lifted_columns_select = ", null as lifted_chrom, null as lifted_pos"
     return f"""
             select
-                {batch_id} as batch_id,
+                r.clinvar_batch_id as batch_id,
                 {match_basis} as match_basis,
                 {match_basis} as match_kind,
                 {sample_chrom_select},
                 {sample_pos_select},
                 r.rsid as sample_rsid,
-                {sample_ref} as sample_ref,
-                {sample_alt} as sample_alt,
-                null as inferred_clinvar_ref,
-                null as inferred_clinvar_alt,
+                r.ref as sample_ref,
+                case
+                    when r.record_kind = 'array_call' then r.alt
+                    else r.clinvar_match_alt
+                end as sample_alt,
+                case when r.record_kind = 'array_call' then cv.ref else null end as inferred_clinvar_ref,
+                case when r.record_kind = 'array_call' then cv.alt else null end as inferred_clinvar_alt,
                 r.qual as sample_qual,
                 r.filter as sample_filter,
                 r.sample_index as sample_index,
@@ -906,6 +873,5 @@ def _clinvar_index_direct_select_sql(
             from selected_records r
             cross join {table_name} as cv indexed by clinvar_variant_idx
             where 1 = 1
-              {alt_where}
               {where}
         """

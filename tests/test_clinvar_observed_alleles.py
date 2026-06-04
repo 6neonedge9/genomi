@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
 from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexNeed, create_active_genome_index, open_reader
 from genomi.active_genome_index.source_intake.dispatch import parse_source
+from genomi.clinvar_match_model import (
+    MATCH_BASIS_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
+    MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
+    MATCH_BASIS_MULTIALLELIC_ALT,
+    match_basis_for_sample_mode,
+)
 from genomi.evidence import (
     import_clinvar_vcf,
     match_clinvar_variants,
@@ -31,6 +39,21 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown ClinVar match_basis"):
             match_basis_from_record({"match_basis": "legacy_exact"})
 
+    def test_match_model_maps_active_genome_index_sample_modes_to_public_provenance(self) -> None:
+        self.assertEqual(match_basis_for_sample_mode(MATCH_BASIS_EXACT_ALLELE), MATCH_BASIS_EXACT_ALLELE)
+        self.assertEqual(
+            match_basis_for_sample_mode(MATCH_BASIS_MULTIALLELIC_ALT),
+            MATCH_BASIS_MULTIALLELIC_ALT,
+        )
+        self.assertEqual(
+            match_basis_for_sample_mode(MATCH_BASIS_EXACT_ALLELE, cross_build=True),
+            MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
+        )
+        self.assertEqual(
+            match_basis_for_sample_mode(MATCH_BASIS_MULTIALLELIC_ALT, cross_build=True),
+            MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
+        )
+
     def test_raw_vcf_multiallelic_matching_uses_observed_sample_alleles(self) -> None:
         cases = [
             ("0/1", ["C"], 1),
@@ -53,6 +76,33 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
                     self.assertEqual(result["stats"]["matched_alleles"], len(expected_alts))
                     self.assertEqual(result["stats"]["written_records"], len(expected_alts))
                     self.assertEqual(self._sample_alts(output), expected_alts)
+
+    def test_active_genome_index_reader_stages_clinvar_match_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            sample_vcf = self._write_sample_vcf(Path(tmp) / "sample.vcf", "1/2")
+            agi_path = Path(tmp) / "sample.sqlite"
+            create_active_genome_index(sample_vcf, agi_path, reuse_existing=False)
+            reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, genome_build="GRCh38")
+
+            with sqlite3.connect(":memory:") as connection:
+                connection.row_factory = sqlite3.Row
+                reader.stage_clinvar_match_records(connection)
+                rows = connection.execute(
+                    """
+                    select clinvar_match_mode, clinvar_match_alt, clinvar_batch_id, record_kind
+                    from temp.selected_active_genome_index_records
+                    order by clinvar_match_alt
+                    """
+                ).fetchall()
+
+        self.assertEqual(
+            [(row["clinvar_match_mode"], row["clinvar_match_alt"], row["record_kind"]) for row in rows],
+            [
+                ("multiallelic_alt", "C", "variant_call"),
+                ("multiallelic_alt", "G", "variant_call"),
+            ],
+        )
+        self.assertEqual([row["clinvar_batch_id"].split(":")[-1] for row in rows], ["C", "G"])
 
     def test_active_genome_index_multiallelic_matching_uses_observed_sample_alleles(self) -> None:
         cases = [
@@ -203,6 +253,16 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         for payload in payloads:
             self.assertEqual(payload["sample_variant"]["observed_alleles"], ["A", "G"])
             self.assertEqual(payload["match_provenance"]["source_record"]["observed_alleles"], ["A", "G"])
+            self.assertEqual(payload["match_provenance"]["evidence_scope"], "consumer_array_inferred_allele")
+            self.assertEqual(
+                payload["match_provenance"]["inferred_clinvar_allele"],
+                {
+                    "chrom": payload["clinvar"]["chrom"],
+                    "pos": payload["clinvar"]["pos"],
+                    "ref": payload["clinvar"]["ref"],
+                    "alt": payload["clinvar"]["alt"],
+                },
+            )
 
     def _write_clinvar_vcf(self, path: Path) -> Path:
         path.write_text(

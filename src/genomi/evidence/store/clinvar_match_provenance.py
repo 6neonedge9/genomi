@@ -5,19 +5,15 @@ import sqlite3
 from collections.abc import Iterable
 from typing import Any
 
-
-MATCH_BASIS_EXACT_ALLELE = "exact_allele"
-MATCH_BASIS_MULTIALLELIC_ALT = "multiallelic_alt"
-MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE = "consumer_array_allele_inference"
-MATCH_BASIS_LIFTOVER_EXACT_ALLELE = "liftover_exact_allele"
-MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT = "liftover_multiallelic_alt"
-MATCH_BASIS_VALUES = {
-    MATCH_BASIS_EXACT_ALLELE,
-    MATCH_BASIS_MULTIALLELIC_ALT,
+from ...clinvar_match_model import (
     MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+    MATCH_BASIS_EXACT_ALLELE,
     MATCH_BASIS_LIFTOVER_EXACT_ALLELE,
     MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT,
-}
+    MATCH_BASIS_MULTIALLELIC_ALT,
+    MATCH_BASIS_VALUES,
+    evidence_scope_for_match_basis as _evidence_scope_for_match_basis,
+)
 
 
 def build_clinvar_match_payload(
@@ -278,13 +274,3 @@ def _inferred_clinvar_allele(row: sqlite3.Row, row_keys: set[str]) -> dict[str, 
         "ref": ref,
         "alt": alt,
     }
-
-
-def _evidence_scope_for_match_basis(match_basis: str) -> str:
-    if match_basis == MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE:
-        return "consumer_array_inferred_allele"
-    if match_basis.startswith("liftover_"):
-        return "liftover_sample_allele"
-    if match_basis in {MATCH_BASIS_MULTIALLELIC_ALT, MATCH_BASIS_LIFTOVER_MULTIALLELIC_ALT}:
-        return "selected_alternate_allele"
-    return "sample_allele"

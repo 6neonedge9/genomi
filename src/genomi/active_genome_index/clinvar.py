@@ -5,6 +5,12 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from ..clinvar_match_model import (
+    MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+    MATCH_BASIS_EXACT_ALLELE,
+    MATCH_BASIS_MULTIALLELIC_ALT,
+)
+from .record_kinds import RECORD_KIND_ARRAY_CALL, RECORD_KIND_VARIANT_CALL
 from .reader import ActiveGenomeIndexReader
 
 
@@ -24,8 +30,9 @@ def stage_clinvar_match_records(
         _ensure_ready_for_clinvar_match(connection, alias, reader.agi_path)
         connection.executescript(
             """
+            drop table if exists temp.selected_active_genome_index_source_records;
             drop table if exists temp.selected_active_genome_index_records;
-            create temp table selected_active_genome_index_records (
+            create temp table selected_active_genome_index_source_records (
                 record_rowid integer not null,
                 chrom text not null,
                 chrom_sort integer,
@@ -45,12 +52,37 @@ def stage_clinvar_match_records(
                 record_kind text,
                 observed_alleles text
             );
+            create temp table selected_active_genome_index_records (
+                record_rowid integer not null,
+                chrom text not null,
+                chrom_sort integer,
+                pos integer not null,
+                rsid text,
+                ref text,
+                alt text,
+                qual text,
+                filter text,
+                info text,
+                sample_index integer,
+                sample_name text,
+                format text,
+                genotype text,
+                depth integer,
+                genotype_quality integer,
+                record_kind text,
+                observed_alleles text,
+                clinvar_batch_id text not null,
+                clinvar_match_mode text not null,
+                clinvar_match_alt text not null
+            );
+            create index selected_active_genome_index_source_records_order_idx
+                on selected_active_genome_index_source_records(chrom_sort, pos, record_rowid, sample_index);
             create index selected_active_genome_index_records_locus_idx
                 on selected_active_genome_index_records(chrom, pos);
             """
         )
         sql = f"""
-            insert into temp.selected_active_genome_index_records (
+            insert into temp.selected_active_genome_index_source_records (
                 record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                 info, sample_index, sample_name, format, genotype, depth,
                 genotype_quality, record_kind, observed_alleles
@@ -59,9 +91,70 @@ def stage_clinvar_match_records(
                    info, sample_index, sample_name, format, genotype, depth,
                    genotype_quality, record_kind, observed_alleles
             from {alias}.records
-            where record_kind in ('variant_call', 'array_call')
+            where record_kind in ('{RECORD_KIND_VARIANT_CALL}', '{RECORD_KIND_ARRAY_CALL}')
         """
         connection.execute(sql)
+        connection.execute(
+            """
+            insert into temp.selected_active_genome_index_records (
+                record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                info, sample_index, sample_name, format, genotype, depth,
+                genotype_quality, record_kind, observed_alleles,
+                clinvar_batch_id, clinvar_match_mode, clinvar_match_alt
+            )
+            select distinct
+                   r.record_rowid, r.chrom, r.chrom_sort, r.pos, r.rsid, r.ref, r.alt,
+                   r.qual, r.filter, r.info, r.sample_index, r.sample_name, r.format,
+                   r.genotype, r.depth, r.genotype_quality, r.record_kind, r.observed_alleles,
+                   case
+                       when instr(r.alt, ',') > 0
+                           then cast(r.record_rowid as text) || ':' || upper(observed.value)
+                       else cast(r.record_rowid as text)
+                   end as clinvar_batch_id,
+                   case
+                       when instr(r.alt, ',') > 0 then ?
+                       else ?
+                   end as clinvar_match_mode,
+                   upper(observed.value) as clinvar_match_alt
+            from temp.selected_active_genome_index_source_records as r
+            join json_each(r.observed_alleles) as observed
+            where r.record_kind = ?
+              and r.alt not in ('', '.')
+              and upper(observed.value) <> upper(r.ref)
+              and instr(',' || upper(r.alt) || ',', ',' || upper(observed.value) || ',') > 0
+            """,
+            (
+                MATCH_BASIS_MULTIALLELIC_ALT,
+                MATCH_BASIS_EXACT_ALLELE,
+                RECORD_KIND_VARIANT_CALL,
+            ),
+        )
+        connection.execute(
+            """
+            insert into temp.selected_active_genome_index_records (
+                record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                info, sample_index, sample_name, format, genotype, depth,
+                genotype_quality, record_kind, observed_alleles,
+                clinvar_batch_id, clinvar_match_mode, clinvar_match_alt
+            )
+            select distinct
+                   r.record_rowid, r.chrom, r.chrom_sort, r.pos, r.rsid, r.ref, r.alt,
+                   r.qual, r.filter, r.info, r.sample_index, r.sample_name, r.format,
+                   r.genotype, r.depth, r.genotype_quality, r.record_kind, r.observed_alleles,
+                   cast(r.record_rowid as text) || ':' || upper(observed.value) || ':array'
+                       as clinvar_batch_id,
+                   ? as clinvar_match_mode,
+                   upper(observed.value) as clinvar_match_alt
+            from temp.selected_active_genome_index_source_records as r
+            join json_each(r.observed_alleles) as observed
+            where r.record_kind = ?
+              and upper(observed.value) in ('A', 'C', 'G', 'T')
+            """,
+            (
+                MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
+                RECORD_KIND_ARRAY_CALL,
+            ),
+        )
         connection.commit()
         return {"source_format": _source_format(connection, alias)}
     finally:

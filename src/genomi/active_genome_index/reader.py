@@ -204,6 +204,12 @@ class ActiveGenomeIndexReader:
             raise ValueError(f"invalid SQLite alias for Active Genome Index attachment: {alias!r}")
         connection.execute(f"attach database ? as {alias}", (str(self.agi_path),))
 
+    def stage_clinvar_match_records(self, connection: sqlite3.Connection) -> JsonObject:
+        """Materialize AGI-owned ClinVar sample match rows into a caller connection."""
+        from .clinvar import stage_clinvar_match_records
+
+        return stage_clinvar_match_records(self, connection)
+
     def dosage_for_variants(
         self,
         variants: list[dict[str, Any]],
