@@ -123,7 +123,12 @@ def _with_context(
     single door. This helper only fills the side resources those handlers still
     need alongside the reader."""
     resolved = dict(params)
-    active = runtime_context.active_accessible_agi_record()
+    needs_agi_side_context = (
+        not allow_shared_db_without_vcf
+        or matches
+        or reference_fasta
+    )
+    active = runtime_context.active_accessible_agi_record() if needs_agi_side_context else None
     if active is not None:
         if db and not resolved.get("db"):
             resolved["db"] = active.get("evidence_db")
