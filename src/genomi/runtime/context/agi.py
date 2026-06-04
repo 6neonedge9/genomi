@@ -652,6 +652,9 @@ def _resolve_access_target(
     root: str | Path | None,
 ) -> JsonObject | None:
     if source:
+        existing = _find_agi_by_source(registry, context, source)
+        if isinstance(existing, dict):
+            return existing
         inferred = infer_source_run(source, status="set", root=root)
         stored = registry.get("agis", {}).get(str(inferred.get("agi_id") or ""))
         return stored if isinstance(stored, dict) else inferred
@@ -664,6 +667,23 @@ def _resolve_access_target(
         return run if isinstance(run, dict) else None
     active = active_run(context, root=root)
     return active if isinstance(active, dict) else None
+
+
+def _find_agi_by_source(registry: JsonObject, context: JsonObject, source: str | Path) -> JsonObject | None:
+    target = _resolved_source_path(source)
+    for container in (context.get("agis"), registry.get("agis")):
+        if not isinstance(container, dict):
+            continue
+        for run in container.values():
+            if not isinstance(run, dict) or not run.get("source"):
+                continue
+            if _resolved_source_path(run["source"]) == target:
+                return run
+    return None
+
+
+def _resolved_source_path(source: str | Path) -> str:
+    return str(Path(source).expanduser().resolve(strict=False))
 
 
 def _find_agi(registry: JsonObject, agi_id_or_nickname: str) -> JsonObject | None:
