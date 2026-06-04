@@ -85,7 +85,7 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertEqual(top_evidence["evidence_trace"]["supporting_record_ids"], ["screen-1"])
         self.assertEqual(top_evidence["evidence_trace"]["supporting_evidence_count"], 1)
 
-    def test_parse_presentation_names_active_index_source_metadata_as_agi_metadata(self) -> None:
+    def test_parse_presentation_preserves_active_index_agi_metadata(self) -> None:
         presented = present_result(
             "genomi.parse_source",
             {
@@ -95,9 +95,9 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
                     "agi_id": "agi-fixture",
                     "sample_slug": "agi-fixture",
                     "status": "parsed",
-                    "source_format": "vcf",
-                    "source_kind": "variant_callset",
-                    "source_member": "sample.vcf",
+                    "agi_source_format": "vcf",
+                    "agi_source_kind": "variant_callset",
+                    "agi_source_member": "sample.vcf",
                     "genome_build": "GRCh38",
                 },
             },
@@ -242,7 +242,7 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
                 self.assertEqual(approved["active_agi_id"], agi_id)
                 current = call_operation("genomi.describe_context")
                 self.assertEqual(current["active_agi_id"], agi_id)
-                self.assertEqual(current["active_genome_index"]["source_format"], "23andme")
+                self.assertEqual(current["active_genome_index"]["agi_source_format"], "23andme")
             finally:
                 os.chdir(previous)
 
@@ -385,7 +385,7 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
             self.assertEqual(allowed["search_results"][-1]["source"], "active_genome_index_metadata")
             self.assertEqual(allowed["search_results"][-1]["hits"][0]["metadata"]["genome_build"], "GRCh38")
 
-    def test_context_normalization_removes_legacy_vcf_aliases_from_agi_records(self) -> None:
+    def test_context_normalization_migrates_legacy_agi_metadata(self) -> None:
         runtime_context.save_context(
             {
                 "active_agi_id": "legacy-agi",
@@ -394,8 +394,9 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
                         "agi_id": "legacy-agi",
                         "sample_slug": "legacy-agi",
                         "status": "parsed",
-                        "vcf": "/tmp/legacy-source.vcf",
-                        "vcf_path": "/tmp/legacy-source.vcf",
+                        "source": "/tmp/legacy-source.vcf",
+                        "source_format": "vcf",
+                        "source_kind": "variant_callset",
                         "agi_path": "/tmp/legacy-active-genome-index.sqlite",
                     }
                 },
@@ -406,9 +407,10 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         active = current["active_genome_index"]
 
         self.assertEqual(active["agi_id"], "legacy-agi")
+        self.assertEqual(active["agi_source_format"], "vcf")
+        self.assertEqual(active["agi_source_kind"], "variant_callset")
         self.assertEqual(active["intake_source"]["role"], "ingestion_source_for_digitization")
-        self.assertIsNone(active.get("vcf"))
-        self.assertIsNone(active.get("vcf_path"))
+        self.assertFalse(active["intake_source"]["available_for_rebuild"])
 
     def test_record_research_accepts_inline_payload_for_shared_evidence(self) -> None:
         payload = {

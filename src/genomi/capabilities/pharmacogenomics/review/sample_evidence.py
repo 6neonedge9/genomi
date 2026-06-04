@@ -16,7 +16,7 @@ from ._common import (
 )
 from .record_research import _is_stored_sample_pgx_record, _is_stored_source_pgx_record
 
-_SEQUENCING_SOURCE_FORMATS = {"vcf", "gvcf", "bam", "fastq"}
+_SEQUENCING_AGI_SOURCE_FORMATS = {"vcf", "gvcf", "bam", "fastq"}
 
 
 def _follow_up_rsids(rsid: str | None, clinpgx_result: JsonObject, pgxdb_result: JsonObject, *, limit: int) -> list[str]:
@@ -80,13 +80,13 @@ def _sequencing_sample_match_count(sample_lookups: list[JsonObject]) -> int:
     total = 0
     for lookup in sample_lookups:
         for match in lookup.get("sample_context", {}).get("matches") or []:
-            if _is_sequencing_source_format(match.get("source_format")):
+            if _is_sequencing_agi_source_format(match.get("agi_source_format")):
                 total += 1
     return total
 
 
-def _is_sequencing_source_format(value: object) -> bool:
-    return str(value or "").strip().lower() in _SEQUENCING_SOURCE_FORMATS
+def _is_sequencing_agi_source_format(value: object) -> bool:
+    return str(value or "").strip().lower() in _SEQUENCING_AGI_SOURCE_FORMATS
 
 
 def _has_active_genome_index_context(sample_lookups: list[JsonObject]) -> bool:
@@ -246,7 +246,7 @@ def _sequencing_star_marker_count(star_allele_calls: list[JsonObject]) -> int:
             if not _is_observed_star_marker(marker):
                 continue
             for sample_call in marker.get("sample_calls") or []:
-                if _is_sequencing_source_format(sample_call.get("source_format")):
+                if _is_sequencing_agi_source_format(sample_call.get("agi_source_format")):
                     count += 1
                     break
     return count
@@ -305,7 +305,7 @@ def _observed_sample_genotype(match: JsonObject) -> JsonObject:
         "canonical_genotype": canonical,
         "ref": match.get("ref"),
         "alt": match.get("alt"),
-        "source_format": match.get("source_format"),
+        "agi_source_format": match.get("agi_source_format"),
         "filter": match.get("filter"),
         "depth": match.get("depth"),
         "genotype_quality": match.get("genotype_quality"),
@@ -568,7 +568,7 @@ def _genotype_support_loci(sample_lookups: list[JsonObject]) -> list[JsonObject]
                 if params:
                     loci.append(params)
         for match in lookup.get("sample_context", {}).get("matches") or []:
-            if not _is_sequencing_source_format(match.get("source_format")):
+            if not _is_sequencing_agi_source_format(match.get("agi_source_format")):
                 continue
             params = _genotype_support_params(match, genome_build=genome_build)
             if params:
@@ -600,7 +600,7 @@ def _star_marker_genotype_support_loci(star_allele_calls: list[JsonObject]) -> l
                     if params:
                         loci.append(params)
             for sample_call in marker.get("sample_calls") or []:
-                if not _is_sequencing_source_format(sample_call.get("source_format")):
+                if not _is_sequencing_agi_source_format(sample_call.get("agi_source_format")):
                     continue
                 params = _genotype_support_params(sample_call, genome_build=genome_build)
                 if not params:

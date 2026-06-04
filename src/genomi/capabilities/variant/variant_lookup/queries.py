@@ -120,8 +120,8 @@ def _enrich_active_genome_index_records(
         row = dict(record)
         row["agi_id"] = run.get("agi_id")
         row["sample_slug"] = run.get("sample_slug")
-        row["source_format"] = run.get("source_format")
-        row["source_kind"] = run.get("source_kind")
+        row["agi_source_format"] = run.get("agi_source_format")
+        row["agi_source_kind"] = run.get("agi_source_kind")
         row["selection"] = selection
         row["target"] = _target_key(target)
         output.append(row)

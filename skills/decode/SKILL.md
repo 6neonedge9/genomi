@@ -44,8 +44,8 @@ The full procedure lives in `skills/active-genome-index/SKILL.md` under
 *"Lifecycle: handle `needs_reparse` and `schema_too_new` automatically"*.
 Summary for decode:
 
-1. If `needs_reparse` and `availability.source` is true, call
-   `genomi.parse_source({"source": active_genome_index.source})` without
+1. If `needs_reparse` and `availability.agi_intake_source_path` is true, call
+   `genomi.parse_source({"source": active_genome_index.agi_intake_source_path})` without
    prompting. Routine maintenance.
 2. If `needs_reparse` and the source path is gone, ask the user once for
    the current path and parse that. Don't continue with a stale Active Genome Index.

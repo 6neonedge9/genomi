@@ -353,7 +353,7 @@ def _sample_lookup_evidence_items(sample_lookups: list[JsonObject]) -> list[Json
                     "evidence_role": "sample_pgx_evidence",
                     "source": {
                         "source_id": "active_genome_index",
-                        "source_format": match.get("source_format"),
+                        "agi_source_format": match.get("agi_source_format"),
                     },
                     "evidence_class": "active_genome_index_variant_match",
                     "target": {

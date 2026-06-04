@@ -77,7 +77,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "0/1")
-                self.assertEqual(match["source_format"], "vcf")
+                self.assertEqual(match["agi_source_format"], "vcf")
                 self.assertEqual(_hidden_path_leaks(lookup, vcf), [])
             finally:
                 os.chdir(previous)
@@ -269,7 +269,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
 
                 current = call_operation("genomi.describe_context")
                 self.assertTrue(current["has_active_genome_index"])
-                self.assertEqual(current["active_genome_index"]["source_format"], "23andme")
+                self.assertEqual(current["active_genome_index"]["agi_source_format"], "23andme")
                 current_readiness = current["active_genome_index"]["active_genome_index_readiness"]
                 self.assertTrue(current_readiness["complete"])
                 self.assertEqual(current_readiness["status"], "completed")
@@ -279,7 +279,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "AG")
-                self.assertEqual(match["source_format"], "23andme")
+                self.assertEqual(match["agi_source_format"], "23andme")
                 self.assertEqual(match["record_kind"], "array_call")
                 self.assertEqual(match["observed_alleles"], ["A", "G"])
                 self.assertEqual(_hidden_path_leaks(lookup, raw), [])
@@ -402,14 +402,14 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
 
                 current = call_operation("genomi.describe_context")
                 self.assertTrue(current["has_active_genome_index"])
-                self.assertEqual(current["active_genome_index"]["source_format"], "ancestrydna")
+                self.assertEqual(current["active_genome_index"]["agi_source_format"], "ancestrydna")
                 self.assertEqual(_hidden_path_leaks(current, raw), [])
 
                 lookup = call_operation("variant.resolve", {"rsid": "rs3131972"})
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "AG")
-                self.assertEqual(match["source_format"], "ancestrydna")
+                self.assertEqual(match["agi_source_format"], "ancestrydna")
                 self.assertEqual(match["record_kind"], "array_call")
                 self.assertEqual(match["observed_alleles"], ["A", "G"])
                 self.assertEqual(_hidden_path_leaks(lookup, raw), [])
@@ -443,7 +443,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 lookup = call_operation("variant.resolve", {"rsid": "rs3131972"})
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 self.assertEqual(lookup["sample_context"]["matches"][0]["genotype"], "GG")
-                self.assertEqual(lookup["sample_context"]["matches"][0]["source_format"], "ancestrydna")
+                self.assertEqual(lookup["sample_context"]["matches"][0]["agi_source_format"], "ancestrydna")
             finally:
                 os.chdir(previous)
 
@@ -474,7 +474,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
-                self.assertEqual(match["source_format"], "myheritage")
+                self.assertEqual(match["agi_source_format"], "myheritage")
                 self.assertEqual(match["record_kind"], "array_call")
                 self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
@@ -503,7 +503,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
 
                 lookup = call_operation("variant.resolve", {"rsid": "rs3131972"})
                 self.assertEqual(lookup["sample_context"]["matches"][0]["genotype"], "GG")
-                self.assertEqual(lookup["sample_context"]["matches"][0]["source_format"], "myheritage")
+                self.assertEqual(lookup["sample_context"]["matches"][0]["agi_source_format"], "myheritage")
             finally:
                 os.chdir(previous)
 
@@ -531,7 +531,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
-                self.assertEqual(match["source_format"], "ftdna")
+                self.assertEqual(match["agi_source_format"], "ftdna")
                 self.assertEqual(match["record_kind"], "array_call")
                 self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
@@ -587,7 +587,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(lookup["sample_context"]["count"], 1)
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
-                self.assertEqual(match["source_format"], "livingdna")
+                self.assertEqual(match["agi_source_format"], "livingdna")
                 self.assertEqual(match["record_kind"], "array_call")
                 self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
@@ -855,7 +855,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
 
                 current = call_operation("genomi.describe_context")
                 self.assertTrue(current["has_active_genome_index"])
-                self.assertEqual(current["active_genome_index"]["source_format"], "bam")
+                self.assertEqual(current["active_genome_index"]["agi_source_format"], "bam")
                 self.assertTrue(current["active_genome_index"]["digitized"])
                 self.assertEqual(_hidden_path_leaks(current, bam), [])
             finally:

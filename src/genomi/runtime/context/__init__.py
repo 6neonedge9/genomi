@@ -1,12 +1,4 @@
-"""Runtime context package.
-
-This package was split out of the former single-module ``context.py``. The
-public surface (and every previously module-level name, including
-underscore-prefixed helpers) is re-exported here so that
-``from genomi.runtime.context import X`` and
-``import genomi.runtime.context as context; context.X`` keep working exactly as
-before.
-"""
+"""Runtime context package."""
 
 from __future__ import annotations
 
@@ -38,6 +30,7 @@ from .normalize import (
     _find_user_id_for_agi,
     _grant_agi_access,
     _mark_default_user,
+    _move_legacy_agi_key,
     _normalize_agi_record,
     _normalize_context,
     _normalize_nickname,
@@ -68,32 +61,29 @@ from .storage import (
 from .agi import (
     _active_genome_index_state,
     _active_user,
-    _auto_selected_run,
+    _auto_selected_agi_record,
     _default_selected_agi,
     _find_agi,
-    _is_digitized_run,
+    _is_digitized_agi_record,
     _resolve_access_target,
     _selection_source,
-    active_accessible_run,
-    active_run,
+    active_accessible_agi_record,
+    active_agi_record,
     agi_access_approved,
     agi_access_status,
     approve_agi_access,
     clear_active_genome_index,
     describe_context,
-    describe_run,
+    describe_agi_record,
     describe_user,
     find_agi,
-    infer_run,
-    infer_source_run,
+    infer_agi_record,
     list_agis,
     revoke_agi_access,
     save_agi_to_registry,
-    save_run_to_registry,
     set_active_agi_id,
     set_active_genome_index,
-    set_active_paths,
-    set_active_source,
+    set_active_agi_from_source,
 )
 from .users import (
     assign_user_genome,
@@ -117,8 +107,8 @@ __all__ = [
     "JsonObject",
     "REGISTRY_FILE_NAME",
     "SESSIONS_DIR_NAME",
-    "active_accessible_run",
-    "active_run",
+    "active_accessible_agi_record",
+    "active_agi_record",
     "agi_access_approved",
     "agi_access_status",
     "approve_agi_access",
@@ -129,12 +119,11 @@ __all__ = [
     "context_policy",
     "context_scope",
     "describe_context",
-    "describe_run",
+    "describe_agi_record",
     "describe_user",
     "find_agi",
     "get_response_profile_id",
-    "infer_run",
-    "infer_source_run",
+    "infer_agi_record",
     "list_agis",
     "list_users",
     "load_context",
@@ -145,12 +134,10 @@ __all__ = [
     "save_agi_to_registry",
     "save_context",
     "save_registry",
-    "save_run_to_registry",
     "select_user",
     "set_active_agi_id",
     "set_active_genome_index",
-    "set_active_paths",
-    "set_active_source",
+    "set_active_agi_from_source",
     "set_default_user",
     "set_response_profile_id",
 ]

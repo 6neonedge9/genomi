@@ -104,9 +104,8 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
             result["reparse"]["launched"][0],
             {
                 "agi_id": agi_id,
-                "nickname": None,
                 "stored_schema": 1,
-                "source_available": True,
+                "agi_intake_source_available": True,
                 "job_id": "job-x",
             },
         )
@@ -134,9 +133,8 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
             [
                 {
                     "agi_id": agi_id,
-                    "nickname": None,
                     "stored_schema": 1,
-                    "source_available": True,
+                    "agi_intake_source_available": True,
                     "job_id": "job-x",
                 }
             ],
@@ -162,10 +160,9 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
             [
                 {
                     "agi_id": agi_id,
-                    "nickname": None,
                     "stored_schema": 1,
-                    "source_available": False,
-                    "reason": "source_unavailable",
+                    "agi_intake_source_available": False,
+                    "reason": "agi_intake_source_unavailable",
                 }
             ],
         )

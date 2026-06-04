@@ -20,7 +20,7 @@ def _selected_runs(
     seen: set[str] = set()
 
     registry = runtime_context.load_registry()
-    active = runtime_context.active_accessible_run()
+    active = runtime_context.active_accessible_agi_record()
     if agi_id:
         run = runtime_context.find_agi(str(agi_id))
         if not isinstance(run, dict) and active and str(active.get("agi_id")) == str(agi_id):
@@ -83,7 +83,7 @@ def _append_db(selected: list[JsonObject], seen: set[str], path: Path, label: st
 
 
 def _run_summary(run: JsonObject, selection: str) -> JsonObject:
-    described = runtime_context.describe_run(run) or {}
+    described = runtime_context.describe_agi_record(run) or {}
     availability = described.get("availability") if isinstance(described.get("availability"), dict) else {}
     return {
         "agi_id": run.get("agi_id"),
@@ -91,10 +91,10 @@ def _run_summary(run: JsonObject, selection: str) -> JsonObject:
         "status": run.get("status"),
         "selection": selection,
         "digitized": bool(described.get("digitized")),
-        "source_format": run.get("source_format"),
-        "source_kind": run.get("source_kind"),
+        "agi_source_format": run.get("agi_source_format"),
+        "agi_source_kind": run.get("agi_source_kind"),
         "genome_build": run.get("genome_build"),
-        "availability": {key: bool(value) for key, value in availability.items() if key != "source"},
+        "availability": {key: bool(value) for key, value in availability.items() if key != "agi_intake_source_path"},
     }
 
 

@@ -123,10 +123,8 @@ def _with_context(
     single door. This helper only fills the side resources those handlers still
     need alongside the reader."""
     resolved = dict(params)
-    active = runtime_context.active_accessible_run()
+    active = runtime_context.active_accessible_agi_record()
     if active is not None:
-        if not resolved.get("source"):
-            resolved["source"] = active.get("source")
         if db and not resolved.get("db"):
             resolved["db"] = active.get("evidence_db")
         if matches and not resolved.get("matches"):
@@ -152,27 +150,6 @@ def _require_context_value(params: JsonObject, key: str, message: str) -> None:
         raise OperationError("missing_context", message)
 
 
-def _remember_result(
-    source: Path,
-    result: JsonObject,
-    *,
-    status: str,
-    user_nickname: str | None = None,
-    set_default_user: bool = False,
-) -> JsonObject:
-    active = runtime_context.set_active_genome_index(
-        source,
-        operation_result=result,
-        status=status,
-        user_nickname=user_nickname,
-        set_default_user=set_default_user,
-        grant_access=True,
-    )
-    agent_result = _hide_intake_source_after_digitization(result) if status == "parsed" else dict(result)
-    agent_result["active_genome_index"] = runtime_context.describe_run(active)
-    return agent_result
-
-
 def _remember_source_result(
     source: Path,
     result: JsonObject,
@@ -182,9 +159,9 @@ def _remember_source_result(
     set_default_user: bool = False,
 ) -> JsonObject:
     try:
-        active = runtime_context.set_active_source(
+        active = runtime_context.set_active_agi_from_source(
             source,
-            source_format=result.get("source_format"),
+            agi_source_format=result.get("source_format"),
             operation_result=result,
             status=status,
             user_nickname=user_nickname,
@@ -194,7 +171,7 @@ def _remember_source_result(
     except ValueError as exc:
         raise OperationError("invalid_params", str(exc)) from exc
     agent_result = _hide_intake_source_after_digitization(result) if status == "parsed" else dict(result)
-    agent_result["active_genome_index"] = runtime_context.describe_run(active)
+    agent_result["active_genome_index"] = runtime_context.describe_agi_record(active)
     return agent_result
 
 
@@ -283,7 +260,7 @@ def _resolved_default_value(operation_name: str, parameter: str, params: JsonObj
         return bool(
             params.get("db")
             or params.get("agi_path")
-            or (runtime_context.agi_access_approved() and runtime_context.active_run() is not None)
+            or (runtime_context.agi_access_approved() and runtime_context.active_agi_record() is not None)
         )
     if operation_name == "journal.append_entry":
         if parameter == "scope":
@@ -334,7 +311,7 @@ def _default_genome_build_from_approved_agi(params: JsonObject) -> str | None:
         if build:
             return build
 
-    active = runtime_context.active_run()
+    active = runtime_context.active_agi_record()
     if isinstance(active, dict) and runtime_context.agi_access_approved(active):
         return _run_genome_build(active)
     return None

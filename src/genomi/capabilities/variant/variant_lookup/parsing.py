@@ -292,7 +292,7 @@ def _effective_genome_build(genome_build: str | None) -> str:
     value = str(genome_build or "").strip()
     if value and value.lower() != "auto":
         return value
-    active = runtime_context.active_run()
+    active = runtime_context.active_agi_record()
     active_build = str(active.get("genome_build") or "").strip() if active else ""
     if active_build and active_build.lower() != "auto":
         return active_build

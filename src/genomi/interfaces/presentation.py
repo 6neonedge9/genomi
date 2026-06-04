@@ -381,13 +381,13 @@ def _variant_match_summaries(lookups: list[object]) -> list[JsonObject]:
                         "depth",
                         "genotype_quality",
                         "filter",
-                        "source_format",
-                        "source_kind",
+                        "agi_source_format",
+                        "agi_source_kind",
                         "selection",
                     ),
                 )
             )
-    return [_rename_agi_source_metadata(match) for match in matches[:MAX_LIST_ITEMS]]
+    return matches[:MAX_LIST_ITEMS]
 
 
 def _star_call_summaries(calls: list[object]) -> list[JsonObject]:
@@ -482,16 +482,16 @@ def _compact_active_index(value: object) -> JsonObject | None:
             "agi_id",
             "sample_slug",
             "status",
-            "source_format",
-            "source_kind",
-            "source_member",
+            "agi_source_format",
+            "agi_source_kind",
+            "agi_source_member",
             "genome_build",
             "digitized",
             "availability",
             "intake_source",
         ),
     )
-    return _rename_agi_source_metadata(compact)
+    return compact
 
 
 def _truncate_record(value: object) -> object:
@@ -534,15 +534,3 @@ def _looks_like_local_path(value: str) -> bool:
 
 def _drop_none(value: JsonObject) -> JsonObject:
     return {key: item for key, item in value.items() if item is not None}
-
-
-def _rename_agi_source_metadata(value: JsonObject) -> JsonObject:
-    renamed = dict(value)
-    for old_key, new_key in (
-        ("source_format", "agi_source_format"),
-        ("source_kind", "agi_source_kind"),
-        ("source_member", "agi_source_member"),
-    ):
-        if old_key in renamed:
-            renamed[new_key] = renamed.pop(old_key)
-    return renamed

@@ -267,12 +267,12 @@ user.
 The on-disk Active Genome Index was built by an older Genomi runtime than the current
 `SCHEMA_VERSION`. Reparse rebuilds it at the current schema.
 
-1. Read `active_genome_index.source` (and `active_genome_index.vcf`) from
-   `genomi.describe_context`. Check `active_genome_index.availability.source`.
-2. If `availability.source` is true (path is still on disk), call
+1. Read `active_genome_index.agi_intake_source_path` from
+   `genomi.describe_context`. Check `active_genome_index.availability.agi_intake_source_path`.
+2. If `availability.agi_intake_source_path` is true (path is still on disk), call
    `genomi.parse_source({"source": "<path-from-describe_context>"})`
    without prompting the user — this is routine maintenance.
-3. If `availability.source` is false (path moved or deleted), ask the user
+3. If `availability.agi_intake_source_path` is false (path moved or deleted), ask the user
    once: *"Your Active Genome Index needs to be reparsed at the new schema,
    but the original source isn't at `<recorded path>` anymore. Send me the
    current path, or restore the file there."* Wait for the user, then parse

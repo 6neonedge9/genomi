@@ -120,11 +120,11 @@ def open_agi(
                 return None
             raise _approval_error(action)
     else:
-        run = runtime_context.active_accessible_run()
+        run = runtime_context.active_accessible_agi_record()
         if not isinstance(run, dict):
             if optional:
                 return None
-            if runtime_context.active_run() is not None:
+            if runtime_context.active_agi_record() is not None:
                 # An AGI is selected but not approved for this session.
                 raise _approval_error(action)
             raise OperationError(
@@ -179,7 +179,7 @@ def _resolved_index_path(params: JsonObject | None, *, agi_id: str | None = None
     if named:
         run = runtime_context.find_agi(str(named))
     else:
-        run = runtime_context.active_run()
+        run = runtime_context.active_agi_record()
     if isinstance(run, dict):
         path = _index_path_for_run(run, params)
         if path is not None:

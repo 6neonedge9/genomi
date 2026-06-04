@@ -404,8 +404,8 @@ class ActiveGenomeIndexDownstreamContractTests(
                 self.assertEqual(variant["sample_context"]["count"], 1, variant)
                 match = variant["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], self._expected_genotype_for_source(contract.expected_format, index))
-                self.assertEqual(match["source_format"], contract.expected_format)
-                self.assertEqual(match["source_kind"], contract.expected_source_kind)
+                self.assertEqual(match["agi_source_format"], contract.expected_format)
+                self.assertEqual(match["agi_source_kind"], contract.expected_source_kind)
                 if contract.is_consumer_array:
                     self.assertEqual(match["record_kind"], "array_call")
                     self.assertEqual(match["is_variant"], 0)
@@ -615,7 +615,7 @@ class ActiveGenomeIndexDownstreamContractTests(
                 )
             self.assertEqual(result["status"], "completed", result)
             self.assertEqual(result["sample_evidence"]["sample_match_count"], 1, result)
-            self.assertEqual(result["sample_evidence"]["variant_lookups"][0]["sample_context"]["matches"][0]["source_format"], contract.expected_format)
+            self.assertEqual(result["sample_evidence"]["variant_lookups"][0]["sample_context"]["matches"][0]["agi_source_format"], contract.expected_format)
             self.assertEqual(result["target_inventory"]["rsid_targets"], ["rs900000002"])
             self.assertEqual(
                 result["target_inventory"]["genotype_support_loci"],

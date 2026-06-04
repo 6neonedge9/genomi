@@ -99,7 +99,7 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
     include_active_requested = (
         _bool(params, "include_active_genome_index", False)
         if include_active_supplied
-        else runtime_context.active_run() is not None
+        else runtime_context.active_agi_record() is not None
     )
     personal_context_requested = (
         any(params.get(key) for key in ("agi_path", "db", "matches"))

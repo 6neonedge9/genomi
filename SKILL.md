@@ -76,9 +76,9 @@ registration. Ask the user to start a new session.
 - Handle Active Genome Index lifecycle states yourself. When a read op's
   envelope or `genomi.describe_context` returns
   `active_genome_index_readiness.status == "needs_reparse"`, look up the recorded source
-  path under `active_genome_index.source` and call `genomi.parse_source`
+  path under `active_genome_index.agi_intake_source_path` and call `genomi.parse_source`
   with it — routine maintenance, no user prompt needed. Only ask the user
-  when `availability.source` is false (path moved or deleted) or the
+  when `availability.agi_intake_source_path` is false (path moved or deleted) or the
   status is `schema_too_new` (Genomi runtime out of date). Never proceed
   with a stale Active Genome Index while silently substituting placeholder data; see
   `skills/active-genome-index/SKILL.md` for the full procedure.

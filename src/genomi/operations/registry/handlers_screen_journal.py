@@ -168,7 +168,7 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
     # evidence. Require an Active Genome Index, then auth-gate via open_agi
     # (approves a supplied source, raises approval_required for a
     # selected-but-unapproved AGI) — the one central session gate.
-    active = runtime_context.active_run()
+    active = runtime_context.active_agi_record()
     if active is None:
         raise OperationError(
             "active_genome_index_required",

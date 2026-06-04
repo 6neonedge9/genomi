@@ -128,7 +128,6 @@ from .coerce import (
     _optional_str,
     _path,
     _redact_intake_paths,
-    _remember_result,
     _remember_source_result,
     _require_context_value,
     _resolved_default_value,

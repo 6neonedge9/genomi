@@ -53,7 +53,7 @@ from .storage import (
 def describe_context(root: str | Path | None = None) -> JsonObject:
     context = load_context(root)
     registry = load_registry(root)
-    active = active_run(context, root=root)
+    active = active_agi_record(context, root=root)
     session_agis = [agi for agi in context.get("agis", {}).values() if isinstance(agi, dict)]
     known_agis = [agi for agi in registry.get("agis", {}).values() if isinstance(agi, dict)]
     known_users = [user for user in registry.get("users", {}).values() if isinstance(user, dict)]
@@ -62,7 +62,7 @@ def describe_context(root: str | Path | None = None) -> JsonObject:
     selection_source = _selection_source(context, registry, active)
     active_agi_id = context.get("active_agi_id") or (active.get("agi_id") if active else None)
     active_user = _active_user(context, registry)
-    active_genome_index = describe_run(active) if active else None
+    active_genome_index = describe_agi_record(active) if active else None
     active_access = agi_access_status(active_agi_id, context=context, registry=registry, root=root) if active_agi_id else _empty_agi_access_status(None)
     return {
         "context_file": _path_str(context_path(root)),
@@ -85,7 +85,7 @@ def describe_context(root: str | Path | None = None) -> JsonObject:
             "resume_requires": "Explicitly approve a resolved genomi agi, supply a source path, or select a default user before sample-specific evidence is read.",
         },
         "users": [describe_user(user, include_genomes=False) for user in sorted(known_users, key=lambda item: str(item.get("updated_at", "")), reverse=True)],
-        "session_agis": [describe_run(agi) for agi in sorted(session_agis, key=lambda item: str(item.get("updated_at", "")), reverse=True)],
+        "session_agis": [describe_agi_record(agi) for agi in sorted(session_agis, key=lambda item: str(item.get("updated_at", "")), reverse=True)],
         "selection_contract": {
             "active_genome_index_optional": True,
             "supported_private_sources": [
@@ -123,7 +123,7 @@ def describe_context(root: str | Path | None = None) -> JsonObject:
     }
 
 
-def active_run(context: JsonObject | None = None, root: str | Path | None = None) -> JsonObject | None:
+def active_agi_record(context: JsonObject | None = None, root: str | Path | None = None) -> JsonObject | None:
     state = context if context is not None else load_context(root)
     registry = load_registry(root)
     active_id = state.get("active_agi_id")
@@ -137,16 +137,16 @@ def active_run(context: JsonObject | None = None, root: str | Path | None = None
     return _default_selected_agi(registry=registry)
 
 
-def active_accessible_run(context: JsonObject | None = None, root: str | Path | None = None) -> JsonObject | None:
+def active_accessible_agi_record(context: JsonObject | None = None, root: str | Path | None = None) -> JsonObject | None:
     state = context if context is not None else load_context(root)
-    active = active_run(state, root=root)
+    active = active_agi_record(state, root=root)
     if active is not None and agi_access_approved(active, context=state, root=root):
         return active
     return None
 
 
 def set_active_genome_index(
-    vcf: str | Path,
+    agi_intake_source_path: str | Path,
     *,
     operation_result: JsonObject | None = None,
     status: str = "available",
@@ -162,9 +162,9 @@ def set_active_genome_index(
     grant_access: bool = False,
     root: str | Path | None = None,
 ) -> JsonObject:
-    return set_active_source(
-        vcf,
-        source_format="vcf",
+    return set_active_agi_from_source(
+        agi_intake_source_path,
+        agi_source_format="vcf",
         operation_result=operation_result,
         status=status,
         user_nickname=user_nickname,
@@ -181,10 +181,10 @@ def set_active_genome_index(
     )
 
 
-def set_active_source(
-    source: str | Path,
+def set_active_agi_from_source(
+    agi_intake_source_path: str | Path,
     *,
-    source_format: str | None = None,
+    agi_source_format: str | None = None,
     operation_result: JsonObject | None = None,
     status: str = "available",
     user_nickname: str | None = None,
@@ -200,9 +200,9 @@ def set_active_source(
     root: str | Path | None = None,
 ) -> JsonObject:
     context = load_context(root)
-    run = infer_source_run(
-        source,
-        source_format=source_format,
+    run = infer_agi_record(
+        agi_intake_source_path,
+        agi_source_format=agi_source_format,
         operation_result=operation_result,
         status=status,
         db=db,
@@ -325,7 +325,7 @@ def agi_access_approved(
 ) -> bool:
     state = context if context is not None else load_context(root)
     if agi is None:
-        run = active_run(state, root=root)
+        run = active_agi_record(state, root=root)
         agi_id = str(run.get("agi_id") or "") if isinstance(run, dict) else str(state.get("active_agi_id") or "")
     elif isinstance(agi, dict):
         agi_id = str(agi.get("agi_id") or "")
@@ -389,46 +389,6 @@ def save_agi_to_registry(run: JsonObject, root: str | Path | None = None) -> Jso
     return run
 
 
-def save_run_to_registry(run: JsonObject, root: str | Path | None = None) -> JsonObject:
-    return save_agi_to_registry(run, root=root)
-
-
-def set_active_paths(
-    *,
-    source: str | Path | None = None,
-    vcf: str | Path | None = None,
-    source_format: str | None = None,
-    user_nickname: str | None = None,
-    set_default_user: bool = False,
-    db: str | Path | None = None,
-    agi_path: str | Path | None = None,
-    matches: str | Path | None = None,
-    shared_db: str | Path | None = None,
-    reference_fasta: str | Path | None = None,
-    genotype_reference_fasta: str | Path | None = None,
-    genome_build: str | None = None,
-    root: str | Path | None = None,
-) -> JsonObject:
-    selected_source = source or vcf
-    if selected_source is None:
-        raise ValueError("source is required")
-    return set_active_source(
-        selected_source,
-        source_format=source_format or ("vcf" if vcf and not source else None),
-        status="set",
-        user_nickname=user_nickname,
-        set_default_user=set_default_user,
-        db=db,
-        agi_path=agi_path,
-        matches=matches,
-        shared_db=shared_db,
-        reference_fasta=reference_fasta,
-        genotype_reference_fasta=genotype_reference_fasta,
-        genome_build=genome_build,
-        root=root,
-    )
-
-
 def clear_active_genome_index(*, forget_active_genome_indexes: bool = False, root: str | Path | None = None) -> JsonObject:
     context = load_context(root)
     previous = context.get("active_agi_id")
@@ -446,9 +406,10 @@ def clear_active_genome_index(*, forget_active_genome_indexes: bool = False, roo
     }
 
 
-def infer_run(
-    vcf: str | Path,
+def infer_agi_record(
+    agi_intake_source_path: str | Path,
     *,
+    agi_source_format: str | None = None,
     operation_result: JsonObject | None = None,
     status: str = "available",
     db: str | Path | None = None,
@@ -460,51 +421,20 @@ def infer_run(
     genome_build: str | None = None,
     root: str | Path | None = None,
 ) -> JsonObject:
-    return infer_source_run(
-        vcf,
-        source_format="vcf",
-        operation_result=operation_result,
-        status=status,
-        db=db,
-        agi_path=agi_path,
-        matches=matches,
-        shared_db=shared_db,
-        reference_fasta=reference_fasta,
-        genotype_reference_fasta=genotype_reference_fasta,
-        genome_build=genome_build,
-        root=root,
-    )
-
-
-def infer_source_run(
-    source: str | Path,
-    *,
-    source_format: str | None = None,
-    operation_result: JsonObject | None = None,
-    status: str = "available",
-    db: str | Path | None = None,
-    agi_path: str | Path | None = None,
-    matches: str | Path | None = None,
-    shared_db: str | Path | None = None,
-    reference_fasta: str | Path | None = None,
-    genotype_reference_fasta: str | Path | None = None,
-    genome_build: str | None = None,
-    root: str | Path | None = None,
-) -> JsonObject:
-    source_path = Path(source)
+    source_path = Path(agi_intake_source_path)
     outputs = _outputs_from_result(operation_result)
     result = operation_result or {}
-    effective_format = _context_source_format(source_path, result.get("source_format") or source_format)
+    effective_format = _context_source_format(source_path, result.get("source_format") or agi_source_format)
     sample_slug = str(result.get("sample_slug") or sample_slug_from_source(source_path, source_format=effective_format))
     is_vcf = effective_format in {"vcf", "gvcf"}
     run: JsonObject = {
         "agi_id": sample_slug,
         "sample_slug": sample_slug,
         "status": status,
-        "source": _path_str(result.get("source") or source_path),
-        "source_format": effective_format,
-        "source_kind": result.get("source_kind"),
-        "source_member": result.get("source_member"),
+        "agi_intake_source_path": _path_str(result.get("source") or source_path),
+        "agi_source_format": effective_format,
+        "agi_source_kind": result.get("source_kind"),
+        "agi_source_member": result.get("source_member"),
         "project_dir": _path_str(result.get("project_dir") or run_project_dir_for_source(source_path, source_format=effective_format, root=root)),
         "work_dir": _path_str(result.get("work_dir") or run_work_dir_for_source(source_path, source_format=effective_format, root=root)),
         "evidence_dir": _path_str(result.get("evidence_dir") or run_evidence_dir_for_source(source_path, source_format=effective_format, root=root)),
@@ -514,7 +444,7 @@ def infer_source_run(
         "agi_path": _path_str(agi_path or outputs.get("agi_path") or (default_agi_path(source_path, root=root) if is_vcf else run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=effective_format, root=root))),
         "matches": _path_str(matches or outputs.get("clinvar_matches") or (run_output_path(source_path, "clinvar.matches.jsonl", root=root) if is_vcf else None)),
         "candidate_inventory": _path_str(outputs.get("clinvar_scan") or (run_output_path(source_path, "clinvar.candidates.json", root=root) if is_vcf else None)),
-        "comparable_vcf": _path_str(result.get("comparable_vcf") or outputs.get("exported_primary_variants") or outputs.get("exported_variants")),
+        "agi_comparable_variant_export": _path_str(result.get("comparable_vcf") or outputs.get("exported_primary_variants") or outputs.get("exported_variants")),
         "reference_fasta": _path_str(reference_fasta or result.get("reference_fasta")),
         "genotype_reference_fasta": _path_str(genotype_reference_fasta or result.get("genotype_reference_fasta")),
         "genome_build": genome_build or result.get("genome_build") or "auto",
@@ -525,20 +455,20 @@ def infer_source_run(
     return run
 
 
-def describe_run(run: JsonObject | None) -> JsonObject | None:
+def describe_agi_record(run: JsonObject | None) -> JsonObject | None:
     if run is None:
         return None
     run = _normalize_agi_record(run)
     active_genome_index_state = _active_genome_index_state(run)
-    digitized = _is_digitized_run(run)
+    digitized = _is_digitized_agi_record(run)
     path_keys = [
-        "source",
+        "agi_intake_source_path",
         "evidence_db",
         "shared_evidence_db",
         "agi_path",
         "matches",
         "candidate_inventory",
-        "comparable_vcf",
+        "agi_comparable_variant_export",
         "reference_fasta",
         "genotype_reference_fasta",
     ]
@@ -551,12 +481,12 @@ def describe_run(run: JsonObject | None) -> JsonObject | None:
     if active_genome_index_state is not None:
         payload["active_genome_index_readiness"] = active_genome_index_state
     if digitized:
-        source_path = payload.pop("source", None)
-        comparable_variant_export = payload.pop("comparable_vcf", None)
+        source_path = payload.pop("agi_intake_source_path", None)
+        comparable_variant_export = payload.pop("agi_comparable_variant_export", None)
         payload["availability"] = {
             key: value
             for key, value in availability.items()
-            if key not in {"source", "comparable_vcf"}
+            if key not in {"agi_intake_source_path", "agi_comparable_variant_export"}
         }
         if comparable_variant_export:
             payload["comparable_variant_export"] = comparable_variant_export
@@ -573,7 +503,7 @@ def list_agis(root: str | Path | None = None) -> list[JsonObject]:
     registry = load_registry(root)
     records = [agi for agi in registry.get("agis", {}).values() if isinstance(agi, dict)]
     return [
-        describe_run(agi) or {}
+        describe_agi_record(agi) or {}
         for agi in sorted(records, key=lambda item: str(item.get("updated_at", "")), reverse=True)
     ]
 
@@ -597,19 +527,19 @@ def describe_user(user: JsonObject | None, *, registry: JsonObject | None = None
     }
     if include_genomes:
         reg = registry if registry is not None else load_registry()
-        payload["active_genome_index"] = describe_run(reg.get("agis", {}).get(str(normalized.get("active_agi_id") or "")))
+        payload["active_genome_index"] = describe_agi_record(reg.get("agis", {}).get(str(normalized.get("active_agi_id") or "")))
         payload["genomes"] = [
-            describe_run(reg.get("agis", {}).get(str(agi_id))) or {"agi_id": str(agi_id)}
+            describe_agi_record(reg.get("agis", {}).get(str(agi_id))) or {"agi_id": str(agi_id)}
             for agi_id in normalized.get("agi_ids", [])
         ]
     return payload
 
 
-def _is_digitized_run(run: JsonObject) -> bool:
+def _is_digitized_agi_record(run: JsonObject) -> bool:
     if str(run.get("status") or "") == "parsed":
         active_genome_index_state = _active_genome_index_state(run)
         return bool(active_genome_index_state.get("complete")) if active_genome_index_state is not None else True
-    if str(run.get("source_format") or "") in {"vcf", "gvcf"}:
+    if str(run.get("agi_source_format") or "") in {"vcf", "gvcf"}:
         active_genome_index_state = _active_genome_index_state(run)
         return bool(active_genome_index_state and active_genome_index_state.get("complete"))
     for key in ("agi_path", "matches", "candidate_inventory"):
@@ -655,7 +585,7 @@ def _resolve_access_target(
         existing = _find_agi_by_source(registry, context, source)
         if isinstance(existing, dict):
             return existing
-        inferred = infer_source_run(source, status="set", root=root)
+        inferred = infer_agi_record(source, status="set", root=root)
         stored = registry.get("agis", {}).get(str(inferred.get("agi_id") or ""))
         return stored if isinstance(stored, dict) else inferred
     if agi_id:
@@ -665,7 +595,7 @@ def _resolve_access_target(
         active_id = str(user.get("active_agi_id") or "") if isinstance(user, dict) else ""
         run = registry.get("agis", {}).get(active_id)
         return run if isinstance(run, dict) else None
-    active = active_run(context, root=root)
+    active = active_agi_record(context, root=root)
     return active if isinstance(active, dict) else None
 
 
@@ -675,9 +605,9 @@ def _find_agi_by_source(registry: JsonObject, context: JsonObject, source: str |
         if not isinstance(container, dict):
             continue
         for run in container.values():
-            if not isinstance(run, dict) or not run.get("source"):
+            if not isinstance(run, dict) or not run.get("agi_intake_source_path"):
                 continue
-            if _resolved_source_path(run["source"]) == target:
+            if _resolved_source_path(run["agi_intake_source_path"]) == target:
                 return run
     return None
 
@@ -720,5 +650,5 @@ def _selection_source(context: JsonObject, registry: JsonObject, active: JsonObj
     return "registry_selection"
 
 
-def _auto_selected_run(root: str | Path | None) -> JsonObject | None:
+def _auto_selected_agi_record(root: str | Path | None) -> JsonObject | None:
     return _default_selected_agi(root)

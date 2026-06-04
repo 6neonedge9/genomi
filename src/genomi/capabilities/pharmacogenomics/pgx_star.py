@@ -192,7 +192,7 @@ def _sample_marker_call(match: JsonObject, effect_allele: str) -> JsonObject:
         "ref": match.get("ref"),
         "alt": match.get("alt"),
         "filter": match.get("filter"),
-        "source_format": match.get("source_format"),
+        "agi_source_format": match.get("agi_source_format"),
         "agi_id": match.get("agi_id"),
     }
 

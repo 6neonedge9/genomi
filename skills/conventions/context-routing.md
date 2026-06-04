@@ -23,8 +23,8 @@ Start from the current session context:
 
 1. Run `genomi.describe_context`.
 2. If it has an accessible Active Genome Index, Active Genome Index-aware tools use the selected Active Genome Index.
-   VCF-specific tools resolve `vcf`, `db`, `active_genome_index_path`, and
-   `matches` from a VCF/gVCF-derived Active Genome Index.
+   AGI-aware tools resolve `agi_path`, `db`, `matches`, reference data, and
+   genome build from the selected Active Genome Index.
 3. If it has public-only context, keep public/source/GWAS/shared-evidence work
    available.
 4. If the user supplies a source path, read `skills/active-genome-index/SKILL.md`.

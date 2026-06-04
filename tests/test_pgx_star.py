@@ -41,7 +41,7 @@ class PGxStarAlleleTests(unittest.TestCase):
                         {
                             "rsid": rsid,
                             "filter": "PASS",
-                            "source_format": "vcf",
+                            "agi_source_format": "vcf",
                             "agi_id": "genome-1",
                             **records[rsid],
                         }

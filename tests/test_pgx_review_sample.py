@@ -248,7 +248,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                     "evidence_status": "observed_effect_allele",
                     "sample_calls": [
                         {
-                            "source_format": "vcf",
+                            "agi_source_format": "vcf",
                             "chrom": "10",
                             "pos": 94761900,
                             "ref": "G",
@@ -303,7 +303,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                 {
                     "rsid": "rs4244285",
                     "evidence_status": "observed_effect_allele",
-                    "sample_calls": [{"source_format": "23andme", "genotype": "GA", "ref": "N", "alt": "GA"}],
+                    "sample_calls": [{"agi_source_format": "23andme", "genotype": "GA", "ref": "N", "alt": "GA"}],
                     "target_inventory": {
                         "genotype_support_loci": [
                             {"chrom": "10", "pos": 96541616, "ref": "G", "alt": "A", "genome_build": "GRCh37"}
@@ -366,7 +366,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                     {
                         "nickname": "Test user",
                         "source": str(vcf),
-                        "source_format": "vcf",
                         "agi_path": str(index),
                         "genome_build": "GRCh38",
                     },
@@ -432,7 +431,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "ref": "G",
                         "alt": "A",
                         "observed_alleles": ["G", "A"],
-                        "source_format": "vcf",
+                        "agi_source_format": "vcf",
                         "chrom": "10",
                         "pos": 94761900,
                     }
@@ -494,7 +493,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "genotype": "GG",
                         "ref": "N",
                         "alt": "GG",
-                        "source_format": "23andme",
+                        "agi_source_format": "23andme",
                         "chrom": "10",
                         "pos": 96541616,
                     }
@@ -543,8 +542,8 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "query": {"rsid": "rs4244285", "genome_build": "GRCh37"},
             "sample_context": {
                 "count": 1,
-                "searched_active_genome_indexes": [{"source_format": "23andme"}],
-                "matches": [{"source_format": "23andme", "genotype": "--"}],
+                "searched_active_genome_indexes": [{"agi_source_format": "23andme"}],
+                "matches": [{"agi_source_format": "23andme", "genotype": "--"}],
             },
             "support_context": {"genotype_support": [{"support_status": "no_call"}]},
             "target_inventory": {
@@ -589,7 +588,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             if rsid == "rs111111111":
                 return {
                     "query": {"rsid": rsid, "genome_build": genome_build},
-                    "sample_context": {"count": 1, "matches": [{"rsid": rsid, "source_format": "vcf", "genotype": "0/1"}]},
+                    "sample_context": {"count": 1, "matches": [{"rsid": rsid, "agi_source_format": "vcf", "genotype": "0/1"}]},
                     "support_context": {"genotype_support": [{"support_status": "supported"}]},
                     "target_inventory": {
                         "genotype_support_loci": [
@@ -599,7 +598,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                 }
             return {
                 "query": {"rsid": rsid, "genome_build": genome_build},
-                "sample_context": {"count": 1, "matches": [{"rsid": rsid, "source_format": "vcf", "genotype": "0/1"}]},
+                "sample_context": {"count": 1, "matches": [{"rsid": rsid, "agi_source_format": "vcf", "genotype": "0/1"}]},
                 "support_context": {"genotype_support": []},
                 "target_inventory": {
                     "genotype_support_loci": [
@@ -656,7 +655,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "ref": "G",
                         "alt": "A",
                         "observed_alleles": ["G", "A"],
-                        "source_format": "vcf",
+                        "agi_source_format": "vcf",
                     }
                 ],
             },

@@ -596,20 +596,21 @@ def _reparse_stale_genomes() -> JsonObject:
         stored = _stored_agi_schema(str(agi_path))
         if stored is None or stored >= effective_schema:
             continue
-        source = record.get("source")
-        source_available = bool(source and Path(str(source)).exists())
+        agi_intake_source_path = record.get("agi_intake_source_path")
+        agi_intake_source_available = bool(
+            agi_intake_source_path and Path(str(agi_intake_source_path)).exists()
+        )
         entry: JsonObject = {
             "agi_id": agi_id,
-            "nickname": record.get("nickname"),
             "stored_schema": stored,
-            "source_available": source_available,
+            "agi_intake_source_available": agi_intake_source_available,
         }
-        if not source_available:
-            skipped.append({**entry, "reason": "source_unavailable"})
+        if not agi_intake_source_available:
+            skipped.append({**entry, "reason": "agi_intake_source_unavailable"})
             continue
         try:
             job = background_jobs.start_operation_job(
-                "genomi.parse_source", {"source": str(source), "force": True}
+                "genomi.parse_source", {"source": str(agi_intake_source_path), "force": True}
             )
             launched.append({**entry, "job_id": job.get("job_id")})
         except Exception as exc:  # pragma: no cover - best effort per genome
@@ -742,7 +743,7 @@ def _genomi_search_indexes(params: JsonObject) -> JsonObject:
 
     private_search_status: JsonObject = {"status": "not_requested"}
     if include_private:
-        active = runtime_context.active_run()
+        active = runtime_context.active_agi_record()
         if active is None:
             private_search_status = {"status": "no_active_genome_index"}
         elif not runtime_context.agi_access_approved(active):
@@ -815,7 +816,7 @@ def _refresh_active_metadata_index(active: JsonObject) -> JsonObject:
         raise OperationError("missing_context", "Active Genome Index metadata is missing evidence_dir.")
     source = "active_genome_index_metadata"
     fields = {
-        "identity": " ".join(str(active.get(key) or "") for key in ("agi_id", "sample_slug", "source_format", "source_kind")),
+        "identity": " ".join(str(active.get(key) or "") for key in ("agi_id", "sample_slug", "agi_source_format", "agi_source_kind")),
         "metadata": " ".join(
             str(active.get(key) or "")
             for key in (
@@ -838,8 +839,8 @@ def _refresh_active_metadata_index(active: JsonObject) -> JsonObject:
                 "agi_id",
                 "sample_slug",
                 "status",
-                "source_format",
-                "source_kind",
+                "agi_source_format",
+                "agi_source_kind",
                 "genome_build",
                 "project_dir",
                 "work_dir",

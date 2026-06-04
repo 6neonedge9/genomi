@@ -17,7 +17,7 @@ from .normalize import (
 from .agi import (
     _find_agi,
     describe_user,
-    infer_source_run,
+    infer_agi_record,
 )
 from .storage import (
     load_context,
@@ -72,7 +72,7 @@ def assign_user_genome(
     nickname: str | None = None,
     agi_id: str | None = None,
     source: str | Path | None = None,
-    source_format: str | None = None,
+    agi_source_format: str | None = None,
     db: str | Path | None = None,
     agi_path: str | Path | None = None,
     matches: str | Path | None = None,
@@ -96,9 +96,9 @@ def assign_user_genome(
         if not isinstance(run, dict):
             raise KeyError(str(agi_id))
     elif source:
-        run = infer_source_run(
+        run = infer_agi_record(
             source,
-            source_format=source_format,
+            agi_source_format=agi_source_format,
             status="set",
             db=db,
             agi_path=agi_path,

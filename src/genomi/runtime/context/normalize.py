@@ -128,6 +128,11 @@ def _normalize_agi_record(record: JsonObject, agi_id_hint: str | None = None) ->
     normalized = dict(record)
     agi_id = normalized.get("agi_id") or agi_id_hint or normalized.get("sample_slug")
     normalized["agi_id"] = str(agi_id) if agi_id not in (None, "") else ""
+    _move_legacy_agi_key(normalized, "source", "agi_intake_source_path")
+    _move_legacy_agi_key(normalized, "source_format", "agi_source_format")
+    _move_legacy_agi_key(normalized, "source_kind", "agi_source_kind")
+    _move_legacy_agi_key(normalized, "source_member", "agi_source_member")
+    _move_legacy_agi_key(normalized, "comparable_vcf", "agi_comparable_variant_export")
     normalized.pop("run" + "_id", None)
     normalized.pop("nickname", None)
     normalized.pop("default", None)
@@ -136,6 +141,12 @@ def _normalize_agi_record(record: JsonObject, agi_id_hint: str | None = None) ->
     normalized.pop("vcf", None)
     normalized.pop("vcf_path", None)
     return normalized
+
+
+def _move_legacy_agi_key(record: JsonObject, old_key: str, new_key: str) -> None:
+    if new_key not in record and old_key in record:
+        record[new_key] = record[old_key]
+    record.pop(old_key, None)
 
 
 def _normalize_nickname(value: object | None) -> str | None:
