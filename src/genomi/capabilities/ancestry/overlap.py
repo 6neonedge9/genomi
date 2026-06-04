@@ -38,7 +38,6 @@ def check_sample_overlap(
     )
     sample_qc = genotype_context["sample_qc"]
     result = {
-        "schema": "genomi-ancestry-overlap-v1",
         "status": sample_qc["overlap_status"],
         "personal_context": {"uses_personal_dna": True},
         "reference_panel": _reference_panel_summary(panel),
@@ -98,7 +97,6 @@ def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObj
         "note": note,
     }
     result = {
-        "schema": "genomi-ancestry-overlap-v1",
         "status": "panel_not_installed",
         "personal_context": {"uses_personal_dna": True},
         "reference_panel": {

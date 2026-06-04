@@ -131,7 +131,6 @@ def lookup_variant(
         query_scope=query_scope,
     )
     return {
-        "schema": "genomi-variant-lookup-v1",
         "query": query_scope,
         "resolved_targets": all_targets,
         "sample_context": sample_context,

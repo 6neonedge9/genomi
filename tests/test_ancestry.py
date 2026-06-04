@@ -249,7 +249,6 @@ class AncestryCapabilityTests(unittest.TestCase):
                 {"agi_path": str(default_agi_path(vcf))},
             )
 
-        self.assertEqual(result["schema"], "genomi-ancestry-population-context-v1")
         self.assertEqual(result["status"], "completed")
         self.assertTrue(result["personal_context"]["uses_personal_dna"])
         self.assertEqual(result["sample_qc"]["usable_marker_count"], 8)

@@ -22,7 +22,6 @@ def project_sample_pca(
     panel_or_missing = overlap._load_panel_or_missing(genome_build, panel_root, reader)
     if isinstance(panel_or_missing, dict) and panel_or_missing.get("status") == "panel_not_installed":
         result = {
-            "schema": "genomi-ancestry-pca-projection-v1",
             "status": "panel_not_installed",
             "personal_context": {"uses_personal_dna": True},
             "reference_panel": panel_or_missing["reference_panel"],
@@ -45,7 +44,6 @@ def project_sample_pca(
     if not sample_qc.get("projection_allowed"):
         status = str(sample_qc.get("overlap_status") or "insufficient_overlap")
         result = {
-            "schema": "genomi-ancestry-pca-projection-v1",
             "status": status,
             "personal_context": {"uses_personal_dna": True},
             "reference_panel": reference_panel,
@@ -60,7 +58,6 @@ def project_sample_pca(
 
     projection = _project_from_genotypes(panel, genotype_context["dosages"], nearest_reference_count=nearest_reference_count)
     result = {
-        "schema": "genomi-ancestry-pca-projection-v1",
         "status": "completed",
         "personal_context": {"uses_personal_dna": True},
         "reference_panel": reference_panel,
@@ -90,7 +87,6 @@ def estimate_population_context(
     status = projection_result["status"]
     interpretation = _interpretation(projection_result)
     result = {
-        "schema": "genomi-ancestry-population-context-v1",
         "status": status,
         "personal_context": {"uses_personal_dna": True},
         "reference_panel": projection_result["reference_panel"],

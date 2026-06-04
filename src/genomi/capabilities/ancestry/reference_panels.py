@@ -118,7 +118,6 @@ def list_reference_panels() -> JsonObject:
             }
         )
     return {
-        "schema": "genomi-ancestry-reference-panels-v1",
         "status": "completed",
         "panels": panel_records,
         "summary": {

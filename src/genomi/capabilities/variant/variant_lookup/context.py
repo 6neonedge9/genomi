@@ -255,7 +255,6 @@ def _target_inventory(
         }
         genotype_support_loci.append(params)
     return {
-        "schema": "genomi-variant-target-inventory-v1",
         "target_count": len(targets),
         "rsid_targets": [target["rsid"] for target in targets if target["target_type"] == "rsid"],
         "allele_targets": allele_targets,

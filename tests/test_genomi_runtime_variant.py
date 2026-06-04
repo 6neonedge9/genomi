@@ -54,7 +54,6 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
 
         result = call_operation("variant.resolve", {"query": "What is known about RS123?", "shared_db": str(shared_db)})
 
-        self.assertEqual(result["schema"], "genomi-variant-lookup-v1")
         self.assertEqual(result["resolved_targets"][0]["rsid"], "rs123")
         self.assertEqual(len(result["public_context"]["clinvar_by_rsid"]), 1)
         self.assertEqual(result["public_context"]["clinvar_by_rsid"][0]["clinical_significance"], "Pathogenic")

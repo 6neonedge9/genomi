@@ -114,7 +114,6 @@ def _panel_metadata(panel: policy.AncestryPanelPolicy) -> dict[str, Any]:
 def build_source_context() -> dict[str, Any]:
     panels = [_panel_metadata(panel) for panel in policy.PANELS]
     return {
-        "schema": "genomi-ancestry-source-context-v1",
         "status": "completed",
         "supported_genome_builds": policy.supported_build_payload(),
         "overlap_policy": policy.overlap_thresholds(),
