@@ -241,7 +241,7 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     qc = commands.add_parser("qc", help="Summarize sample callset type, quality fields, and evidence boundaries.")
     qc.add_argument("vcf", type=Path)
     qc.add_argument("--db", type=Path, default=None)
-    qc.add_argument("--active-genome-index-path", type=Path, default=None)
+    qc.add_argument("--agi-path", type=Path, default=None)
     qc.add_argument("--output", type=Path, default=None)
     qc.add_argument("--genome-build", default="auto")
     qc.add_argument("--scan-records", type=int, default=1000)
@@ -254,7 +254,7 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     support.add_argument("ref")
     support.add_argument("alt")
     support.add_argument("--db", type=Path, default=None)
-    support.add_argument("--active-genome-index-path", type=Path, default=None)
+    support.add_argument("--agi-path", type=Path, default=None)
     support.add_argument("--output", type=Path, default=None)
     support.add_argument("--genome-build", default="auto")
     support.add_argument("--reference-fasta", type=Path, default=None)
@@ -266,7 +266,7 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     callability.add_argument("vcf", type=Path)
     callability.add_argument("region")
     callability.add_argument("--db", type=Path, default=None)
-    callability.add_argument("--active-genome-index-path", type=Path, default=None)
+    callability.add_argument("--agi-path", type=Path, default=None)
     callability.add_argument("--output", type=Path, default=None)
     callability.add_argument("--genome-build", default="auto")
     callability.add_argument("--min-depth", type=int, default=10)
@@ -279,14 +279,14 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     rsid = query_commands.add_parser("rsid")
     rsid.add_argument("vcf", type=Path)
     rsid.add_argument("rsid")
-    rsid.add_argument("--active-genome-index-path", type=Path, default=None)
+    rsid.add_argument("--agi-path", type=Path, default=None)
     rsid.add_argument("--include-fail", action="store_true")
     rsid.add_argument("--limit", type=int, default=50)
     rsid.set_defaults(func=_cmd_static_query_rsid)
     region = query_commands.add_parser("region")
     region.add_argument("vcf", type=Path)
     region.add_argument("region")
-    region.add_argument("--active-genome-index-path", type=Path, default=None)
+    region.add_argument("--agi-path", type=Path, default=None)
     region.add_argument("--variants-only", action="store_true")
     region.add_argument("--include-fail", action="store_true")
     region.add_argument("--limit", type=int, default=200)
@@ -297,14 +297,14 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     variant.add_argument("pos", type=int)
     variant.add_argument("ref")
     variant.add_argument("alt")
-    variant.add_argument("--active-genome-index-path", type=Path, default=None)
+    variant.add_argument("--agi-path", type=Path, default=None)
     variant.add_argument("--include-fail", action="store_true")
     variant.add_argument("--limit", type=int, default=50)
     variant.set_defaults(func=_cmd_static_query_variant)
     coverage = query_commands.add_parser("coverage")
     coverage.add_argument("vcf", type=Path)
     coverage.add_argument("region")
-    coverage.add_argument("--active-genome-index-path", type=Path, default=None)
+    coverage.add_argument("--agi-path", type=Path, default=None)
     coverage.add_argument("--limit", type=int, default=200)
     coverage.set_defaults(func=_cmd_static_query_coverage)
 
@@ -493,7 +493,7 @@ def _cmd_static_qc(args: argparse.Namespace) -> dict[str, Any]:
     return static_annotation.run_static_sample_qc(
         args.vcf,
         evidence_db=args.db,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         output=args.output,
         genome_build=args.genome_build,
         scan_records=args.scan_records,
@@ -508,7 +508,7 @@ def _cmd_static_genotype_support(args: argparse.Namespace) -> dict[str, Any]:
         args.ref,
         args.alt,
         evidence_db=args.db,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         output=args.output,
         genome_build=args.genome_build,
         reference_fasta=args.reference_fasta,
@@ -522,7 +522,7 @@ def _cmd_static_callability(args: argparse.Namespace) -> dict[str, Any]:
         args.vcf,
         args.region,
         evidence_db=args.db,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         output=args.output,
         genome_build=args.genome_build,
         min_depth=args.min_depth,
@@ -535,7 +535,7 @@ def _cmd_static_query_rsid(args: argparse.Namespace) -> dict[str, Any]:
     return static_annotation.query_static_rsid(
         args.vcf,
         args.rsid,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         pass_only=not args.include_fail,
         limit=args.limit,
     )
@@ -545,7 +545,7 @@ def _cmd_static_query_region(args: argparse.Namespace) -> dict[str, Any]:
     return static_annotation.query_static_region(
         args.vcf,
         args.region,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         variants_only=args.variants_only,
         pass_only=not args.include_fail,
         limit=args.limit,
@@ -559,14 +559,14 @@ def _cmd_static_query_variant(args: argparse.Namespace) -> dict[str, Any]:
         args.pos,
         args.ref,
         args.alt,
-        active_genome_index_path=args.active_genome_index_path,
+        agi_path=args.agi_path,
         pass_only=not args.include_fail,
         limit=args.limit,
     )
 
 
 def _cmd_static_query_coverage(args: argparse.Namespace) -> dict[str, Any]:
-    return static_annotation.query_static_coverage(args.vcf, args.region, active_genome_index_path=args.active_genome_index_path, limit=args.limit)
+    return static_annotation.query_static_coverage(args.vcf, args.region, agi_path=args.agi_path, limit=args.limit)
 
 
 def _cmd_static_summary(args: argparse.Namespace) -> dict[str, Any]:

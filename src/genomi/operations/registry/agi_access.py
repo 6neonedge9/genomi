@@ -31,7 +31,7 @@ from pathlib import Path
 from ...active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
     ActiveGenomeIndexReader,
-    default_active_genome_index_path,
+    default_agi_path,
     open_reader,
 )
 from ...active_genome_index._agi_readiness import reference_pending as _reference_pending
@@ -65,15 +65,12 @@ def _clean_build(value: object) -> str | None:
 
 
 def _index_path_for_run(run: JsonObject, params: JsonObject) -> Path | None:
-    explicit = params.get("active_genome_index_path")
+    explicit = params.get("agi_path")
     if explicit not in (None, ""):
         return Path(str(explicit))
-    stored = run.get("active_genome_index_path")
+    stored = run.get("agi_path")
     if stored:
         return Path(str(stored))
-    source = run.get("vcf") or run.get("source")
-    if source:
-        return default_active_genome_index_path(str(source))
     return None
 
 
@@ -138,7 +135,6 @@ def open_agi(
     return open_reader(
         path,
         need=need,
-        vcf_path=run.get("vcf") or run.get("source"),
         genome_build=_clean_build(run.get("genome_build")),
     )
 
@@ -161,7 +157,7 @@ def _resolved_index_path(params: JsonObject | None, *, agi_id: str | None = None
     time this runs the handler has already authorized, so an unapproved active
     run cannot reach here."""
     params = params or {}
-    explicit = params.get("active_genome_index_path")
+    explicit = params.get("agi_path")
     if explicit not in (None, ""):
         return Path(str(explicit))
     named = agi_id or params.get("agi_id")
@@ -175,7 +171,7 @@ def _resolved_index_path(params: JsonObject | None, *, agi_id: str | None = None
             return path
     source = _supplied_source(params)
     if source is not None:
-        return default_active_genome_index_path(source)
+        return default_agi_path(source)
     return None
 
 

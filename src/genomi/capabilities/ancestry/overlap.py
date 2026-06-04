@@ -4,7 +4,6 @@ import math
 from pathlib import Path
 from typing import Any
 
-from ...active_genome_index.array_genotypes import count_array_allele, is_array_genotype_record
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexReader
 from . import policy, reference_panels, source_context
 
@@ -66,11 +65,11 @@ def _load_panel_or_missing(
     except FileNotFoundError:
         return _panel_not_installed_payload(
             genome_build=normalized_build,
-            active_genome_index_path=str(reader.active_genome_index_path),
+            agi_path=str(reader.agi_path),
         )
 
 
-def _panel_not_installed_payload(*, genome_build: str, active_genome_index_path: str) -> JsonObject:
+def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObject:
     from ...runtime.libraries import manager
 
     library = source_context.panel_library_for_build(genome_build)
@@ -82,7 +81,7 @@ def _panel_not_installed_payload(*, genome_build: str, active_genome_index_path:
     )
     sample_qc = {
         "genome_build": genome_build,
-        "active_genome_index_path": active_genome_index_path,
+        "agi_path": agi_path,
         "panel_marker_count": 0,
         "usable_marker_count": 0,
         "missing_marker_count": 0,
@@ -135,36 +134,35 @@ def collect_sample_genotypes(
     markers = list(panel_payload["markers"])
     panel_marker_count = len(markers)
 
-    active_genome_index_file = reader.active_genome_index_path
+    agi_path = reader.agi_path
     # No readiness / incompleteness handling here: open_agi gated access
     # upstream (missing / incomplete -> active_genome_index_incomplete). A
     # variants_ready index proceeds; the dispatch chokepoint stamps
     # reference_pending.
+    marker_results = _marker_dosage_results(reader, markers)
     dosages: dict[str, float] = {}
     missing_marker_ids: list[str] = []
     missing_marker_reasons: dict[str, int] = {}
     missing_marker_examples: list[JsonObject] = []
-    for marker in markers:
-        marker_result = _marker_dosage_result(reader, marker)
+    for marker, marker_result in zip(markers, marker_results):
         marker_id = str(marker["marker_id"])
         if marker_result.get("status") != "matched":
             missing_marker_ids.append(marker_id)
-            reason = str(marker_result.get("reason") or "unusable_marker")
+            reason = _ancestry_missing_reason(str(marker_result.get("reason") or "unusable_marker"))
             missing_marker_reasons[reason] = missing_marker_reasons.get(reason, 0) + 1
             if len(missing_marker_examples) < 10:
+                detail = _ancestry_missing_detail(marker_result)
                 missing_marker_examples.append(
                     {
                         "marker_id": marker_id,
                         "reason": reason,
-                        **(
-                            {"detail": marker_result["detail"]}
-                            if marker_result.get("detail") is not None
-                            else {}
-                        ),
+                        **({"detail": detail} if detail else {}),
                     }
                 )
             continue
         dosage = marker_result.get("dosage")
+        if dosage is None:
+            dosage = marker_result.get("effect_allele_dosage")
         if dosage is None or not math.isfinite(float(dosage)):
             missing_marker_ids.append(marker_id)
             missing_marker_reasons["nonfinite_dosage"] = missing_marker_reasons.get("nonfinite_dosage", 0) + 1
@@ -179,7 +177,7 @@ def collect_sample_genotypes(
         usable_marker_count=usable_marker_count,
         missing_marker_count=len(missing_marker_ids),
         genome_build=normalized_build,
-        active_genome_index_path=str(active_genome_index_file),
+        agi_path=str(agi_path),
         overlap_status=_overlap_status(fraction),
         projection_allowed=fraction >= LOW_OVERLAP_FRACTION,
         marker_overlap_quality=_marker_overlap_quality(fraction),
@@ -197,154 +195,79 @@ def collect_sample_genotypes(
     }
 
 
-def _marker_dosage_result(reader: ActiveGenomeIndexReader, marker: JsonObject) -> JsonObject:
-    records = _records_for_marker(reader, marker)
-    if not records:
-        return {"status": "missing", "reason": "no_record_at_locus"}
-    ref = str(marker["ref"]).upper()
-    alt = str(marker["alt"]).upper()
-    missing_reasons: list[JsonObject] = []
-    for record in records:
-        if int(record["pos"]) != int(marker["pos"]) or not is_array_genotype_record(record):
-            continue
-        array_dosage = count_array_allele(record, target_allele=alt, allowed_alleles=[ref, alt])
-        if array_dosage["status"] == "matched":
-            return {"status": "matched", "dosage": float(array_dosage["dosage"]), "basis": "consumer_array"}
-        missing_reasons.append(
+def _marker_dosage_results(reader: ActiveGenomeIndexReader, markers: list[JsonObject]) -> list[JsonObject]:
+    dosage_variants = [
+        {
+            "variant_index": index,
+            "variant_id": marker.get("marker_id"),
+            "rsid": marker.get("marker_id"),
+            "chrom": marker["chrom"],
+            "pos": int(marker["pos"]),
+            "effect_allele": str(marker["alt"]).upper(),
+            "other_allele": str(marker["ref"]).upper(),
+            "effect_weight": 1.0,
+        }
+        for index, marker in enumerate(markers)
+    ]
+    raw_results = reader.dosage_for_variants(
+        dosage_variants,
+        skip_ambiguous_palindromic=False,
+    )
+    results_by_index = {
+        int(result["variant_index"]): result
+        for result in raw_results
+        if result.get("variant_index") is not None
+    }
+    return [
+        results_by_index.get(
+            index,
             {
-                "reason": str(array_dosage.get("reason") or "array_genotype_unusable"),
-                "basis": "consumer_array",
-                **(
-                    {"allele_bases": array_dosage["allele_bases"]}
-                    if array_dosage.get("allele_bases") is not None
-                    else {}
-                ),
-            }
+                "status": "missing",
+                "reason": "no_record_at_locus",
+                "variant_index": index,
+                "variant_id": marker.get("marker_id"),
+            },
         )
-    if missing_reasons:
-        return {
-            "status": "missing",
-            "reason": _primary_missing_reason(missing_reasons),
-            "detail": missing_reasons[:3],
-        }
-    exact_records = [
-        record for record in records
-        if int(record["pos"]) == int(marker["pos"]) and str(record["ref"]).upper() == ref
+        for index, marker in enumerate(markers)
     ]
-    for record in exact_records:
-        dosage = _dosage_from_record(record, ref=ref, alt=alt)
-        if dosage is not None:
-            return {"status": "matched", "dosage": float(dosage), "basis": "exact_genotype"}
-        missing_reasons.append({"reason": _vcf_unusable_reason(record, ref=ref, alt=alt), "basis": "exact_genotype"})
-    for record in records:
-        if not bool(record["is_variant"]) and not is_array_genotype_record(record):
-            dosage = _reference_dosage_from_record(record, ref=ref)
-            if dosage is not None:
-                return {"status": "matched", "dosage": float(dosage), "basis": "reference_block"}
-            missing_reasons.append({"reason": _vcf_unusable_reason(record, ref=ref, alt=alt), "basis": "reference_block"})
-    if missing_reasons:
-        return {
-            "status": "missing",
-            "reason": _primary_missing_reason(missing_reasons),
-            "detail": missing_reasons[:3],
-        }
-    return {"status": "missing", "reason": "no_usable_record_at_locus"}
 
 
-def _records_for_marker(reader: ActiveGenomeIndexReader, marker: JsonObject) -> list[JsonObject]:
-    records: list[JsonObject] = []
-    seen: set[tuple[int, int]] = set()
-    for chrom in _chrom_candidates(str(marker["chrom"])):
-        rows = reader.query_region(chrom, int(marker["pos"]), int(marker["pos"]), variants_only=False, limit=20)
-        for row in rows:
-            key = (int(row["offset"]), int(row["sample_index"] or 0))
-            if key in seen:
-                continue
-            seen.add(key)
-            records.append(dict(row))
-    return records
+def _ancestry_missing_reason(reason: str) -> str:
+    return {
+        "no_call": "missing_genotype",
+        "filter_fail": "filtered_record",
+        "genotype_allele_outside_score_alleles": "genotype_allele_outside_panel_alleles",
+        "score_allele_model_not_supported_by_array_genotype": "panel_allele_model_not_supported_by_array_genotype",
+        "effect_allele_not_supported_by_array_genotype": "marker_allele_not_supported_by_array_genotype",
+        "effect_allele_not_in_record": "alternate_allele_mismatch",
+        "other_allele_not_in_record": "reference_allele_mismatch",
+    }.get(reason, reason)
 
 
-def _dosage_from_record(record: JsonObject, *, ref: str, alt: str) -> float | None:
-    if str(record.get("filter") or "") not in {"PASS", "."}:
-        return None
-    genotype = str(record.get("genotype") or "")
-    if not genotype or "." in genotype:
-        return None
-    alts = [str(value).upper() for value in record.get("alts") or []]
-    allele_bases: list[str] = []
-    for token in genotype.replace("|", "/").split("/"):
-        if token == "0":
-            allele_bases.append(ref)
-            continue
-        try:
-            allele_bases.append(alts[int(token) - 1])
-        except (IndexError, ValueError):
-            return None
-    if not allele_bases:
-        return None
-    if any(base not in {ref, alt} for base in allele_bases):
-        return None
-    return float(sum(1 for base in allele_bases if base == alt))
+def _ancestry_missing_detail(marker_result: JsonObject) -> list[JsonObject]:
+    record = marker_result.get("record")
+    if not isinstance(record, dict):
+        return []
+    detail: JsonObject = {
+        "reason": _ancestry_missing_reason(str(marker_result.get("reason") or "unusable_marker")),
+    }
+    basis = _record_basis(record)
+    if basis:
+        detail["basis"] = basis
+    if record.get("observed_alleles"):
+        detail["allele_bases"] = record["observed_alleles"]
+    return [detail]
 
 
-def _reference_dosage_from_record(record: JsonObject, *, ref: str) -> float | None:
-    if str(record.get("filter") or "") not in {"PASS", "."}:
-        return None
-    genotype = str(record.get("genotype") or "")
-    if not genotype or "." in genotype:
-        return None
-    if str(record.get("ref") or "").upper() != ref:
-        return None
-    tokens = genotype.replace("|", "/").split("/")
-    if tokens and all(token == "0" for token in tokens):
-        return 0.0
+def _record_basis(record: JsonObject) -> str | None:
+    record_kind = str(record.get("record_kind") or "")
+    if record_kind.startswith("array_"):
+        return "consumer_array"
+    if record_kind == "reference_block":
+        return "reference_block"
+    if record_kind == "variant_call":
+        return "exact_genotype"
     return None
-
-
-def _vcf_unusable_reason(record: JsonObject, *, ref: str, alt: str) -> str:
-    if str(record.get("filter") or "") not in {"PASS", "."}:
-        return "filtered_record"
-    genotype = str(record.get("genotype") or "")
-    if not genotype or "." in genotype:
-        return "missing_genotype"
-    if str(record.get("ref") or "").upper() != ref:
-        return "reference_allele_mismatch"
-    alts = {str(value).upper() for value in record.get("alts") or []}
-    if alt not in alts and bool(record.get("is_variant")):
-        return "alternate_allele_mismatch"
-    return "genotype_unusable"
-
-
-def _primary_missing_reason(reasons: list[JsonObject]) -> str:
-    priority = [
-        "missing_genotype",
-        "array_genotype_allele_outside_allowed_alleles",
-        "array_target_allele_not_single_base",
-        "array_allele_model_not_single_base",
-        "filtered_record",
-        "reference_allele_mismatch",
-        "alternate_allele_mismatch",
-        "genotype_unusable",
-    ]
-    observed = [str(item.get("reason") or "") for item in reasons]
-    for reason in priority:
-        if reason in observed:
-            return reason
-    return observed[0] if observed else "unusable_marker"
-
-
-def _chrom_candidates(chrom: str) -> list[str]:
-    candidates = [chrom]
-    if chrom.startswith("chr"):
-        candidates.append(chrom[3:])
-    else:
-        candidates.append(f"chr{chrom}")
-    output = []
-    for candidate in candidates:
-        if candidate not in output:
-            output.append(candidate)
-    return output
 
 
 def _sample_qc(
@@ -353,7 +276,7 @@ def _sample_qc(
     usable_marker_count: int,
     missing_marker_count: int,
     genome_build: str,
-    active_genome_index_path: str,
+    agi_path: str,
     overlap_status: str,
     projection_allowed: bool,
     marker_overlap_quality: str,
@@ -364,7 +287,7 @@ def _sample_qc(
     return {
         "genome_build": genome_build,
         "supported_genome_builds": list(reference_panels.SUPPORTED_BUILDS),
-        "active_genome_index_path": active_genome_index_path,
+        "agi_path": agi_path,
         "panel_marker_count": marker_count,
         "usable_marker_count": usable_marker_count,
         "missing_marker_count": missing_marker_count,

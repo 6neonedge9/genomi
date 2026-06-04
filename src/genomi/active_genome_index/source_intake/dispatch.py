@@ -44,7 +44,6 @@ def parse_source(
         result["source_format"] = detection.source_format
         result["source_kind"] = detection.source_kind
         result["source"] = str(source_path)
-        result["vcf"] = str(source_path)
         return result
     if detection.source_format == "bam":
         return parse_bam_source(

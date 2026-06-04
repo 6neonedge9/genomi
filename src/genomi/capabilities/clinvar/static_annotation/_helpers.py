@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ....active_genome_index.active_genome_index import (
-    default_active_genome_index_path,
+    default_agi_path,
 )
 from ....evidence import (
     _ensure_schema,
@@ -159,7 +159,7 @@ def _unlink_sqlite_db(path: Path) -> None:
 def default_static_outputs(vcf: str | Path) -> dict[str, str]:
     vcf_path = Path(vcf)
     return {
-        "active_genome_index_path": str(default_active_genome_index_path(vcf_path)),
+        "agi_path": str(default_agi_path(vcf_path)),
         "exported_variants": str(default_export_variants_path(vcf_path, pass_only=True)),
         "exported_primary_variants": str(
             default_export_variants_path(vcf_path, pass_only=True, primary_contigs_only=True)

@@ -20,7 +20,7 @@ from ..active_genome_index import (
     append_reference_pass,
     connect_existing,
     create_active_genome_index,
-    default_active_genome_index_path,
+    default_agi_path,
 )
 from .._agi_schema import _upsert_metadata
 from ..canonical import build_canonical_bgzip
@@ -48,7 +48,7 @@ def _parse_vcf_active_genome_index(
     reference_dir = run_reference_dir_for_source(source_path, source_format=detection.source_format)
     db_path = Path(evidence_db) if evidence_db is not None else run_evidence_db_path_for_source(source_path, source_format=detection.source_format)
     shared_db = Path(shared_evidence_db) if shared_evidence_db is not None else shared_evidence_db_path()
-    active_genome_index_path = default_active_genome_index_path(source_path)
+    agi_path = default_agi_path(source_path)
 
     project_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -69,19 +69,19 @@ def _parse_vcf_active_genome_index(
     # immediately — but it travels the same code path either way. Only a
     # capped/forced build (max_records) stays single-phase, since there is no
     # stable reference tail to defer.
-    readiness = active_genome_index_readiness(active_genome_index_path)
+    readiness = active_genome_index_readiness(agi_path)
     two_phase = max_records is None
     reference_job: JsonObject | None = None
     if two_phase and readiness.get("variants_ready") and not readiness.get("complete") and not force:
         # Phase A already done from a prior call; just make sure the reference
         # tail is (still) being built instead of rebuilding variants.
-        active_genome_index_result = {
+        agi_result = {
             "status": "variants_ready",
             "active_genome_index_complete": False,
             "reference_pending": True,
-            "active_genome_index_path": str(active_genome_index_path),
+            "agi_path": str(agi_path),
         }
-        reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
+        reference_job = _enqueue_reference_pass(agi_path, parallel_workers)
     else:
         intake_for_canonical = _materialize_vcf_intake_for_canonical(source_path, detection=detection, work_dir=work_dir, force=force)
         try:
@@ -91,9 +91,9 @@ def _parse_vcf_active_genome_index(
                 with contextlib.suppress(FileNotFoundError):
                     intake_for_canonical.unlink()
         canonical_path = Path(canonical_result["canonical_path"])
-        active_genome_index_result = create_active_genome_index(
+        agi_result = create_active_genome_index(
             canonical_path,
-            active_genome_index_path,
+            agi_path,
             include_reference=True,
             max_records=max_records,
             parallel_workers=parallel_workers,
@@ -108,14 +108,14 @@ def _parse_vcf_active_genome_index(
         # When the index adopted this very file, keep it: Phase B reclaims it
         # once the reference tail lands. A single-phase complete build has no
         # later reader, so its canonical is disposable right away.
-        index_canonical = Path(str(active_genome_index_result.get("vcf_path") or ""))
-        if active_genome_index_result.get("status") == "variants_ready":
+        index_canonical = Path(str(agi_result.get("vcf_path") or ""))
+        if agi_result.get("status") == "variants_ready":
             _discard_canonical(canonical_path, keep=index_canonical)
-            reference_job = _enqueue_reference_pass(active_genome_index_path, parallel_workers)
+            reference_job = _enqueue_reference_pass(agi_path, parallel_workers)
         else:
             _discard_canonical(canonical_path, keep=None)
             _discard_canonical(index_canonical, keep=None)
-    outputs: dict[str, Any] = {"active_genome_index_path": str(active_genome_index_path)}
+    outputs: dict[str, Any] = {"agi_path": str(agi_path)}
     if reference_job is not None:
         outputs["reference_pass_job_id"] = reference_job.get("job_id")
         outputs["reference_pass_job_path"] = reference_job.get("job_path")
@@ -124,7 +124,6 @@ def _parse_vcf_active_genome_index(
         "workflow_area": "active-genome-index",
         "status": "completed",
         "source": str(source_path),
-        "vcf": str(source_path),
         "source_format": detection.source_format,
         "source_kind": detection.source_kind,
         "provider": detection.provider,
@@ -141,7 +140,7 @@ def _parse_vcf_active_genome_index(
         "steps": [
             {
                 "name": "build-active-genome-index",
-                "result": active_genome_index_result,
+                "result": agi_result,
                 "reason": "The VCF/gVCF is digitized into an Active Genome Index for targeted sample lookup.",
             }
         ],
@@ -196,7 +195,7 @@ def _materialize_vcf_intake_for_canonical(
     return extracted
 
 
-def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: int | None) -> JsonObject | None:
+def _enqueue_reference_pass(agi_path: Path, parallel_workers: int | None) -> JsonObject | None:
     """Run Phase B (the reference-block tail) — inline or as a detached job.
 
     When background jobs are disabled (the synchronous test/CLI default), run
@@ -214,21 +213,21 @@ def _enqueue_reference_pass(active_genome_index_path: Path, parallel_workers: in
 
     if not background_jobs.background_enabled():
         with contextlib.suppress(Exception):
-            append_reference_pass(active_genome_index_path, parallel_workers=parallel_workers)
+            append_reference_pass(agi_path, parallel_workers=parallel_workers)
         return None
 
-    params: JsonObject = {"active_genome_index_path": str(active_genome_index_path)}
+    params: JsonObject = {"agi_path": str(agi_path)}
     if parallel_workers is not None:
         params["parallel_workers"] = parallel_workers
     try:
         job = background_jobs.start_operation_job("active_genome_index.build_reference_pass", params)
     except Exception:
         return None
-    _record_reference_pass_job(active_genome_index_path, job)
+    _record_reference_pass_job(agi_path, job)
     return job
 
 
-def _record_reference_pass_job(active_genome_index_path: Path, job: JsonObject | None) -> None:
+def _record_reference_pass_job(agi_path: Path, job: JsonObject | None) -> None:
     """Persist the reference-pass job id onto the index so readiness can find it.
 
     Lets active_genome_index_readiness tell a still-running Phase B from a dead
@@ -240,7 +239,7 @@ def _record_reference_pass_job(active_genome_index_path: Path, job: JsonObject |
     if not job_id:
         return
     try:
-        with connect_existing(active_genome_index_path) as connection:
+        with connect_existing(agi_path) as connection:
             _upsert_metadata(connection, "reference_pass_job_id", str(job_id))
             job_path = job.get("job_path")
             if job_path:

@@ -5,12 +5,15 @@ from typing import Any
 
 from ....active_genome_index.genotype_qc import (
     assess_genotype_support,
+    assess_genotype_support_from_agi,
     assess_region_callability,
+    assess_region_callability_from_agi,
     assess_sample_qc,
+    assess_sample_qc_from_agi,
 )
 from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
-    default_active_genome_index_path,
+    default_agi_path,
     active_genome_index_summary,
     open_reader,
 )
@@ -34,14 +37,31 @@ def run_static_sample_qc(
     vcf: str | Path,
     *,
     evidence_db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
     scan_records: int = 1000,
 ) -> dict[str, Any]:
     return assess_sample_qc(
         vcf,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
+        evidence_db=evidence_db,
+        output=output,
+        genome_build=genome_build,
+        scan_records=scan_records,
+    )
+
+
+def run_static_sample_qc_from_agi(
+    agi_path: str | Path,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    scan_records: int = 1000,
+) -> dict[str, Any]:
+    return assess_sample_qc_from_agi(
+        agi_path,
         evidence_db=evidence_db,
         output=output,
         genome_build=genome_build,
@@ -57,7 +77,7 @@ def run_static_genotype_support(
     alt: str,
     *,
     evidence_db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
     reference_fasta: str | Path | None = None,
@@ -70,7 +90,36 @@ def run_static_genotype_support(
         pos,
         ref,
         alt,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
+        evidence_db=evidence_db,
+        output=output,
+        genome_build=genome_build,
+        reference_fasta=reference_fasta,
+        min_depth=min_depth,
+        min_genotype_quality=min_genotype_quality,
+    )
+
+
+def run_static_genotype_support_from_agi(
+    agi_path: str | Path,
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    reference_fasta: str | Path | None = None,
+    min_depth: int = 10,
+    min_genotype_quality: int = 20,
+) -> dict[str, Any]:
+    return assess_genotype_support_from_agi(
+        agi_path,
+        chrom,
+        pos,
+        ref,
+        alt,
         evidence_db=evidence_db,
         output=output,
         genome_build=genome_build,
@@ -85,7 +134,7 @@ def run_static_callability(
     region: str,
     *,
     evidence_db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
     min_depth: int = 10,
@@ -95,7 +144,30 @@ def run_static_callability(
     return assess_region_callability(
         vcf,
         region,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
+        evidence_db=evidence_db,
+        output=output,
+        genome_build=genome_build,
+        min_depth=min_depth,
+        min_covered_fraction=min_covered_fraction,
+        limit=limit,
+    )
+
+
+def run_static_callability_from_agi(
+    agi_path: str | Path,
+    region: str,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    min_depth: int = 10,
+    min_covered_fraction: float = 0.95,
+    limit: int = 5000,
+) -> dict[str, Any]:
+    return assess_region_callability_from_agi(
+        agi_path,
+        region,
         evidence_db=evidence_db,
         output=output,
         genome_build=genome_build,
@@ -112,11 +184,11 @@ def query_static_variant(
     ref: str,
     alt: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     pass_only: bool = True,
     limit: int = 50,
 ) -> dict[str, Any]:
-    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    reader = _static_reader(vcf, agi_path, need=ActiveGenomeIndexNeed.VARIANT)
     records = reader.query_variant(chrom, pos, ref, alt, pass_only=pass_only, limit=limit)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
@@ -137,13 +209,13 @@ def query_static_region(
     vcf: str | Path,
     region: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     variants_only: bool = False,
     pass_only: bool = True,
     limit: int = 200,
 ) -> dict[str, Any]:
     chrom, start, end = parse_region(region)
-    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    reader = _static_reader(vcf, agi_path, need=ActiveGenomeIndexNeed.VARIANT)
     records = reader.query_region(
         chrom,
         start,
@@ -171,11 +243,11 @@ def query_static_rsid(
     vcf: str | Path,
     rsid: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     pass_only: bool = True,
     limit: int = 50,
 ) -> dict[str, Any]:
-    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.VARIANT)
+    reader = _static_reader(vcf, agi_path, need=ActiveGenomeIndexNeed.VARIANT)
     records = reader.query_rsid(rsid, pass_only=pass_only, limit=limit)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
@@ -197,11 +269,11 @@ def query_static_coverage(
     vcf: str | Path,
     region: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     limit: int = 200,
 ) -> dict[str, Any]:
     chrom, start, end = parse_region(region)
-    reader = _static_reader(vcf, active_genome_index_path, need=ActiveGenomeIndexNeed.REFERENCE)
+    reader = _static_reader(vcf, agi_path, need=ActiveGenomeIndexNeed.REFERENCE)
     payload = reader.coverage(chrom, start, end, limit=limit)
     payload["workflow_area"] = WORKFLOW_AREA_ID
     return attach_evidence_context(
@@ -216,12 +288,12 @@ def query_static_coverage(
 
 def _static_reader(
     vcf: str | Path,
-    active_genome_index_path: str | Path | None,
+    agi_path: str | Path | None,
     *,
     need: ActiveGenomeIndexNeed,
 ):
-    path = Path(active_genome_index_path) if active_genome_index_path else default_active_genome_index_path(vcf)
-    return open_reader(path, need=need, vcf_path=vcf)
+    path = Path(agi_path) if agi_path else default_agi_path(vcf)
+    return open_reader(path, need=need)
 
 
 def static_db_lookup(
@@ -251,16 +323,41 @@ def summarize_static_state(
     vcf: str | Path,
     *,
     evidence_db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
 ) -> dict[str, Any]:
     db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf)
-    agi_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf)
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "contract": workflow_contract(),
         "active_genome_index": active_genome_index_summary(agi_path) if agi_path.exists() else None,
         "evidence": evidence_summary(db_path) if db_path.exists() else None,
         "outputs": default_static_outputs(vcf),
+        "evidence_context": evidence_context(
+            "research",
+            reason="Static state is summarized for user-intent target research.",
+            commands=["genomi call research.build_target_packet --params '{\"db\":\"<evidence.sqlite>\",\"target_type\":\"gene\",\"gene\":\"<gene>\"}'"],
+        ),
+    }
+
+
+def summarize_static_state_from_agi(
+    agi_path: str | Path,
+    *,
+    evidence_db: str | Path | None = None,
+) -> dict[str, Any]:
+    agi_path = Path(agi_path)
+    db_path = Path(evidence_db) if evidence_db is not None else agi_path.parent / "evidence.sqlite"
+    return {
+        "workflow_area": WORKFLOW_AREA_ID,
+        "contract": workflow_contract(),
+        "active_genome_index": active_genome_index_summary(agi_path) if agi_path.exists() else None,
+        "evidence": evidence_summary(db_path) if db_path.exists() else None,
+        "outputs": {
+            "sample_qc": str(agi_path.parent / "sample-qc.json"),
+            "clinvar_matches": str(agi_path.parent / "clinvar.matches.jsonl"),
+            "clinvar_scan": str(agi_path.parent / "clinvar.candidates.json"),
+        },
         "evidence_context": evidence_context(
             "research",
             reason="Static state is summarized for user-intent target research.",

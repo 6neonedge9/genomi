@@ -35,6 +35,8 @@ def build_clinvar_match_payload(
     _copy_source_record_field(sample, source, "alt")
     _copy_source_record_field(sample, source, "format")
     _copy_source_record_field(sample, source, "genotype")
+    _copy_source_record_field(sample, source, "record_kind")
+    _copy_source_record_field(sample, source, "observed_alleles")
     if source.get("format") is not None:
         sample["format"] = source["format"]
 
@@ -54,7 +56,7 @@ def build_clinvar_match_payload(
     if source:
         provenance["source_record"] = {
             key: source.get(key)
-            for key in ("chrom", "pos", "ref", "alt", "format", "genotype")
+            for key in ("chrom", "pos", "ref", "alt", "format", "genotype", "record_kind", "observed_alleles")
             if source.get(key) is not None
         }
 
@@ -137,6 +139,8 @@ def _write_clinvar_match_rows(
             "alt": _row_value(row, row_keys, "source_record_alt") or row["sample_alt"],
             "format": _row_value(row, row_keys, "source_record_format"),
             "genotype": _row_value(row, row_keys, "source_record_genotype") or row["genotype"],
+            "record_kind": _row_value(row, row_keys, "source_record_kind"),
+            "observed_alleles": _json_list_or_none(_row_value(row, row_keys, "source_record_observed_alleles")),
             "source_format": source_format,
         }
         sample_variant: dict[str, Any] = {
@@ -153,6 +157,10 @@ def _write_clinvar_match_rows(
             "depth": row["depth"],
             "genotype_quality": row["genotype_quality"],
         }
+        if source_record.get("record_kind") is not None:
+            sample_variant["record_kind"] = source_record["record_kind"]
+        if source_record.get("observed_alleles") is not None:
+            sample_variant["observed_alleles"] = source_record["observed_alleles"]
         if sample_build is not None:
             sample_variant["genome_build"] = sample_build
         liftover = None
@@ -210,6 +218,18 @@ def _source_format_from_info(value: Any) -> str | None:
         return None
     source_format = parsed.get("source_format")
     return str(source_format) if source_format else None
+
+
+def _json_list_or_none(value: Any) -> list[str] | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    return [str(item) for item in parsed]
 
 
 def _evidence_scope_for_match_basis(match_basis: str) -> str:

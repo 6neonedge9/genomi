@@ -41,7 +41,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertTrue(parsed["active_genome_index"]["digitized"])
                 self.assertEqual([step["name"] for step in parsed["steps"]], ["build-active-genome-index"])
                 self.assertEqual(parsed["warnings"], [])
-                self.assertEqual(set(parsed["outputs"]), {"active_genome_index_path"})
+                self.assertEqual(set(parsed["outputs"]), {"agi_path"})
                 self.assertNotIn("static_profile", parsed)
                 self.assertNotIn("long_running_steps_deferred", parsed)
                 self.assertNotIn("clinvar_matches", parsed["outputs"])
@@ -87,8 +87,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(parsed["status"], "completed")
                 self.assertEqual(parsed["source_format"], "gvcf")
 
-                index_path = parsed["outputs"]["active_genome_index_path"]
-                readiness = active_genome_index_readiness(index_path)
+                agi_path = parsed["outputs"]["agi_path"]
+                readiness = active_genome_index_readiness(agi_path)
                 # Inline Phase B finished, so the index is complete and not stuck.
                 self.assertTrue(readiness["complete"])
                 self.assertNotIn("reference_pending", readiness)
@@ -209,7 +209,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(parsed["status"], "completed")
                 self.assertEqual(parsed["source_format"], "23andme")
                 self.assertIn("active_genome_index", parsed)
-                readiness = active_genome_index_readiness(parsed["outputs"]["active_genome_index_path"])
+                readiness = active_genome_index_readiness(parsed["outputs"]["agi_path"])
                 self.assertTrue(readiness["complete"])
                 self.assertEqual(readiness["status"], "completed")
                 self.assertEqual(readiness["missing_objects"], [])
@@ -221,8 +221,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(parsed))
                 self.assertNotIn(str(raw), json.dumps(parsed))
 
-                index_path = Path(parsed["outputs"]["active_genome_index_path"])
-                with sqlite3.connect(index_path) as connection:
+                agi_path = Path(parsed["outputs"]["agi_path"])
+                with sqlite3.connect(agi_path) as connection:
                     connection.row_factory = sqlite3.Row
                     no_call = connection.execute("select * from records where rsid = 'rs999'").fetchone()
                 self.assertIsNotNone(no_call)
@@ -293,19 +293,19 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
 
                 self.approve_access()
                 parsed = call_operation("genomi.parse_source", {"source": str(raw)})
-                index_path = Path(parsed["outputs"]["active_genome_index_path"])
-                with sqlite3.connect(index_path) as connection:
+                agi_path = Path(parsed["outputs"]["agi_path"])
+                with sqlite3.connect(agi_path) as connection:
                     connection.execute("drop table source_header_lines")
                     connection.execute("delete from metadata where key in ('active_genome_index_build_status', 'active_genome_index_complete')")
                     connection.commit()
-                broken = active_genome_index_readiness(index_path)
+                broken = active_genome_index_readiness(agi_path)
                 self.assertFalse(broken["complete"])
                 self.assertIn("table:source_header_lines", broken["missing_objects"])
 
                 rebuilt = call_operation("genomi.parse_source", {"source": str(raw)})
                 step_result = rebuilt["steps"][0]["result"]
                 self.assertEqual(step_result["status"], "completed")
-                repaired = active_genome_index_readiness(index_path)
+                repaired = active_genome_index_readiness(agi_path)
                 self.assertTrue(repaired["complete"])
                 self.assertEqual(repaired["missing_objects"], [])
             finally:
@@ -784,7 +784,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(parsed["source_kind"], "alignment_reads")
                 self.assertIn("active_genome_index", parsed)
                 self.assertEqual([step["name"] for step in parsed["steps"]], ["init-source", "materialize-variants-from-bam", "build-active-genome-index-from-derived-vcf"])
-                self.assertEqual(set(parsed["outputs"]), {"active_genome_index_path", "bam_variant_call_manifest"})
+                self.assertEqual(set(parsed["outputs"]), {"agi_path", "bam_variant_call_manifest", "derived_vcf"})
+                self.assertTrue(Path(parsed["outputs"]["derived_vcf"]).exists())
                 self.assertNotIn("clinvar_matches", parsed["outputs"])
                 self.assertNotIn("genotype_reference_fasta", parsed)
                 self.assertNotIn("evidence_summary", parsed)

@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from ....active_genome_index.export import export_variants
-from ....active_genome_index.active_genome_index import default_active_genome_index_path
+from ....active_genome_index.active_genome_index import default_agi_path
 from ....runtime.paths import run_work_dir, vcf_content_hash
 from .. import pgx_outside_calls
 from ._common import (
@@ -61,7 +61,7 @@ def pharmcat_status(
     }
 
 
-def pharmcat_preflight(*, vcf: str | Path, active_genome_index_path: str | Path | None = None) -> JsonObject:
+def pharmcat_preflight(*, vcf: str | Path, agi_path: str | Path | None = None) -> JsonObject:
     """Inspect VCF structure needed for broad PharmCAT PGx calling without running PharmCAT."""
 
     vcf_path = Path(vcf).expanduser()
@@ -77,12 +77,12 @@ def pharmcat_preflight(*, vcf: str | Path, active_genome_index_path: str | Path 
                 "definition_and_guideline_sources": PHARMCAT_DOCS,
             },
         }
-    if active_genome_index_path is not None:
+    if agi_path is not None:
         with tempfile.TemporaryDirectory(prefix="genomi-pharmcat-preflight-") as tmp:
             out_dir = Path(tmp)
             prepared = _prepare_pharmcat_input(
                 vcf_path=vcf_path,
-                active_genome_index_path=active_genome_index_path,
+                agi_path=agi_path,
                 out_dir=out_dir,
                 base_filename="preflight",
                 input_preflight={"status": "skipped_agi_export_preflight"},
@@ -104,7 +104,7 @@ def pharmcat_preflight(*, vcf: str | Path, active_genome_index_path: str | Path 
                 }
             preflight = _input_preflight(
                 Path(str(prepared["input_path"])),
-                active_genome_index_path=active_genome_index_path,
+                agi_path=agi_path,
             )
             return {
                 "schema": "genomi-pharmcat-preflight-v1",
@@ -133,7 +133,7 @@ def pharmcat_preflight(*, vcf: str | Path, active_genome_index_path: str | Path 
 def run_pharmcat(
     *,
     vcf: str | Path,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     output_dir: str | Path | None = None,
     base_filename: str | None = None,
     mode: str = "auto",
@@ -207,10 +207,10 @@ def run_pharmcat(
             vcf_normalization={"status": "skipped_tool_unavailable", "intake_path_hidden": True},
         )
 
-    input_preflight = _input_preflight(vcf_path)
+    input_preflight = _input_preflight(vcf_path, agi_path=agi_path)
     vcf_normalization = _prepare_pharmcat_input(
         vcf_path=vcf_path,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
         out_dir=out_dir,
         base_filename=base,
         input_preflight=input_preflight,
@@ -528,7 +528,7 @@ def _unavailable_result(
 def _prepare_pharmcat_input(
     *,
     vcf_path: Path,
-    active_genome_index_path: str | Path | None,
+    agi_path: str | Path | None,
     out_dir: Path,
     base_filename: str,
     input_preflight: JsonObject,
@@ -545,8 +545,8 @@ def _prepare_pharmcat_input(
     intake VCF is never handed to the matcher.
     """
 
-    resolved_active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
-    if not resolved_active_genome_index_path.exists():
+    resolved_agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    if not resolved_agi_path.exists():
         return {
             "status": "requires_active_genome_index",
             "remediated": False,
@@ -586,7 +586,7 @@ def _prepare_pharmcat_input(
         export = export_variants(
             vcf_path,
             normalized_path,
-            active_genome_index_path=resolved_active_genome_index_path,
+            agi_path=resolved_agi_path,
             pass_only=True,
             primary_contigs_only=True,
             chrom_style="chr",

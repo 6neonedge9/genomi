@@ -80,27 +80,27 @@ class ActiveGenomeIndexStats:
             "fail_records": self.fail_records,
         }
 
-def default_active_genome_index_path(vcf_path: str | Path, root: str | Path | None = None) -> Path:
+def default_agi_path(vcf_path: str | Path, root: str | Path | None = None) -> Path:
     return run_output_path(vcf_path, "active-genome-index.sqlite", root=root)
 
-def connect(active_genome_index_path: str | Path) -> sqlite3.Connection:
+def connect(agi_path: str | Path) -> sqlite3.Connection:
     # Even with the advisory build lock holding off other builders, a long-
     # lived reader (variant_lookup, _active_genome_index_counts, active_genome_index_readiness) can
     # still have a connection open when the writer reaches
     # _create_query_indexes. Without a busy_timeout that connection's
     # writes fail with "database is locked" immediately. 30s is enough
     # to outlast any normal read transaction.
-    return connect_sqlite(active_genome_index_path, timeout_seconds=DEFAULT_BUSY_TIMEOUT_SECONDS)
+    return connect_sqlite(agi_path, timeout_seconds=DEFAULT_BUSY_TIMEOUT_SECONDS)
 
-def connect_existing(active_genome_index_path: str | Path) -> sqlite3.Connection:
-    path = Path(active_genome_index_path)
+def connect_existing(agi_path: str | Path) -> sqlite3.Connection:
+    path = Path(agi_path)
     if not path.exists():
         raise FileNotFoundError(f"Active Genome Index not found: {path}; run `genomi call genomi.parse_source` to create it first")
     return connect(path)
 
 
-def connect_existing_readonly(active_genome_index_path: str | Path) -> sqlite3.Connection:
-    path = Path(active_genome_index_path)
+def connect_existing_readonly(agi_path: str | Path) -> sqlite3.Connection:
+    path = Path(agi_path)
     if not path.exists():
         raise FileNotFoundError(f"Active Genome Index not found: {path}; run `genomi call genomi.parse_source` to create it first")
     connection = connect_readonly_sqlite(path)
@@ -109,7 +109,7 @@ def connect_existing_readonly(active_genome_index_path: str | Path) -> sqlite3.C
     return connection
 
 @contextlib.contextmanager
-def _active_genome_index_build_lock(active_genome_index_path: Path):
+def _active_genome_index_build_lock(agi_path: Path):
     """Cross-process advisory lock keyed on the Active Genome Index path.
 
     Uses POSIX fcntl.flock with a sidecar `.lock` file. Falls back to a
@@ -117,7 +117,7 @@ def _active_genome_index_build_lock(active_genome_index_path: Path):
     The lock is held only for the duration of the Active Genome Index build; readers
     do not need to acquire it.
     """
-    lock_path = active_genome_index_path.with_suffix(active_genome_index_path.suffix + ".lock")
+    lock_path = agi_path.with_suffix(agi_path.suffix + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     if fcntl is None:
         # No POSIX flock; busy-wait on lock file presence as a soft fallback.
@@ -162,8 +162,8 @@ def _byte_ranges(size: int, workers: int) -> list[tuple[int, int]]:
         ranges.append((start, end))
     return ranges
 
-def _shard_path(active_genome_index_path: Path, shard_index: int) -> Path:
-    return active_genome_index_path.with_name(f"{active_genome_index_path.name}.shard-{shard_index}.sqlite")
+def _shard_path(agi_path: Path, shard_index: int) -> Path:
+    return agi_path.with_name(f"{agi_path.name}.shard-{shard_index}.sqlite")
 
 def _multiprocessing_context() -> multiprocessing.context.BaseContext:
     if "fork" in multiprocessing.get_all_start_methods():

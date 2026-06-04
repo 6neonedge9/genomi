@@ -9,7 +9,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from genomi.active_genome_index.active_genome_index import create_active_genome_index, default_active_genome_index_path
+from genomi.active_genome_index import dosage as agi_dosage
+from genomi.active_genome_index.active_genome_index import create_active_genome_index, default_agi_path
 from genomi.capabilities.prs import harmonize as prs_harmonize
 from genomi.capabilities.prs import pgs_catalog as prs_pgs_catalog
 from genomi.capabilities.prs import scorer as prs_scorer
@@ -18,8 +19,24 @@ from genomi.operations import OperationError, call_operation, list_operations
 from genomi.runtime import context as runtime_context
 from genomi.runtime.liftover import chain_file_path, liftover_preflight
 
+from _prs_contract_helpers import (
+    insert_array_prs_record,
+    insert_prs_record,
+    memory_prs_index,
+    score_variant,
+    tiny_thresholds,
+    vcf_record_observation,
+)
+
 
 class PolygenicScoreCapabilityTests(unittest.TestCase):
+    _memory_prs_index = staticmethod(memory_prs_index)
+    _insert_prs_record = staticmethod(insert_prs_record)
+    _insert_array_prs_record = staticmethod(insert_array_prs_record)
+    _vcf_record_observation = staticmethod(vcf_record_observation)
+    _score_variant = staticmethod(score_variant)
+    _tiny_thresholds = staticmethod(tiny_thresholds)
+
     def setUp(self) -> None:
         self._home_tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._home_tmp.cleanup)
@@ -161,7 +178,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=vcf.with_suffix(".sqlite"),
+            agi_path=vcf.with_suffix(".sqlite"),
             genome_build="GRCh38",
         )
 
@@ -287,7 +304,51 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self.assertTrue(imported["source_choice"]["fallback_used"])
         self.assertFalse(imported["source_choice"]["harmonized"])
         self.assertIn("PGS900001/GRCH37", imported["score_cache"]["score_dir"])
+        for action in imported["next_actions"]:
+            self.assertEqual(action["score_dir"], imported["score_cache"]["score_dir"])
+            self.assertNotIn("genome_build", action)
         self.assertFalse((self.genomi_home / "reference" / "prs" / "PGS900001" / "GRCH38").exists())
+
+    def test_catalog_direct_fallback_does_not_relabel_sample_build(self) -> None:
+        scoring_file = self._write_scoring_file(
+            filename="PGS900001_original_GRCh37.txt",
+            pgs_id="PGS900001",
+        )
+        metadata = {
+            "id": "PGS900001",
+            "genome_build": "GRCh37",
+            "ftp_scoring_file": "https://example.test/PGS900001.txt.gz",
+            "ftp_harmonized_scoring_files": {},
+        }
+
+        def fake_download(_: str, target: Path) -> None:
+            with gzip.open(target, "wt", encoding="utf-8") as handle:
+                handle.write(scoring_file.read_text(encoding="utf-8"))
+
+        with (
+            mock.patch.object(prs_pgs_catalog, "fetch_rest_metadata", return_value=metadata),
+            mock.patch.object(prs_scoring_files, "_download_source", side_effect=fake_download),
+        ):
+            imported = call_operation("prs.import_scoring_file", {"pgs_id": "PGS900001", "genome_build": "GRCh38"})
+
+        vcf = self._write_indexed_vcf("sample_grch38_for_fallback_score.vcf")
+        runtime_context.set_active_genome_index(
+            vcf,
+            status="parsed",
+            agi_path=default_agi_path(vcf),
+            genome_build="GRCh38",
+        )
+        runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
+
+        with mock.patch.object(
+            prs_scorer,
+            "liftover_preflight",
+            return_value={"status": "requires_library_install", "missing_library": {"library": "liftover"}},
+        ):
+            result = call_operation("prs.calculate_score", {"score_dir": imported["score_cache"]["score_dir"]})
+
+        self.assertEqual(result["score_genome_build"], "GRCh37")
+        self.assertEqual(result["sample_genome_build"], "GRCh38")
 
     def test_catalog_direct_fallback_requires_proven_original_build(self) -> None:
         metadata = {
@@ -480,7 +541,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -503,7 +564,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -573,7 +634,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -604,7 +665,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -688,7 +749,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_prs_record(connection, pos=100, ref="A", alt="G", genotype="0/1")
         variant = self._score_variant(pos=100, effect_allele="C", other_allele="A")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "genotype_allele_outside_score_alleles")
@@ -698,7 +759,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_prs_record(connection, pos=100, ref="A", alt=".", genotype="0/0")
         variant = self._score_variant(pos=100, effect_allele="C", other_allele="A")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "matched")
         self.assertEqual(result["effect_allele_dosage"], 0.0)
@@ -709,7 +770,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_array_prs_record(connection, pos=100, genotype="AG")
         variant = self._score_variant(pos=100, effect_allele="G", other_allele="")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "matched")
         self.assertEqual(result["effect_allele_dosage"], 1.0)
@@ -720,7 +781,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_array_prs_record(connection, pos=100, genotype="AA")
         variant = self._score_variant(pos=100, effect_allele="G", other_allele="")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "matched")
         self.assertEqual(result["effect_allele_dosage"], 0.0)
@@ -731,7 +792,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_array_prs_record(connection, pos=100, genotype="AG")
         variant = self._score_variant(pos=100, effect_allele="G", other_allele="T")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "genotype_allele_outside_score_alleles")
@@ -741,7 +802,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         self._insert_array_prs_record(connection, pos=100, genotype="--", filter_value="NO_CALL")
         variant = self._score_variant(pos=100, effect_allele="G", other_allele="A")
 
-        result = prs_harmonize.dosage_for_variant(connection, variant)
+        result = agi_dosage.dosage_for_variant(connection, variant)
 
         self.assertEqual(result["status"], "missing")
         self.assertEqual(result["reason"], "no_call")
@@ -833,156 +894,6 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
         vcf.write_text("\n".join(lines) + "\n", encoding="utf-8")
         create_active_genome_index(vcf, parallel_workers=1, reuse_existing=False)
         return vcf
-
-    def _memory_prs_index(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(":memory:")
-        connection.row_factory = sqlite3.Row
-        connection.executescript(
-            """
-            create table records (
-                chrom text not null,
-                chrom_sort integer not null,
-                pos integer not null,
-                end integer not null,
-                ref text not null,
-                alt text not null,
-                filter text not null,
-                format text,
-                genotype text not null,
-                record_kind text not null,
-                observed_alleles text,
-                offset integer not null,
-                sample_index integer not null
-            );
-            create table spans (
-                chrom text not null,
-                chrom_sort integer not null,
-                pos integer not null,
-                end integer not null,
-                offset integer not null,
-                sample_index integer not null
-            );
-            """
-        )
-        return connection
-
-    def _insert_prs_record(
-        self,
-        connection: sqlite3.Connection,
-        *,
-        pos: int,
-        ref: str,
-        alt: str,
-        genotype: str,
-    ) -> None:
-        record_kind, observed_alleles = self._vcf_record_observation(ref=ref, alt=alt, genotype=genotype)
-        connection.execute(
-            """
-            insert into records(
-                chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype,
-                record_kind, observed_alleles, offset, sample_index
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "1",
-                1,
-                pos,
-                pos,
-                ref,
-                alt,
-                "PASS",
-                "GT",
-                genotype,
-                record_kind,
-                json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
-                pos,
-                0,
-            ),
-        )
-
-    def _insert_array_prs_record(
-        self,
-        connection: sqlite3.Connection,
-        *,
-        pos: int,
-        genotype: str,
-        filter_value: str = "PASS",
-    ) -> None:
-        is_called = filter_value == "PASS" and genotype not in {"", ".", "--", "00", "NN"}
-        record_kind = "array_call" if is_called else "array_no_call"
-        observed_alleles = list(genotype) if is_called else None
-        connection.execute(
-            """
-            insert into records(
-                chrom, chrom_sort, pos, end, ref, alt, filter, format, genotype,
-                record_kind, observed_alleles, offset, sample_index
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "1",
-                1,
-                pos,
-                pos,
-                ".",
-                ".",
-                filter_value,
-                "GT_ARRAY",
-                genotype,
-                record_kind,
-                json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
-                pos,
-                0,
-            ),
-        )
-
-    def _vcf_record_observation(
-        self,
-        *,
-        ref: str,
-        alt: str,
-        genotype: str,
-    ) -> tuple[str, list[str] | None]:
-        tokens = [token for token in genotype.replace("|", "/").split("/") if token]
-        if not tokens or any(token == "." for token in tokens):
-            return "no_call", None
-        alts = [] if alt == "." else alt.split(",")
-        observed: list[str] = []
-        for token in tokens:
-            if token == "0":
-                observed.append(ref)
-                continue
-            try:
-                observed.append(alts[int(token) - 1])
-            except (IndexError, ValueError):
-                return "no_call", None
-        record_kind = "variant_call" if any(token != "0" for token in tokens) and alts else "reference_block"
-        return record_kind, observed
-
-    def _score_variant(self, *, pos: int, effect_allele: str, other_allele: str) -> dict[str, object]:
-        return {
-            "variant_index": 0,
-            "variant_id": f"1:{pos}:{other_allele}:{effect_allele}",
-            "rsid": "rs-test",
-            "chrom": "1",
-            "pos": pos,
-            "effect_allele": effect_allele,
-            "other_allele": other_allele,
-            "effect_weight": 1.0,
-            "harmonized": True,
-            "palindromic": False,
-        }
-
-    def _tiny_thresholds(self, *, min_variants: int = 1, min_fraction: float = 0.10):
-        return mock.patch.multiple(
-            prs_scorer,
-            MIN_SCORE_VARIANTS=min_variants,
-            MIN_OVERLAP_FRACTION=min_fraction,
-            MODERATE_OVERLAP_FRACTION=0.50,
-            HIGH_OVERLAP_FRACTION=0.90,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

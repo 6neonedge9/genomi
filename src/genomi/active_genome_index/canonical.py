@@ -49,7 +49,7 @@ def canonical_gzi_path(agi_work_dir: Path | str) -> Path:
     return canonical_source_dir(agi_work_dir) / CANONICAL_GZI_FILENAME
 
 
-def canonical_paths_for_active_genome_index(active_genome_index_path: Path | str) -> tuple[Path, Path]:
+def canonical_paths_for_active_genome_index(agi_path: Path | str) -> tuple[Path, Path]:
     """Return (canonical_path, gzi_path) keyed to a specific Active Genome Index file.
 
     The canonical lives next to the Active Genome Index it backs, named after
@@ -60,9 +60,9 @@ def canonical_paths_for_active_genome_index(active_genome_index_path: Path | str
     Active Genome Index work dir's `source/` subdirectory instead).
     """
 
-    active_genome_index_path = Path(active_genome_index_path)
-    base = active_genome_index_path.stem
-    sources = canonical_source_dir(active_genome_index_path.parent)
+    agi_path = Path(agi_path)
+    base = agi_path.stem
+    sources = canonical_source_dir(agi_path.parent)
     return sources / f"{base}.canonical.vcf.gz", sources / f"{base}.canonical.vcf.gz.gzi"
 
 

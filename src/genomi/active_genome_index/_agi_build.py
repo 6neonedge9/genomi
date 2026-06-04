@@ -13,14 +13,14 @@ import json
 import os
 import sqlite3
 from ._agi_readiness import ActiveGenomeIndexSchemaTooNew, _active_genome_index_readiness_from_connection
-from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _ROW_GENOTYPE, _ROW_IS_VARIANT, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _mark_active_genome_index_variants_ready, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_active_genome_index_path
+from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _ROW_GENOTYPE, _ROW_IS_VARIANT, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _mark_active_genome_index_variants_ready, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_agi_path
 from .record_kinds import _is_no_call_genotype
 from ..runtime.sqlite_support import enable_wal
 
 
 def create_active_genome_index(
     vcf_path: str | Path,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     *,
     include_reference: bool = True,
     commit_every: int = 50_000,
@@ -32,8 +32,8 @@ def create_active_genome_index(
     defer_reference: bool = False,
 ) -> dict[str, Any]:
     vcf_path = Path(vcf_path)
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
-    active_genome_index_path.parent.mkdir(parents=True, exist_ok=True)
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    agi_path.parent.mkdir(parents=True, exist_ok=True)
     # Schema v3 contract: the Active Genome Index must always carry a
     # canonical bgzip source so capability tools never reopen the intake.
     # Skip the canonical step ONLY when the caller passed us a bgzf-indexed
@@ -49,7 +49,7 @@ def create_active_genome_index(
         canonical_vcf_path,
     )
 
-    per_active_genome_index_canonical, per_active_genome_index_gzi = canonical_paths_for_active_genome_index(active_genome_index_path)
+    per_active_genome_index_canonical, per_active_genome_index_gzi = canonical_paths_for_active_genome_index(agi_path)
     # The only paths the Active Genome Index considers "already canonical"
     # are the two it would itself materialize: parse_source's standard
     # `<work_dir>/source/canonical.vcf.gz`, or the per-Active-Genome-Index variant from
@@ -57,7 +57,7 @@ def create_active_genome_index(
     # bgzip with a .gzi sibling that happens to share a parent directory —
     # is re-materialized so the Active Genome Index owns the bytes it serves.
     owned_canonicals = {
-        Path(canonical_vcf_path(active_genome_index_path.parent)).resolve(),
+        Path(canonical_vcf_path(agi_path.parent)).resolve(),
         per_active_genome_index_canonical.resolve(),
     }
     try:
@@ -74,7 +74,7 @@ def create_active_genome_index(
         # keep their own bgzip canonicals instead of stomping each other.
         build_canonical_bgzip(
             vcf_path,
-            active_genome_index_path.parent,
+            agi_path.parent,
             force=not reuse_existing,
             canonical_path=per_active_genome_index_canonical,
             gzi_path=per_active_genome_index_gzi,
@@ -83,7 +83,7 @@ def create_active_genome_index(
     if reuse_existing:
         cached = _cached_active_genome_index_if_usable(
             vcf_path,
-            active_genome_index_path,
+            agi_path,
             include_reference=include_reference,
             max_records=max_records,
         )
@@ -96,11 +96,11 @@ def create_active_genome_index(
     # advisory lock, re-check for a now-complete cached Active Genome Index in case
     # another process just finished — that converts the slow path into the
     # fast path for every follower.
-    with _active_genome_index_build_lock(active_genome_index_path):
+    with _active_genome_index_build_lock(agi_path):
         if reuse_existing:
             cached = _cached_active_genome_index_if_usable(
                 vcf_path,
-                active_genome_index_path,
+                agi_path,
                 include_reference=include_reference,
                 max_records=max_records,
             )
@@ -111,7 +111,7 @@ def create_active_genome_index(
         if workers > 1:
             return _create_active_genome_index_parallel(
                 vcf_path,
-                active_genome_index_path,
+                agi_path,
                 header=header,
                 include_reference=include_reference,
                 commit_every=commit_every,
@@ -126,8 +126,8 @@ def create_active_genome_index(
         # after this pass. A defer only makes sense when there is a reference tail
         # to defer (include_reference); otherwise it is a complete variant-only index.
         defer_now = defer_reference and include_reference
-        active_genome_index_path.unlink(missing_ok=True)
-        connection = connect(active_genome_index_path)
+        agi_path.unlink(missing_ok=True)
+        connection = connect(agi_path)
         try:
             _reset_schema(connection)
             _insert_metadata(connection, vcf_path, header, include_reference, max_records=max_records)
@@ -154,7 +154,7 @@ def create_active_genome_index(
                 "variants_ready": True,
                 "reference_pending": defer_now,
                 "vcf_path": str(vcf_path),
-                "active_genome_index_path": str(active_genome_index_path),
+                "agi_path": str(agi_path),
                 "schema_version": SCHEMA_VERSION,
                 "include_reference": include_reference,
                 "parallel_workers": 1,
@@ -166,15 +166,15 @@ def create_active_genome_index(
 
 def _cached_active_genome_index_if_usable(
     vcf_path: Path,
-    active_genome_index_path: Path,
+    agi_path: Path,
     *,
     include_reference: bool,
     max_records: int | None,
 ) -> dict[str, Any] | None:
-    if not active_genome_index_path.exists():
+    if not agi_path.exists():
         return None
     try:
-        with connect_existing(active_genome_index_path) as connection:
+        with connect_existing(agi_path) as connection:
             readiness = _active_genome_index_readiness_from_connection(connection)
             metadata = readiness["metadata"]
             stats = readiness["stats"]
@@ -192,7 +192,7 @@ def _cached_active_genome_index_if_usable(
         return None
     if stored_schema_version_int > SCHEMA_VERSION:
         raise ActiveGenomeIndexSchemaTooNew(
-            f"Active Genome Index at {active_genome_index_path} has schema_version="
+            f"Active Genome Index at {agi_path} has schema_version="
             f"{stored_schema_version_int}; this Genomi runtime only "
             f"supports up to schema_version={SCHEMA_VERSION}. Upgrade "
             "Genomi before reading this Active Genome Index."
@@ -211,7 +211,7 @@ def _cached_active_genome_index_if_usable(
         "status": "cached",
         "active_genome_index_complete": True,
         "vcf_path": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "schema_version": SCHEMA_VERSION,
         "include_reference": include_reference,
         "parallel_workers": 0,
@@ -231,7 +231,7 @@ def _cached_record_limit_satisfies_request(cached_max_records: Any, requested_ma
 
 def _create_active_genome_index_parallel(
     vcf_path: Path,
-    active_genome_index_path: Path,
+    agi_path: Path,
     *,
     header: VcfHeader,
     include_reference: bool,
@@ -255,14 +255,14 @@ def _create_active_genome_index_parallel(
         mode = "variants"
     else:
         mode = "all"
-    active_genome_index_path.unlink(missing_ok=True)
-    connection = connect(active_genome_index_path)
+    agi_path.unlink(missing_ok=True)
+    connection = connect(agi_path)
     shard_paths: list[Path] = []
     try:
         _reset_schema(connection)
         _insert_metadata(connection, vcf_path, header, include_reference, max_records=max_records)
         ranges, shard_worker = _shard_ranges_and_worker(vcf_path, workers)
-        shard_paths = [_shard_path(active_genome_index_path, shard_index) for shard_index in range(len(ranges))]
+        shard_paths = [_shard_path(agi_path, shard_index) for shard_index in range(len(ranges))]
         for shard_path in shard_paths:
             if shard_path.exists():
                 shard_path.unlink()
@@ -297,7 +297,7 @@ def _create_active_genome_index_parallel(
             "variants_ready": True,
             "reference_pending": defer_reference,
             "vcf_path": str(vcf_path),
-            "active_genome_index_path": str(active_genome_index_path),
+            "agi_path": str(agi_path),
             "schema_version": SCHEMA_VERSION,
             "include_reference": include_reference,
             "parallel_workers": len(tasks),
@@ -324,7 +324,7 @@ def _shard_ranges_and_worker(vcf_path: Path, workers: int) -> tuple[list[tuple[i
     return _byte_ranges(vcf_path.stat().st_size, workers), _build_active_genome_index_shard
 
 def append_reference_pass(
-    active_genome_index_path: str | Path,
+    agi_path: str | Path,
     vcf_path: str | Path | None = None,
     *,
     commit_every: int = 50_000,
@@ -341,13 +341,13 @@ def append_reference_pass(
     metadata.vcf_path (the per-index canonical bgzip that survives parse for
     exactly this kind of follow-up read).
     """
-    active_genome_index_path = Path(active_genome_index_path)
-    readiness = _active_genome_index_readiness_from_path(active_genome_index_path)
+    agi_path = Path(agi_path)
+    readiness = _active_genome_index_readiness_from_path(agi_path)
     if readiness.get("complete"):
         return {
             "status": "completed",
             "active_genome_index_complete": True,
-            "active_genome_index_path": str(active_genome_index_path),
+            "agi_path": str(agi_path),
             "reference_pending": False,
             "note": "Reference pass already complete; nothing to do.",
         }
@@ -355,24 +355,24 @@ def append_reference_pass(
     # only a canonical we resolved ourselves (the index's own metadata.vcf_path)
     # is ours to reclaim once the reference tail lands.
     owns_canonical = vcf_path is None
-    vcf_path = Path(vcf_path) if vcf_path is not None else _canonical_source_for_index(active_genome_index_path)
+    vcf_path = Path(vcf_path) if vcf_path is not None else _canonical_source_for_index(agi_path)
     workers = _resolved_parallel_workers(vcf_path, parallel_workers=parallel_workers, max_records=None)
-    with _active_genome_index_build_lock(active_genome_index_path):
-        readiness = _active_genome_index_readiness_from_path(active_genome_index_path)
+    with _active_genome_index_build_lock(agi_path):
+        readiness = _active_genome_index_readiness_from_path(agi_path)
         if readiness.get("complete"):
             return {
                 "status": "completed",
                 "active_genome_index_complete": True,
-                "active_genome_index_path": str(active_genome_index_path),
+                "agi_path": str(agi_path),
                 "reference_pending": False,
             }
-        connection = connect_existing(active_genome_index_path)
+        connection = connect_existing(agi_path)
         shard_paths: list[Path] = []
         try:
             ranges, shard_worker = _shard_ranges_and_worker(vcf_path, workers)
             # Offset shard indices well past any Phase A shard names so a Phase A
             # shard left behind by a crash can never be mistaken for a Phase B one.
-            shard_paths = [_shard_path(active_genome_index_path, 1000 + shard_index) for shard_index in range(len(ranges))]
+            shard_paths = [_shard_path(agi_path, 1000 + shard_index) for shard_index in range(len(ranges))]
             for shard_path in shard_paths:
                 shard_path.unlink(missing_ok=True)
             header_samples = _header_samples_from_index(connection)
@@ -404,16 +404,16 @@ def append_reference_pass(
         "status": "completed",
         "active_genome_index_complete": True,
         "reference_pending": False,
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "vcf_path": str(vcf_path),
         "parallel_workers": len(tasks),
     }
 
-def _active_genome_index_readiness_from_path(active_genome_index_path: Path) -> dict[str, Any]:
-    if not active_genome_index_path.exists():
+def _active_genome_index_readiness_from_path(agi_path: Path) -> dict[str, Any]:
+    if not agi_path.exists():
         return {"complete": False, "variants_ready": False}
     try:
-        with connect_existing(active_genome_index_path) as connection:
+        with connect_existing(agi_path) as connection:
             return _active_genome_index_readiness_from_connection(connection)
     except (sqlite3.Error, json.JSONDecodeError, ValueError):
         return {"complete": False, "variants_ready": False}
@@ -423,10 +423,10 @@ def _header_samples_from_index(connection: sqlite3.Connection) -> list[str]:
 
     return read_header_from_active_genome_index(connection).samples
 
-def _canonical_source_for_index(active_genome_index_path: Path) -> Path:
+def _canonical_source_for_index(agi_path: Path) -> Path:
     from ._agi_readiness import canonical_source_for_active_genome_index
 
-    with connect_existing(active_genome_index_path) as connection:
+    with connect_existing(agi_path) as connection:
         return canonical_source_for_active_genome_index(connection)
 
 def _build_active_genome_index_shard(args: tuple[str, str, int, int, list[str], str, int]) -> dict[str, Any]:

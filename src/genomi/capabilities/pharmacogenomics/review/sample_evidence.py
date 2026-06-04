@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from ....active_genome_index.observations import observed_alleles_from_record
 from .. import pgx_requirements, pgx_star
 from ._common import JsonObject, _compact_selected_fields, _compact_text, _dedupe, _dedupe_params, _normalize_rsid, _pgxdb_record_source_url
 from .record_research import _is_stored_sample_pgx_record, _is_stored_source_pgx_record
@@ -297,25 +298,7 @@ def _observed_sample_genotype(match: JsonObject) -> JsonObject:
 
 
 def _observed_alleles(match: JsonObject) -> list[str]:
-    genotype = str(match.get("genotype") or "").strip().upper()
-    ref = str(match.get("ref") or "").strip().upper()
-    alts = [item.strip().upper() for item in str(match.get("alt") or "").split(",") if item.strip()]
-    if re.fullmatch(r"[0-9.]+([/|][0-9.]+)*", genotype):
-        alleles = []
-        for token in re.split(r"[/|]", genotype):
-            if token in {"", "."}:
-                continue
-            try:
-                index = int(token)
-            except ValueError:
-                continue
-            if index == 0 and ref:
-                alleles.append(ref)
-            elif index > 0 and index <= len(alts):
-                alleles.append(alts[index - 1])
-        return alleles
-    letter_tokens = re.findall(r"[ACGT]", genotype)
-    return letter_tokens if letter_tokens else []
+    return observed_alleles_from_record(match)
 
 
 def _canonical_genotype_token(alleles: list[str]) -> str | None:

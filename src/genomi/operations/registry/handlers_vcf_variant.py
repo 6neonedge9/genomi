@@ -30,11 +30,11 @@ def _agi_build_reference_pass(params: JsonObject) -> JsonObject:
     """
     from ...active_genome_index.active_genome_index import append_reference_pass
 
-    agi_path = _optional_path(params, "active_genome_index_path")
+    agi_path = _optional_path(params, "agi_path")
     if agi_path is None:
         raise OperationError(
             "invalid_params",
-            "active_genome_index.build_reference_pass requires active_genome_index_path",
+            "active_genome_index.build_reference_pass requires agi_path",
         )
     return append_reference_pass(agi_path, parallel_workers=_optional_int(params, "parallel_workers"))
 
@@ -51,45 +51,44 @@ def _vcf_init(params: JsonObject) -> JsonObject:
     return _remember_result(vcf, result, status="initialized")
 
 
-def _vcf_summary(params: JsonObject) -> JsonObject:
+def _agi_summary(params: JsonObject) -> JsonObject:
     # Auth-gate only (need=NONE): the QC/summary capabilities build the Active
     # Genome Index on demand, so they must not be blocked by a readiness gate.
     reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading Active Genome Index artifacts", params=params)
     resolved = _with_context(params, db=True)
-    return static_annotation.summarize_static_state(
-        reader.vcf_path,
+    return static_annotation.summarize_static_state_from_agi(
+        reader.agi_path,
         evidence_db=_optional_path(resolved, "db"),
-        active_genome_index_path=reader.active_genome_index_path,
     )
 
 
-def _vcf_qc(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading Active Genome Index artifacts", params=params)
+def _agi_qc(params: JsonObject) -> JsonObject:
+    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="reading Active Genome Index artifacts", params=params)
+    reader.ensure_ready()
     resolved = _with_context(params, db=True, genome_build=True)
     # reference_pending stamped by the chokepoint: callset QC keys "has
     # reference blocks" / absence-allowed off reference rows, so its
     # classification is provisional until the reference tail (Phase B) lands.
-    return static_annotation.run_static_sample_qc(
-        reader.vcf_path,
+    return static_annotation.run_static_sample_qc_from_agi(
+        reader.agi_path,
         evidence_db=_optional_path(resolved, "db"),
-        active_genome_index_path=reader.active_genome_index_path,
         output=_optional_path(params, "output"),
         genome_build=_str(resolved, "genome_build", "auto"),
         scan_records=_int(params, "scan_records", 1000),
     )
 
 
-def _vcf_genotype_support(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading Active Genome Index artifacts", params=params)
+def _agi_genotype_support(params: JsonObject) -> JsonObject:
+    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="reading Active Genome Index artifacts", params=params)
+    reader.ensure_ready()
     resolved = _with_context(params, db=True, reference_fasta=True, genome_build=True)
-    return static_annotation.run_static_genotype_support(
-        reader.vcf_path,
+    return static_annotation.run_static_genotype_support_from_agi(
+        reader.agi_path,
         _str(params, "chrom"),
         _int(params, "pos"),
         _str(params, "ref"),
         _str(params, "alt"),
         evidence_db=_optional_path(resolved, "db"),
-        active_genome_index_path=reader.active_genome_index_path,
         output=_optional_path(params, "output"),
         genome_build=_str(resolved, "genome_build", "auto"),
         reference_fasta=_optional_path(resolved, "reference_fasta"),
@@ -98,14 +97,14 @@ def _vcf_genotype_support(params: JsonObject) -> JsonObject:
     )
 
 
-def _vcf_callability(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading Active Genome Index artifacts", params=params)
+def _agi_callability(params: JsonObject) -> JsonObject:
+    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="reading Active Genome Index artifacts", params=params)
+    reader.ensure_ready()
     resolved = _with_context(params, db=True, genome_build=True)
-    return static_annotation.run_static_callability(
-        reader.vcf_path,
+    return static_annotation.run_static_callability_from_agi(
+        reader.agi_path,
         _str(params, "region"),
         evidence_db=_optional_path(resolved, "db"),
-        active_genome_index_path=reader.active_genome_index_path,
         output=_optional_path(params, "output"),
         genome_build=_str(resolved, "genome_build", "auto"),
         min_depth=_int(params, "min_depth", 10),

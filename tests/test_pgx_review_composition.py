@@ -135,7 +135,17 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [{"target": {"type": "topic", "topic": "rs4244285 clopidogrel"}}],
         }
         variant_result = {
-            "sample_context": {"count": 1, "matches": [{"rsid": "rs4244285", "genotype": "AG"}]},
+            "sample_context": {
+                "count": 1,
+                "matches": [
+                    {
+                        "rsid": "rs4244285",
+                        "record_kind": "array_call",
+                        "observed_alleles": ["A", "G"],
+                        "genotype": "AG",
+                    }
+                ],
+            },
             "support_context": {"genotype_support": [{"support_status": "supported"}]},
         }
         star_result = {

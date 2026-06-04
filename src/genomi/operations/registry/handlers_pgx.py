@@ -20,7 +20,7 @@ from .coerce import (
     _str,
     _with_context,
 )
-from .errors import JsonObject
+from .errors import JsonObject, OperationError
 from .handlers_evidence_phenotype import (
     _first_semantic_entity_text,
     _with_simple_semantic_lookup_usage,
@@ -102,7 +102,7 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
         else runtime_context.active_run() is not None
     )
     personal_context_requested = (
-        any(params.get(key) for key in ("vcf", "db", "active_genome_index_path", "matches"))
+        any(params.get(key) for key in ("agi_path", "agi_path", "db", "matches"))
         or include_active_requested
         or _bool(params, "include_known_active_genome_indexes", False)
     )
@@ -112,8 +112,7 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
         # only indirectly via variant_lookup, so need=NONE is enough here.
         reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading parsed Active Genome Index artifacts", params=params)
         resolved = _with_context(params, db=True, shared_db=True, genome_build=True, allow_shared_db_without_vcf=False)
-        if reader.vcf_path is not None and not resolved.get("vcf"):
-            resolved["vcf"] = str(reader.vcf_path)
+        resolved.setdefault("agi_path", str(reader.agi_path))
     else:
         resolved = dict(params)
         resolved.setdefault("shared_db", str(shared_evidence_db_path()))
@@ -135,11 +134,11 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
         genome_build=_str(resolved, "genome_build", "GRCh38"),
         db=resolved.get("db"),
         shared_db=resolved.get("shared_db"),
-        include_active_genome_index=_bool(resolved, "include_active_genome_index", bool(resolved.get("db") or resolved.get("vcf"))),
+        include_active_genome_index=_bool(resolved, "include_active_genome_index", bool(resolved.get("db") or resolved.get("agi_path"))),
         include_known_active_genome_indexes=_bool(resolved, "include_known_active_genome_indexes", False),
         include_stored_research=_bool(resolved, "include_stored_research", True),
         include_record_research_payloads=_bool(resolved, "include_record_research_payloads", False),
-        has_active_genome_index_context=bool(resolved.get("vcf")),
+        has_active_genome_index_context=bool(resolved.get("agi_path")),
         limit=_int(resolved, "limit", 10),
         clinpgx_api_url=resolved.get("clinpgx_api_url"),
         pgxdb_api_url=resolved.get("pgxdb_api_url"),
@@ -152,9 +151,15 @@ def _pgx_medication_review(params: JsonObject) -> JsonObject:
 def _pgx_pharmcat(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading raw or parsed Active Genome Index artifacts", params=params)
     resolved = dict(params)
+    vcf = resolved.get("vcf") or reader.canonical_vcf_path()
+    if not vcf:
+        raise OperationError(
+            "explicit_vcf_required",
+            "pharmacogenomics.run_pharmcat requires an explicit PharmCAT-compatible VCF artifact.",
+        )
     return pharmcat.run_pharmcat(
-        vcf=reader.vcf_path,
-        active_genome_index_path=reader.active_genome_index_path,
+        vcf=vcf,
+        agi_path=reader.agi_path,
         output_dir=resolved.get("output_dir"),
         base_filename=resolved.get("base_filename"),
         mode=_str(resolved, "mode", "auto"),
@@ -179,7 +184,13 @@ def _pgx_pharmcat(params: JsonObject) -> JsonObject:
 
 def _pgx_pharmcat_preflight(params: JsonObject) -> JsonObject:
     reader = open_agi(need=ActiveGenomeIndexNeed.NONE, action="reading raw or parsed Active Genome Index artifacts", params=params)
-    return pharmcat.pharmcat_preflight(vcf=reader.vcf_path, active_genome_index_path=reader.active_genome_index_path)
+    vcf = params.get("vcf") or reader.canonical_vcf_path()
+    if not vcf:
+        raise OperationError(
+            "explicit_vcf_required",
+            "pharmacogenomics.preflight_pharmcat requires an explicit PharmCAT-compatible VCF artifact.",
+        )
+    return pharmcat.pharmcat_preflight(vcf=vcf, agi_path=reader.agi_path)
 
 
 def _pgx_pharmcat_import(params: JsonObject) -> JsonObject:

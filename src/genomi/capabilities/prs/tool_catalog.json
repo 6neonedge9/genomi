@@ -217,7 +217,7 @@
           "vcf": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "pgs_id": {
@@ -252,7 +252,7 @@
       "context_optional": [
         "source",
         "vcf",
-        "active_genome_index_path",
+        "agi_path",
         "pgs_id",
         "score_dir",
         "genome_build"
@@ -280,7 +280,7 @@
           "vcf": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "pgs_id": {
@@ -323,7 +323,7 @@
       "context_optional": [
         "source",
         "vcf",
-        "active_genome_index_path",
+        "agi_path",
         "pgs_id",
         "score_dir",
         "genome_build",

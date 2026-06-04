@@ -146,7 +146,7 @@ def parse_bam_source(
             "steps": steps,
         }
 
-    active_genome_index_result = _parse_vcf_active_genome_index(
+    agi_result = _parse_vcf_active_genome_index(
         derived_vcf,
         detection=SourceDetection(source_format="vcf", source_kind="derived_variant_callset"),
         evidence_db=db_path,
@@ -160,11 +160,11 @@ def parse_bam_source(
     steps.append(
         {
             "name": "build-active-genome-index-from-derived-vcf",
-            "result": active_genome_index_result,
+            "result": agi_result,
             "reason": "The derived VCF is digitized into an Active Genome Index; public evidence tools materialize libraries later when needed.",
         }
     )
-    outputs = dict(active_genome_index_result.get("outputs") or {})
+    outputs = dict(agi_result.get("outputs") or {})
     outputs["derived_vcf"] = str(derived_vcf)
     outputs["bam_variant_call_manifest"] = materialized.get("manifest_path")
 
@@ -184,7 +184,6 @@ def parse_bam_source(
         "work_dir": str(work_dir),
         "evidence_dir": str(evidence_dir),
         "reference_dir": str(reference_dir),
-        "vcf": str(derived_vcf),
         "derived_vcf": str(derived_vcf),
         "reference_fasta": str(resolved_reference_fasta),
         "outputs": outputs,
@@ -460,7 +459,6 @@ def parse_fastq_source(
         "evidence_dir": str(evidence_dir),
         "reference_dir": str(reference_dir),
         "fastq": {"r1": str(r1_path), "r2": str(r2_path)},
-        "vcf": bam_parse.get("vcf"),
         "derived_vcf": bam_parse.get("derived_vcf"),
         "reference_fasta": str(resolved_reference_fasta),
         "outputs": outputs,

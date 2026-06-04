@@ -43,9 +43,9 @@ def _set_reference_job(index: Path, *, status: str, pid: int | None, fresh_heart
         "schema": background_jobs.JOB_SCHEMA,
         "job_id": job_id,
         "operation": "active_genome_index.build_reference_pass",
-        "params": {"active_genome_index_path": str(index)},
+        "params": {"agi_path": str(index)},
         "params_digest": background_jobs.operation_params_digest(
-            "active_genome_index.build_reference_pass", {"active_genome_index_path": str(index)}
+            "active_genome_index.build_reference_pass", {"agi_path": str(index)}
         ),
         "status": status,
         "pid": pid,
@@ -152,7 +152,7 @@ class ReferencePassChokepointTests(GenomiRuntimeTestCase):
         _write_gvcf(vcf)
         create_active_genome_index(vcf, index, parallel_workers=4, defer_reference=True)
         runtime_context.set_active_genome_index(
-            vcf, status="parsed", active_genome_index_path=index, genome_build="GRCh38"
+            vcf, status="parsed", agi_path=index, genome_build="GRCh38"
         )
         return index
 

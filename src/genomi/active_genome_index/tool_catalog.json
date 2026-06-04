@@ -36,7 +36,7 @@
       "input_schema": {
         "type": "object",
         "properties": {
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "parallel_workers": {
@@ -45,7 +45,7 @@
           }
         },
         "required": [
-          "active_genome_index_path"
+          "agi_path"
         ],
         "additionalProperties": false
       },
@@ -115,7 +115,7 @@
           "db": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "output": {
@@ -143,7 +143,7 @@
       "context_optional": [
         "vcf",
         "db",
-        "active_genome_index_path",
+        "agi_path",
         "genome_build"
       ],
       "privacy_scope": "local_private",
@@ -168,7 +168,7 @@
           "db": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "output": {
@@ -211,7 +211,7 @@
       "context_optional": [
         "vcf",
         "db",
-        "active_genome_index_path",
+        "agi_path",
         "reference_fasta",
         "genome_build"
       ],
@@ -240,7 +240,7 @@
           "db": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "output": {
@@ -279,7 +279,7 @@
       "context_optional": [
         "vcf",
         "db",
-        "active_genome_index_path",
+        "agi_path",
         "genome_build"
       ],
       "privacy_scope": "local_private",
@@ -408,7 +408,7 @@
           "shared_db": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "matches": {

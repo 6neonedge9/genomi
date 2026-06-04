@@ -19,22 +19,20 @@ class FastaIndexRow:
 
 
 def resolve_locus_genotype(
-    vcf: str | Path,
+    agi_path: str | Path,
     chrom: str,
     pos: int,
     ref: str,
     alt: str,
     *,
-    active_genome_index_path: str | Path,
     reference_fasta: str | Path | None = None,
     min_depth: int = 10,
     min_genotype_quality: int = 20,
 ) -> dict[str, Any]:
     """Resolve one target allele into deterministic sample-site evidence."""
 
-    vcf_path = Path(vcf)
-    active_genome_index_path = Path(active_genome_index_path)
-    records = _records_covering_locus(vcf_path, active_genome_index_path, chrom, pos)
+    agi_path = Path(agi_path)
+    records = _records_covering_locus(agi_path, chrom, pos)
     return resolve_locus_genotype_from_records(
         records,
         chrom,
@@ -208,16 +206,15 @@ def _normalize_record(record: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _records_covering_locus(vcf_path: Path, active_genome_index_path: Path, chrom: str, pos: int) -> list[dict[str, Any]]:
+def _records_covering_locus(agi_path: Path, chrom: str, pos: int) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     seen_offsets: set[tuple[int, int]] = set()
     for query_chrom in _chrom_candidates(chrom):
         for record in query_region(
-            vcf_path,
+            agi_path,
             query_chrom,
             pos,
             pos,
-            active_genome_index_path,
             variants_only=False,
             pass_only=False,
             limit=500,

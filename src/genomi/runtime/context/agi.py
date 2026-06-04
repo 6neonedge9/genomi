@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ...active_genome_index.active_genome_index import (
     active_genome_index_readiness,
-    default_active_genome_index_path,
+    default_agi_path,
 )
 from ..host_response import resolve_active_response_profile
 from ..paths import (
@@ -153,7 +153,7 @@ def set_active_genome_index(
     user_nickname: str | None = None,
     set_default_user: bool = False,
     db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     matches: str | Path | None = None,
     shared_db: str | Path | None = None,
     reference_fasta: str | Path | None = None,
@@ -170,7 +170,7 @@ def set_active_genome_index(
         user_nickname=user_nickname,
         set_default_user=set_default_user,
         db=db,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
         matches=matches,
         shared_db=shared_db,
         reference_fasta=reference_fasta,
@@ -190,7 +190,7 @@ def set_active_source(
     user_nickname: str | None = None,
     set_default_user: bool = False,
     db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     matches: str | Path | None = None,
     shared_db: str | Path | None = None,
     reference_fasta: str | Path | None = None,
@@ -206,7 +206,7 @@ def set_active_source(
         operation_result=operation_result,
         status=status,
         db=db,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
         matches=matches,
         shared_db=shared_db,
         reference_fasta=reference_fasta,
@@ -401,7 +401,7 @@ def set_active_paths(
     user_nickname: str | None = None,
     set_default_user: bool = False,
     db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     matches: str | Path | None = None,
     shared_db: str | Path | None = None,
     reference_fasta: str | Path | None = None,
@@ -419,7 +419,7 @@ def set_active_paths(
         user_nickname=user_nickname,
         set_default_user=set_default_user,
         db=db,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
         matches=matches,
         shared_db=shared_db,
         reference_fasta=reference_fasta,
@@ -452,7 +452,7 @@ def infer_run(
     operation_result: JsonObject | None = None,
     status: str = "available",
     db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     matches: str | Path | None = None,
     shared_db: str | Path | None = None,
     reference_fasta: str | Path | None = None,
@@ -466,7 +466,7 @@ def infer_run(
         operation_result=operation_result,
         status=status,
         db=db,
-        active_genome_index_path=active_genome_index_path,
+        agi_path=agi_path,
         matches=matches,
         shared_db=shared_db,
         reference_fasta=reference_fasta,
@@ -483,7 +483,7 @@ def infer_source_run(
     operation_result: JsonObject | None = None,
     status: str = "available",
     db: str | Path | None = None,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     matches: str | Path | None = None,
     shared_db: str | Path | None = None,
     reference_fasta: str | Path | None = None,
@@ -496,7 +496,7 @@ def infer_source_run(
     result = operation_result or {}
     effective_format = _context_source_format(source_path, result.get("source_format") or source_format)
     sample_slug = str(result.get("sample_slug") or sample_slug_from_source(source_path, source_format=effective_format))
-    is_vcf = effective_format in {"vcf", "gvcf"} or bool(result.get("vcf"))
+    is_vcf = effective_format in {"vcf", "gvcf"}
     run: JsonObject = {
         "agi_id": sample_slug,
         "sample_slug": sample_slug,
@@ -505,14 +505,13 @@ def infer_source_run(
         "source_format": effective_format,
         "source_kind": result.get("source_kind"),
         "source_member": result.get("source_member"),
-        "vcf": _path_str(result.get("vcf") or source_path) if is_vcf else None,
         "project_dir": _path_str(result.get("project_dir") or run_project_dir_for_source(source_path, source_format=effective_format, root=root)),
         "work_dir": _path_str(result.get("work_dir") or run_work_dir_for_source(source_path, source_format=effective_format, root=root)),
         "evidence_dir": _path_str(result.get("evidence_dir") or run_evidence_dir_for_source(source_path, source_format=effective_format, root=root)),
         "reference_dir": _path_str(result.get("reference_dir") or run_reference_dir_for_source(source_path, source_format=effective_format, root=root)),
         "evidence_db": _path_str(db or result.get("evidence_db") or run_evidence_db_path_for_source(source_path, source_format=effective_format, root=root)),
         "shared_evidence_db": _path_str(shared_db or result.get("shared_evidence_db") or shared_evidence_db_path(root)),
-        "active_genome_index_path": _path_str(active_genome_index_path or outputs.get("active_genome_index_path") or (default_active_genome_index_path(source_path, root=root) if is_vcf else run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=effective_format, root=root))),
+        "agi_path": _path_str(agi_path or outputs.get("agi_path") or (default_agi_path(source_path, root=root) if is_vcf else run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=effective_format, root=root))),
         "matches": _path_str(matches or outputs.get("clinvar_matches") or (run_output_path(source_path, "clinvar.matches.jsonl", root=root) if is_vcf else None)),
         "candidate_inventory": _path_str(outputs.get("clinvar_scan") or (run_output_path(source_path, "clinvar.candidates.json", root=root) if is_vcf else None)),
         "comparable_vcf": _path_str(result.get("comparable_vcf") or outputs.get("exported_primary_variants") or outputs.get("exported_variants")),
@@ -534,10 +533,9 @@ def describe_run(run: JsonObject | None) -> JsonObject | None:
     digitized = _is_digitized_run(run)
     path_keys = [
         "source",
-        "vcf",
         "evidence_db",
         "shared_evidence_db",
-        "active_genome_index_path",
+        "agi_path",
         "matches",
         "candidate_inventory",
         "comparable_vcf",
@@ -554,12 +552,11 @@ def describe_run(run: JsonObject | None) -> JsonObject | None:
         payload["active_genome_index_readiness"] = active_genome_index_state
     if digitized:
         source_path = payload.pop("source", None)
-        intake_path = payload.pop("vcf", None)
         comparable_variant_export = payload.pop("comparable_vcf", None)
         payload["availability"] = {
             key: value
             for key, value in availability.items()
-            if key not in {"source", "vcf", "comparable_vcf"}
+            if key not in {"source", "comparable_vcf"}
         }
         if comparable_variant_export:
             payload["comparable_variant_export"] = comparable_variant_export
@@ -567,7 +564,7 @@ def describe_run(run: JsonObject | None) -> JsonObject | None:
         payload["intake_source"] = {
             "role": "ingestion_source_for_digitization",
             "hidden_after_digitization": True,
-            "available_for_rebuild": bool((source_path and Path(str(source_path)).exists()) or (intake_path and Path(str(intake_path)).exists())),
+            "available_for_rebuild": bool(source_path and Path(str(source_path)).exists()),
         }
     return payload
 
@@ -615,7 +612,7 @@ def _is_digitized_run(run: JsonObject) -> bool:
     if str(run.get("source_format") or "") in {"vcf", "gvcf"}:
         active_genome_index_state = _active_genome_index_state(run)
         return bool(active_genome_index_state and active_genome_index_state.get("complete"))
-    for key in ("active_genome_index_path", "matches", "candidate_inventory"):
+    for key in ("agi_path", "matches", "candidate_inventory"):
         value = run.get(key)
         if value and Path(str(value)).exists():
             return True
@@ -623,10 +620,10 @@ def _is_digitized_run(run: JsonObject) -> bool:
 
 
 def _active_genome_index_state(run: JsonObject) -> JsonObject | None:
-    active_genome_index_path = run.get("active_genome_index_path")
-    if not active_genome_index_path:
+    agi_path = run.get("agi_path")
+    if not agi_path:
         return None
-    path = Path(str(active_genome_index_path))
+    path = Path(str(agi_path))
     if not path.exists():
         return None
     return active_genome_index_readiness(path)

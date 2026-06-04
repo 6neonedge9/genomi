@@ -207,7 +207,7 @@ def parse_consumer_array_source(
     reference_dir = run_reference_dir_for_source(source_path, source_format=fmt)
     db_path = Path(evidence_db) if evidence_db is not None else run_evidence_db_path_for_source(source_path, source_format=fmt)
     shared_db = Path(shared_evidence_db) if shared_evidence_db is not None else shared_evidence_db_path()
-    active_genome_index_path = run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=fmt)
+    agi_path = run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=fmt)
     project_dir.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
     evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -220,9 +220,9 @@ def parse_consumer_array_source(
         source_evidence_db=source_evidence_db,
         shared_evidence_db=shared_db,
     )
-    active_genome_index_result = _build_consumer_array_active_genome_index(
+    agi_result = _build_consumer_array_active_genome_index(
         source_path,
-        active_genome_index_path,
+        agi_path,
         source_format=fmt,
         spec=spec,
         detection=detection,
@@ -233,7 +233,7 @@ def parse_consumer_array_source(
     steps: list[JsonObject] = [
         {
             "name": "build-active-genome-index",
-            "result": active_genome_index_result,
+            "result": agi_result,
             "reason": "The consumer genotype-array source is digitized into an Active Genome Index.",
         }
     ]
@@ -254,14 +254,14 @@ def parse_consumer_array_source(
         "work_dir": str(work_dir),
         "evidence_dir": str(evidence_dir),
         "reference_dir": str(reference_dir),
-        "outputs": {"active_genome_index_path": str(active_genome_index_path)},
+        "outputs": {"agi_path": str(agi_path)},
         "steps": steps,
     }
 
 
 def _build_consumer_array_active_genome_index(
     source_path: Path,
-    active_genome_index_path: Path,
+    agi_path: Path,
     *,
     source_format: str,
     spec: _ConsumerArraySpec,
@@ -270,10 +270,10 @@ def _build_consumer_array_active_genome_index(
     force: bool,
     max_records: int | None,
 ) -> JsonObject:
-    if active_genome_index_path.exists() and not force:
+    if agi_path.exists() and not force:
         cached = _cached_array_active_genome_index_if_usable(
             source_path,
-            active_genome_index_path,
+            agi_path,
             detection=detection,
             source_format=source_format,
             genome_build=genome_build,
@@ -281,8 +281,8 @@ def _build_consumer_array_active_genome_index(
         )
         if cached is not None:
             return cached
-    active_genome_index_path.parent.mkdir(parents=True, exist_ok=True)
-    with connect_active_genome_index(active_genome_index_path) as connection:
+    agi_path.parent.mkdir(parents=True, exist_ok=True)
+    with connect_active_genome_index(agi_path) as connection:
         _reset_source_active_genome_index_schema(connection)
         _insert_source_active_genome_index_metadata(connection, source_path, detection=detection, genome_build=genome_build, max_records=max_records)
         stats, chromosome_counts = _populate_consumer_array_records(
@@ -301,7 +301,7 @@ def _build_consumer_array_active_genome_index(
         "status": "completed",
         "source": str(source_path),
         "source_format": source_format,
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "schema_version": SCHEMA_VERSION,
         "genome_build": genome_build,
         "stats": stats,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,13 +11,18 @@ from _genomi_runtime_helpers import GenomiRuntimeTestCase
 from genomi.active_genome_index.active_genome_index import (
     ActiveGenomeIndexIncomplete,
     ActiveGenomeIndexNeed,
+    ActiveGenomeIndexNeedsReparse,
     append_reference_pass,
+    active_genome_index_readiness,
     create_active_genome_index,
-    default_active_genome_index_path,
+    default_agi_path,
+    ensure_active_genome_index_complete,
     open_reader,
+    query_region,
 )
 from genomi.operations.registry import agi_access
 from genomi.operations.registry.errors import OperationError
+from genomi.operations.registry.table import call_operation
 from genomi.runtime import context as runtime_context
 
 
@@ -65,6 +72,50 @@ class ReaderParseStateTests(unittest.TestCase):
                 with ref_reader.connect():
                     pass
 
+    def test_point_region_queries_are_readiness_gated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "sample.vcf"
+            index = Path(tmp) / "sample.sqlite"
+            vcf.write_text(
+                "##fileformat=VCFv4.2\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n"
+                "1\t100\trs1\tA\tG\t.\tPASS\t.\tGT\t0/1\n",
+                encoding="utf-8",
+            )
+            create_active_genome_index(vcf, index)
+            with sqlite3.connect(index) as connection:
+                connection.execute(
+                    "update metadata set value = ? where key = 'active_genome_index_complete'",
+                    (json.dumps(False),),
+                )
+                connection.execute(
+                    "update metadata set value = ? where key = 'active_genome_index_build_status'",
+                    (json.dumps("in_progress"),),
+                )
+                connection.commit()
+
+            with self.assertRaises(ActiveGenomeIndexIncomplete):
+                query_region(index, "1", 100, 100)
+
+    def test_variants_ready_indexes_still_enforce_schema_compatibility(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "sample.g.vcf"
+            index = Path(tmp) / "sample.sqlite"
+            _write_gvcf(vcf)
+            create_active_genome_index(vcf, index, parallel_workers=4, defer_reference=True)
+            with sqlite3.connect(index) as connection:
+                connection.execute(
+                    "update metadata set value = ? where key = 'schema_version'",
+                    (json.dumps(1),),
+                )
+                connection.commit()
+
+            readiness = active_genome_index_readiness(index)
+            self.assertFalse(readiness["variants_ready"], readiness)
+            self.assertEqual(readiness["status"], "needs_reparse")
+            with self.assertRaises(ActiveGenomeIndexNeedsReparse):
+                ensure_active_genome_index_complete(index)
+
 
 class OpenAgiAuthTests(GenomiRuntimeTestCase):
     """open_agi composes session authorization with the reader."""
@@ -76,7 +127,7 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
         _write_gvcf(vcf)
         create_active_genome_index(vcf, index)
         runtime_context.set_active_genome_index(
-            vcf, status="parsed", active_genome_index_path=index, genome_build="GRCh38"
+            vcf, status="parsed", agi_path=index, genome_build="GRCh38"
         )
         return index
 
@@ -92,7 +143,7 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
         reader = agi_access.open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="testing", params={})
         # Compare resolved paths: the stored run path is symlink-resolved, and
         # GENOMI_HOME lives under /tmp (a /private/tmp symlink on macOS).
-        self.assertEqual(reader.active_genome_index_path.resolve(), index.resolve())
+        self.assertEqual(reader.agi_path.resolve(), index.resolve())
         self.assertEqual(reader.genome_build, "GRCh38")
 
     def test_no_active_and_not_optional_raises_missing_context(self) -> None:
@@ -117,8 +168,8 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
             need=ActiveGenomeIndexNeed.REFERENCE, action="testing", params={"source": str(vcf)}
         )
         self.assertEqual(
-            reader.active_genome_index_path.resolve(),
-            default_active_genome_index_path(str(vcf)).resolve(),
+            reader.agi_path.resolve(),
+            default_agi_path(str(vcf)).resolve(),
         )
 
     def test_reference_pending_for_call_tracks_active_index(self) -> None:
@@ -128,11 +179,45 @@ class OpenAgiAuthTests(GenomiRuntimeTestCase):
         _write_gvcf(vcf)
         create_active_genome_index(vcf, index, parallel_workers=4, defer_reference=True)
         runtime_context.set_active_genome_index(
-            vcf, status="parsed", active_genome_index_path=index, genome_build="GRCh38"
+            vcf, status="parsed", agi_path=index, genome_build="GRCh38"
         )
         self.assertTrue(agi_access.reference_pending_for_call({}))
         append_reference_pass(index)
         self.assertFalse(agi_access.reference_pending_for_call({}))
+
+    def test_reference_operations_reject_incomplete_selected_index(self) -> None:
+        vcf = self.genomi_home / "incomplete.vcf"
+        vcf.parent.mkdir(parents=True, exist_ok=True)
+        index = vcf.with_suffix(".sqlite")
+        _write_gvcf(vcf)
+        create_active_genome_index(vcf, index)
+        with sqlite3.connect(index) as connection:
+            connection.execute(
+                "update metadata set value = ? where key = 'active_genome_index_complete'",
+                (json.dumps(False),),
+            )
+            connection.execute(
+                "update metadata set value = ? where key = 'active_genome_index_build_status'",
+                (json.dumps("in_progress"),),
+            )
+            connection.commit()
+        runtime_context.set_active_genome_index(
+            vcf, status="parsed", agi_path=index, genome_build="GRCh38"
+        )
+        runtime_context.approve_agi_access()
+
+        operations = [
+            ("active_genome_index.classify_callset_qc", {}),
+            (
+                "active_genome_index.classify_genotype_support",
+                {"chrom": "1", "pos": 500, "ref": "A", "alt": "G"},
+            ),
+            ("active_genome_index.classify_region_callability", {"region": "1:1-10"}),
+        ]
+        for operation, params in operations:
+            with self.subTest(operation=operation), self.assertRaises(OperationError) as raised:
+                call_operation(operation, params)
+            self.assertEqual(raised.exception.code, "active_genome_index_incomplete")
 
 
 if __name__ == "__main__":

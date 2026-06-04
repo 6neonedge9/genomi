@@ -9,11 +9,11 @@ from ..evidence import connect_evidence, default_evidence_path, init_evidence_db
 from ..runtime.external import utc_now
 from ..runtime.handoff import evidence_context
 from ..runtime.paths import run_output_path, sample_slug_from_vcf
-from ..runtime.static_dependencies import resolve_genome_build
+from ..runtime.static_dependencies import _infer_genome_build_from_header, resolve_genome_build
 from .genotype_resolver import resolve_locus_genotype
 from .active_genome_index import (
     create_active_genome_index,
-    default_active_genome_index_path,
+    default_agi_path,
     query_region,
     read_header_from_active_genome_index,
 )
@@ -29,7 +29,7 @@ DEFAULT_CALLABLE_FRACTION = 0.95
 def assess_sample_qc(
     vcf: str | Path,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     evidence_db: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
@@ -38,20 +38,46 @@ def assess_sample_qc(
     """Summarize callset shape and quality as deterministic sample evidence."""
 
     vcf_path = Path(vcf)
-    active_genome_index_path = _ensure_active_genome_index(vcf_path, active_genome_index_path)
-    effective_build = resolve_genome_build(vcf_path, genome_build)
+    agi_path = _ensure_active_genome_index(vcf_path, agi_path)
+    return assess_sample_qc_from_agi(
+        agi_path,
+        evidence_db=evidence_db or default_evidence_path(vcf_path),
+        output=output or run_output_path(vcf_path, "sample-qc.json"),
+        genome_build=resolve_genome_build(vcf_path, genome_build),
+        scan_records=scan_records,
+        input_label=vcf_path.name,
+        sample_id_fallback=sample_slug_from_vcf(vcf_path),
+        extra_payload={"vcf": str(vcf_path)},
+    )
+
+
+def assess_sample_qc_from_agi(
+    agi_path: str | Path,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    scan_records: int = 1000,
+    input_label: str | None = None,
+    sample_id_fallback: str | None = None,
+    extra_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Summarize callset shape and quality from an existing Active Genome Index."""
+
+    agi_path = Path(agi_path)
     # Read the header and the FORMAT-key profile from the structured index —
     # never the canonical/source.
-    with connect_active_genome_index_existing(active_genome_index_path) as _conn:
+    with connect_active_genome_index_existing(agi_path) as _conn:
         header = read_header_from_active_genome_index(_conn)
         scan = _scan_record_profile(_conn, scan_records)
-    counts = _active_genome_index_counts(active_genome_index_path)
-    input_type = _classify_input_type(vcf_path, header.to_dict(), counts)
+    effective_build = _resolve_genome_build_from_agi_header(header, genome_build)
+    counts = _active_genome_index_counts(agi_path)
+    input_type = _classify_input_type(input_label or agi_path.name, header.to_dict(), counts)
     has_reference_blocks = counts["reference_records"] > 0
     has_depth = counts["depth_present_records"] > 0
     has_genotype_quality = counts["genotype_quality_present_records"] > 0
     absence_allowed = has_reference_blocks and has_depth
-    sample_id = header.samples[0] if header.samples else sample_slug_from_vcf(vcf_path)
+    sample_id = header.samples[0] if header.samples else (sample_id_fallback or agi_path.stem)
     summary = {
         "total_records": counts["total_records"],
         "variant_records": counts["variant_records"],
@@ -72,8 +98,7 @@ def assess_sample_qc(
         "workflow_area": "static",
         "status": "completed",
         "step": "sample-qc",
-        "vcf": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "sample_id": sample_id,
         "genome_build": effective_build,
         "input_type": input_type,
@@ -92,15 +117,17 @@ def assess_sample_qc(
             "research",
             reason="Sample QC is available; intent research must use it to decide whether observed or absent alleles can support report claims.",
             commands=[
-                "genomi call active_genome_index.classify_genotype_support --params '{\"vcf\":\"<vcf>\",\"chrom\":\"<chrom>\",\"pos\":123,\"ref\":\"<ref>\",\"alt\":\"<alt>\",\"reference_fasta\":\"<GRCh38.fa>\"}'",
-                "genomi call active_genome_index.classify_region_callability --params '{\"vcf\":\"<vcf>\",\"region\":\"<chrom:start-end>\"}'",
+                "genomi call active_genome_index.classify_genotype_support --params '{\"agi_path\":\"<agi.sqlite>\",\"chrom\":\"<chrom>\",\"pos\":123,\"ref\":\"<ref>\",\"alt\":\"<alt>\",\"reference_fasta\":\"<GRCh38.fa>\"}'",
+                "genomi call active_genome_index.classify_region_callability --params '{\"agi_path\":\"<agi.sqlite>\",\"region\":\"<chrom:start-end>\"}'",
                 "genomi call research.build_target_packet --params '{\"db\":\"<evidence.sqlite>\",\"target_type\":\"gene\",\"gene\":\"<gene>\"}'",
             ],
         ),
     }
-    db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf_path)
+    if extra_payload:
+        payload.update(extra_payload)
+    db_path = Path(evidence_db) if evidence_db is not None else _default_agi_evidence_path(agi_path)
     _record_sample_qc(db_path, payload)
-    output_path = Path(output) if output is not None else run_output_path(vcf_path, "sample-qc.json")
+    output_path = Path(output) if output is not None else agi_path.parent / "sample-qc.json"
     _write_json(output_path, payload)
     payload["output"] = str(output_path)
     return payload
@@ -113,7 +140,7 @@ def assess_genotype_support(
     ref: str,
     alt: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     evidence_db: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
@@ -124,25 +151,57 @@ def assess_genotype_support(
     """Classify whether one VCF allele is technically supported in the sample."""
 
     vcf_path = Path(vcf)
-    active_genome_index_path = _ensure_active_genome_index(vcf_path, active_genome_index_path)
-    effective_build = resolve_genome_build(vcf_path, genome_build)
-    support = resolve_locus_genotype(
-        vcf_path,
+    agi_path = _ensure_active_genome_index(vcf_path, agi_path)
+    return assess_genotype_support_from_agi(
+        agi_path,
         chrom,
         pos,
         ref,
         alt,
-        active_genome_index_path=active_genome_index_path,
+        evidence_db=evidence_db or default_evidence_path(vcf_path),
+        output=output,
+        genome_build=resolve_genome_build(vcf_path, genome_build),
+        reference_fasta=reference_fasta,
+        min_depth=min_depth,
+        min_genotype_quality=min_genotype_quality,
+        extra_payload={"vcf": str(vcf_path)},
+    )
+
+
+def assess_genotype_support_from_agi(
+    agi_path: str | Path,
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    reference_fasta: str | Path | None = None,
+    min_depth: int = DEFAULT_MIN_DEPTH,
+    min_genotype_quality: int = DEFAULT_MIN_GENOTYPE_QUALITY,
+    extra_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Classify whether one exact allele has sample support in an AGI."""
+
+    agi_path = Path(agi_path)
+    support = resolve_locus_genotype(
+        agi_path,
+        chrom,
+        pos,
+        ref,
+        alt,
         reference_fasta=reference_fasta,
         min_depth=min_depth,
         min_genotype_quality=min_genotype_quality,
     )
+    effective_build = _resolve_genome_build_from_agi_path(agi_path, genome_build)
     payload = {
         "workflow_area": "static",
         "status": "completed",
         "step": "genotype-support",
-        "vcf": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "genome_build": effective_build,
         "variant": {
             "chrom": chrom,
@@ -170,7 +229,9 @@ def assess_genotype_support(
             ],
         ),
     }
-    db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf_path)
+    if extra_payload:
+        payload.update(extra_payload)
+    db_path = Path(evidence_db) if evidence_db is not None else _default_agi_evidence_path(agi_path)
     _record_genotype_support(db_path, payload)
     if output is not None:
         _write_json(Path(output), payload)
@@ -182,7 +243,7 @@ def assess_region_callability(
     vcf: str | Path,
     region: str,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     evidence_db: str | Path | None = None,
     output: str | Path | None = None,
     genome_build: str = "auto",
@@ -193,11 +254,39 @@ def assess_region_callability(
     """Classify whether a region can support reference/absence claims."""
 
     vcf_path = Path(vcf)
-    active_genome_index_path = _ensure_active_genome_index(vcf_path, active_genome_index_path)
-    effective_build = resolve_genome_build(vcf_path, genome_build)
+    agi_path = _ensure_active_genome_index(vcf_path, agi_path)
+    return assess_region_callability_from_agi(
+        agi_path,
+        region,
+        evidence_db=evidence_db or default_evidence_path(vcf_path),
+        output=output,
+        genome_build=resolve_genome_build(vcf_path, genome_build),
+        min_depth=min_depth,
+        min_covered_fraction=min_covered_fraction,
+        limit=limit,
+        extra_payload={"vcf": str(vcf_path)},
+    )
+
+
+def assess_region_callability_from_agi(
+    agi_path: str | Path,
+    region: str,
+    *,
+    evidence_db: str | Path | None = None,
+    output: str | Path | None = None,
+    genome_build: str = "auto",
+    min_depth: int = DEFAULT_MIN_DEPTH,
+    min_covered_fraction: float = DEFAULT_CALLABLE_FRACTION,
+    limit: int = 5000,
+    extra_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Classify whether a region can support reference/absence claims from an AGI."""
+
+    agi_path = Path(agi_path)
+    effective_build = _resolve_genome_build_from_agi_path(agi_path, genome_build)
     chrom, start, end = parse_region(region)
-    records = query_region(vcf_path, chrom, start, end, active_genome_index_path, variants_only=False, pass_only=False, limit=limit)
-    counts = _active_genome_index_counts(active_genome_index_path)
+    records = query_region(agi_path, chrom, start, end, variants_only=False, pass_only=False, limit=limit)
+    counts = _active_genome_index_counts(agi_path)
     callability = _classify_callability(
         records,
         start,
@@ -211,8 +300,7 @@ def assess_region_callability(
         "workflow_area": "static",
         "status": "completed",
         "step": "callability",
-        "vcf": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "genome_build": effective_build,
         "region": region,
         "chrom": chrom,
@@ -240,7 +328,9 @@ def assess_region_callability(
             ],
         ),
     }
-    db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf_path)
+    if extra_payload:
+        payload.update(extra_payload)
+    db_path = Path(evidence_db) if evidence_db is not None else _default_agi_evidence_path(agi_path)
     _record_region_callability(db_path, payload)
     if output is not None:
         _write_json(Path(output), payload)
@@ -248,17 +338,17 @@ def assess_region_callability(
     return payload
 
 
-def _ensure_active_genome_index(vcf_path: Path, active_genome_index_path: str | Path | None) -> Path:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
-    if not active_genome_index_path.exists():
-        create_active_genome_index(vcf_path, active_genome_index_path, include_reference=True)
-    return active_genome_index_path
+def _ensure_active_genome_index(vcf_path: Path, agi_path: str | Path | None) -> Path:
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    if not agi_path.exists():
+        create_active_genome_index(vcf_path, agi_path, include_reference=True)
+    return agi_path
 
 
-def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any]:
+def _active_genome_index_counts(agi_path: Path) -> dict[str, Any]:
     reference_block_predicate = reference_block_sql()
     array_no_call_predicate = array_no_call_sql()
-    with connect_active_genome_index_existing(active_genome_index_path) as connection:
+    with connect_active_genome_index_existing(agi_path) as connection:
         row = connection.execute(
             f"""
             select
@@ -337,10 +427,26 @@ def _scan_record_profile(connection: Any, limit: int) -> dict[str, Any]:
     }
 
 
-def _classify_input_type(vcf_path: Path, header: dict[str, Any], counts: dict[str, Any]) -> str:
+def _resolve_genome_build_from_agi_path(agi_path: Path, requested: str | None) -> str:
+    with connect_active_genome_index_existing(agi_path) as connection:
+        return _resolve_genome_build_from_agi_header(read_header_from_active_genome_index(connection), requested)
+
+
+def _resolve_genome_build_from_agi_header(header: Any, requested: str | None) -> str:
+    requested_normalized = (requested or "auto").strip()
+    if requested_normalized.lower() not in {"", "auto"}:
+        return resolve_genome_build("", requested_normalized)
+    return _infer_genome_build_from_header(header) or "GRCh38"
+
+
+def _default_agi_evidence_path(agi_path: Path) -> Path:
+    return agi_path.parent / "evidence.sqlite"
+
+
+def _classify_input_type(input_label: str, header: dict[str, Any], counts: dict[str, Any]) -> str:
     text = " ".join(
         [
-            vcf_path.name,
+            input_label,
             str(header.get("source") or ""),
             str(header.get("dataSourceType") or ""),
             str(header.get("dataAnalysisProvider") or ""),
@@ -508,14 +614,14 @@ def _record_sample_qc(evidence_db: Path, payload: dict[str, Any]) -> None:
         connection.execute(
             """
             insert or replace into sample_qc (
-                sample_id, vcf_path, genome_build, input_type, has_reference_blocks,
+                sample_id, agi_path, genome_build, input_type, has_reference_blocks,
                 has_depth, has_genotype_quality, absence_claims_allowed,
                 summary_json, evidence_boundaries_json, created_at
             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 payload["sample_id"],
-                payload["vcf"],
+                _private_agi_path(payload),
                 payload["genome_build"],
                 payload["input_type"],
                 int(payload["has_reference_blocks"]),
@@ -538,13 +644,13 @@ def _record_genotype_support(evidence_db: Path, payload: dict[str, Any]) -> None
         connection.execute(
             """
             insert or replace into genotype_support (
-                vcf_path, chrom, pos, ref, alt, genome_build, support_status,
+                agi_path, chrom, pos, ref, alt, genome_build, support_status,
                 evidence_class, genotype, zygosity, depth, genotype_quality,
                 filter, raw_json, created_at
             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                payload["vcf"],
+                _private_agi_path(payload),
                 variant["chrom"],
                 variant["pos"],
                 variant["ref"],
@@ -570,13 +676,13 @@ def _record_region_callability(evidence_db: Path, payload: dict[str, Any]) -> No
         connection.execute(
             """
             insert or replace into region_callability (
-                vcf_path, region, chrom, start, end, genome_build, callability_status,
+                agi_path, region, chrom, start, end, genome_build, callability_status,
                 covered_fraction, can_support_negative_claim, evidence_class,
                 raw_json, created_at
             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                payload["vcf"],
+                _private_agi_path(payload),
                 payload["region"],
                 payload["chrom"],
                 payload["start"],
@@ -591,6 +697,10 @@ def _record_region_callability(evidence_db: Path, payload: dict[str, Any]) -> No
             ),
         )
         connection.commit()
+
+
+def _private_agi_path(payload: dict[str, Any]) -> str:
+    return str(payload.get("agi_path") or "")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

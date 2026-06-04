@@ -161,7 +161,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             index = Path(tmp) / "active-genome-index.sqlite"
             output = Path(tmp) / "sample-qc.json"
 
-            result = run_static_sample_qc(TINY_VCF, evidence_db=db, active_genome_index_path=index, output=output)
+            result = run_static_sample_qc(TINY_VCF, evidence_db=db, agi_path=index, output=output)
             summary = evidence_summary(db)
 
             self.assertEqual(result["status"], "completed")
@@ -184,7 +184,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "A",
                 "C",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
             )
             self.assertEqual(supported["support_status"], "supported")
             self.assertIn("genotype_support_supported", supported["accepted_report_evidence_classes"])
@@ -209,7 +209,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "A",
                 "G",
                 evidence_db=db,
-                active_genome_index_path=Path(tmp) / "weak-active-genome-index.sqlite",
+                agi_path=Path(tmp) / "weak-active-genome-index.sqlite",
             )
 
             self.assertEqual(weak["support_status"], "weak")
@@ -246,7 +246,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "C",
                 "T",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
                 reference_fasta=fasta,
             )
 
@@ -281,7 +281,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "A",
                 "G",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
             )
 
             self.assertEqual(result["support_status"], "supported")
@@ -314,7 +314,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "C",
                 "T",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
             )
 
             self.assertEqual(result["support_status"], "supported")
@@ -348,7 +348,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "C",
                 "-",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
             )
 
             self.assertEqual(result["support_status"], "supported")
@@ -362,7 +362,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             index = Path(tmp) / "active-genome-index.sqlite"
             import_clinvar_vcf(TINY_CLINVAR, db, source_version="fixture")
             match_clinvar_variants(TINY_VCF, db, matches)
-            run_static_sample_qc(TINY_VCF, evidence_db=db, active_genome_index_path=index, output=Path(tmp) / "sample-qc.json")
+            run_static_sample_qc(TINY_VCF, evidence_db=db, agi_path=index, output=Path(tmp) / "sample-qc.json")
             run_static_genotype_support(
                 TINY_VCF,
                 "1",
@@ -370,7 +370,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 "A",
                 "C",
                 evidence_db=db,
-                active_genome_index_path=index,
+                agi_path=index,
                 min_depth=100,
             )
 
@@ -388,7 +388,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 TINY_VCF,
                 "1:10001-10249",
                 evidence_db=db,
-                active_genome_index_path=Path(tmp) / "active-genome-index.sqlite",
+                agi_path=Path(tmp) / "active-genome-index.sqlite",
             )
 
             self.assertEqual(callable_result["callability_status"], "callable")
@@ -415,7 +415,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 variant_only_vcf,
                 "1:10251-10251",
                 evidence_db=db,
-                active_genome_index_path=Path(tmp) / "variant-only-active-genome-index.sqlite",
+                agi_path=Path(tmp) / "variant-only-active-genome-index.sqlite",
             )
 
             self.assertEqual(unknown["callability_status"], "unknown_no_reference_blocks")
@@ -454,13 +454,13 @@ class EvidenceImportTests(EvidenceImportTestBase):
             self.assertEqual(chr_result["stats"]["matched_alleles"], 2)
             self.assertIn('"chrom": "chr1"', chr_output.read_text(encoding="utf-8").splitlines()[0])
 
-            active_genome_index_file = Path(tmp) / "tiny-active-genome-index.sqlite"
-            active_genome_index_output = Path(tmp) / "active-genome-index-matches.jsonl"
-            create_active_genome_index(chr_vcf, active_genome_index_file)
-            active_genome_index_result = match_clinvar_variants_from_active_genome_index(active_genome_index_file, db, active_genome_index_output)
-            self.assertEqual(active_genome_index_result["stats"]["matched_alleles"], 2)
-            self.assertIn('"chrom": "chr1"', active_genome_index_output.read_text(encoding="utf-8").splitlines()[0])
-            active_payload = json.loads(active_genome_index_output.read_text(encoding="utf-8").splitlines()[0])
+            agi_path = Path(tmp) / "tiny-active-genome-index.sqlite"
+            agi_output = Path(tmp) / "active-genome-index-matches.jsonl"
+            create_active_genome_index(chr_vcf, agi_path)
+            agi_result = match_clinvar_variants_from_active_genome_index(agi_path, db, agi_output)
+            self.assertEqual(agi_result["stats"]["matched_alleles"], 2)
+            self.assertIn('"chrom": "chr1"', agi_output.read_text(encoding="utf-8").splitlines()[0])
+            active_payload = json.loads(agi_output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(active_payload["match_basis"], "exact_allele")
             self.assertEqual(active_payload["sample_variant"]["source_record_ref"], active_payload["sample_variant"]["ref"])
 
@@ -536,9 +536,13 @@ class EvidenceImportTests(EvidenceImportTestBase):
                             "genotype": "TG",
                             "filter": "PASS",
                             "source_format": "23andme",
+                            "record_kind": "array_call",
+                            "observed_alleles": ["T", "G"],
                             "source_record_ref": ".",
                             "source_record_alt": ".",
                             "source_record_format": "GT_ARRAY",
+                            "source_record_record_kind": "array_call",
+                            "source_record_observed_alleles": ["T", "G"],
                         },
                         "clinvar": {
                             "chrom": "1",
@@ -567,6 +571,11 @@ class EvidenceImportTests(EvidenceImportTestBase):
             annotations["annotations"][0]["match_provenance"]["primary_match_basis"],
             "consumer_array_allele_inference",
         )
+        variant = annotations["annotations"][0]["variant"]
+        self.assertEqual(variant["record_kind"], "array_call")
+        self.assertEqual(variant["observed_alleles"], ["T", "G"])
+        self.assertEqual(variant["source_record_record_kind"], "array_call")
+        self.assertEqual(variant["source_record_observed_alleles"], ["T", "G"])
 
     def test_clinvar_match_report_marks_multiallelic_source_alt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

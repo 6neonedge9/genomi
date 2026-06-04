@@ -22,6 +22,7 @@ from .catalog_meta import (
     BASE_CAPABILITIES_IN_DEFAULT_TOOLS_LIST,
     TOOL_CATALOG_OPERATIONS,
 )
+from .handlers_admin_next_actions import assign_profile_next_action, reference_pass_next_action
 from .coerce import (
     _bool,
     _int,
@@ -162,7 +163,7 @@ def _genomi_assign_user_genome(params: JsonObject) -> JsonObject:
             agi_id=params.get("agi_id"),
             source=params.get("source"),
             db=_optional_path(params, "db"),
-            active_genome_index_path=_optional_path(params, "active_genome_index_path"),
+            agi_path=_optional_path(params, "agi_path"),
             matches=_optional_path(params, "matches"),
             shared_db=_optional_path(params, "shared_db"),
             reference_fasta=_optional_path(params, "reference_fasta"),
@@ -564,11 +565,11 @@ def _effective_runtime_schema() -> int:
     return SCHEMA_VERSION
 
 
-def _stored_index_schema(index_path: str) -> int | None:
+def _stored_agi_schema(agi_path: str) -> int | None:
     from ...active_genome_index.active_genome_index import connect_existing
 
     try:
-        with connect_existing(index_path) as connection:
+        with connect_existing(agi_path) as connection:
             row = connection.execute("select value from metadata where key = 'schema_version'").fetchone()
     except Exception:
         return None
@@ -604,14 +605,14 @@ def _reparse_stale_genomes() -> JsonObject:
     for agi_id, record in agis.items():
         if not isinstance(record, dict):
             continue
-        index_path = record.get("active_genome_index_path")
-        if not index_path or not Path(str(index_path)).exists():
+        agi_path = record.get("agi_path")
+        if not agi_path or not Path(str(agi_path)).exists():
             continue
         checked += 1
-        stored = _stored_index_schema(str(index_path))
+        stored = _stored_agi_schema(str(agi_path))
         if stored is None or stored >= effective_schema:
             continue
-        source = record.get("source") or record.get("vcf")
+        source = record.get("source")
         entry: JsonObject = {
             "agi_id": agi_id,
             "nickname": record.get("nickname"),
@@ -958,45 +959,7 @@ def _genomi_parse_source(params: JsonObject) -> JsonObject:
     # The user did not pre-supply a profile name, so prompt for one (and whether
     # to make it the default) exactly like INSTALL_FOR_AGENTS.md Step 8.
     if not params.get("user_nickname"):
-        parsed = _with_next_action(parsed, _assign_profile_next_action())
+        parsed = _with_next_action(parsed, assign_profile_next_action())
     if reference_pending:
-        parsed = _with_next_action(parsed, _reference_pass_next_action(reference_job_id, outputs.get("reference_pass_job_path")))
+        parsed = _with_next_action(parsed, reference_pass_next_action(reference_job_id, outputs.get("reference_pass_job_path")))
     return parsed
-
-
-def _assign_profile_next_action() -> JsonObject:
-    """Prompt for a profile nickname + set-default choice after a parse, the
-    same offer INSTALL_FOR_AGENTS.md Step 8 makes."""
-    return {
-        "action": "ask_user",
-        "question": (
-            "Give this genome a profile nickname (e.g. a first name or initials), and "
-            "should it be the default profile for this machine?"
-        ),
-        "then": (
-            "Record the answer by re-running genomi.parse_source with user_nickname "
-            "(and set_default_user=true if they want it as the default), or via the "
-            "invoke-only active_genome_index.assign_user_genome / set_default_user tools."
-        ),
-    }
-
-
-def _reference_pass_next_action(job_id: object, job_path: object) -> JsonObject:
-    """Surface the detached Phase B (reference-block) job so the host can poll
-    it. Variants are already fully queryable; this only completes 'confirmed
-    reference vs not-callable' coverage answers."""
-    action: JsonObject = {
-        "action": "background_job",
-        "operation": "active_genome_index.build_reference_pass",
-        "why": (
-            "Variants are ready now. The reference-block tail (~96% of a gVCF) is "
-            "being appended in the background; coverage / 'is this site confirmed "
-            "reference' answers stay provisional until it reports completed."
-        ),
-        "then": "Call genomi.check_background_job with this job_id to watch it finish.",
-    }
-    if job_id is not None:
-        action["job_id"] = job_id
-    if job_path is not None:
-        action["job_path"] = job_path
-    return action

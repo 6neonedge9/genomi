@@ -50,10 +50,14 @@ from .queries import (
     query_static_rsid,
     query_static_variant,
     run_static_callability,
+    run_static_callability_from_agi,
     run_static_genotype_support,
+    run_static_genotype_support_from_agi,
     run_static_sample_qc,
+    run_static_sample_qc_from_agi,
     static_db_lookup,
     summarize_static_state,
+    summarize_static_state_from_agi,
 )
 
 __all__ = [
@@ -73,11 +77,15 @@ __all__ = [
     "query_static_rsid",
     "query_static_variant",
     "run_static_callability",
+    "run_static_callability_from_agi",
     "run_static_genotype_support",
+    "run_static_genotype_support_from_agi",
     "run_static_sample_qc",
+    "run_static_sample_qc_from_agi",
     "scan_static_candidates",
     "static_db_lookup",
     "summarize_static_state",
+    "summarize_static_state_from_agi",
     "sync_static_evidence_to_shared",
     "workflow_contract",
 ]

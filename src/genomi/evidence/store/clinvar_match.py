@@ -275,11 +275,11 @@ def match_clinvar_variants_from_active_genome_index(
         if isinstance(active_genome_index, ActiveGenomeIndexReader)
         else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
     )
-    active_genome_index_path = reader.active_genome_index_path
+    agi_path = reader.agi_path
     evidence_db = Path(evidence_db)
     output_path = Path(output_path)
-    if not active_genome_index_path.exists():
-        raise FileNotFoundError(active_genome_index_path)
+    if not agi_path.exists():
+        raise FileNotFoundError(agi_path)
     if not evidence_db.exists():
         raise FileNotFoundError(evidence_db)
     if batch_size <= 0:
@@ -295,7 +295,7 @@ def match_clinvar_variants_from_active_genome_index(
         clinvar_identity = _clinvar_cache_identity(connection)
     cache_expected = {
         "step": "match_clinvar_from_active_genome_index",
-        "input_active_genome_index": file_metadata(active_genome_index_path),
+        "input_active_genome_index": file_metadata(agi_path),
         "evidence_db": str(evidence_db),
         "clinvar_evidence": clinvar_identity,
         "output": str(output_path),
@@ -334,7 +334,7 @@ def match_clinvar_variants_from_active_genome_index(
     with connect_evidence(evidence_db) as evidence_connection, output_path.open("w", encoding="utf-8") as handle:
         _ensure_schema(evidence_connection)
         reader.attach_to(evidence_connection, "sample_active_genome_index")
-        _ensure_active_genome_index_ready_for_clinvar_match(evidence_connection, active_genome_index_path)
+        _ensure_active_genome_index_ready_for_clinvar_match(evidence_connection, agi_path)
         selection_params = (max_records,) if max_records is not None else ()
         stats_row = evidence_connection.execute(
             f"""
@@ -401,7 +401,7 @@ def match_clinvar_variants_from_active_genome_index(
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return {
         "status": "completed",
-        "input_active_genome_index": str(active_genome_index_path),
+        "input_active_genome_index": str(agi_path),
         "output": str(output_path),
         "manifest_path": str(manifest_path),
         "stats": stats,
@@ -430,6 +430,7 @@ def _selected_active_genome_index_records_cte_sql(
                 select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                        info,
                        sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
+                       observed_alleles,
                        sample_chrom_original, sample_pos_original
                 from temp.lifted_selected_records
             )
@@ -438,7 +439,8 @@ def _selected_active_genome_index_records_cte_sql(
             with selected_records as (
                 select rowid as record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
                        info,
-                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind
+                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
+                       observed_alleles
                 from sample_active_genome_index.records
                 where record_kind in ('variant_call', 'array_call')
         """
@@ -496,7 +498,8 @@ def _populate_lifted_selected_active_genome_index_records_table(
             genotype text,
             depth integer,
             genotype_quality integer,
-            record_kind text
+            record_kind text,
+            observed_alleles text
         );
         create index lifted_selected_records_locus_idx
             on lifted_selected_records(chrom, pos);
@@ -543,6 +546,7 @@ def _populate_lifted_selected_active_genome_index_records_table(
                 row["depth"],
                 row["genotype_quality"],
                 row["record_kind"],
+                row["observed_alleles"],
             )
         )
         lifted += 1
@@ -552,16 +556,16 @@ def _populate_lifted_selected_active_genome_index_records_table(
             insert into temp.lifted_selected_records (
                 record_rowid, sample_chrom_original, sample_pos_original,
                 chrom, chrom_sort, pos, rsid, ref, alt, info, qual, filter,
-                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind
+                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind, observed_alleles
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             insert_buffer,
         )
     return lifted, dropped
 
 
-def _ensure_active_genome_index_ready_for_clinvar_match(connection: sqlite3.Connection, active_genome_index_path: Path) -> None:
+def _ensure_active_genome_index_ready_for_clinvar_match(connection: sqlite3.Connection, agi_path: Path) -> None:
     stats_count = connection.execute("select count(*) from sample_active_genome_index.stats").fetchone()[0]
     index_names = {
         str(row["name"])
@@ -582,7 +586,7 @@ def _ensure_active_genome_index_ready_for_clinvar_match(connection: sqlite3.Conn
         if missing_indexes:
             details.append(f"missing query indexes: {', '.join(missing_indexes)}")
         raise RuntimeError(
-            f"Active Genome Index is incomplete for ClinVar refresh ({active_genome_index_path}): "
+            f"Active Genome Index is incomplete for ClinVar refresh ({agi_path}): "
             f"{'; '.join(details)}. Rebuild the Active Genome Index from the source genome file once."
         )
 
@@ -843,6 +847,8 @@ def _clinvar_index_direct_select_sql(
                 r.alt as source_record_alt,
                 r.format as source_record_format,
                 r.genotype as source_record_genotype,
+                r.record_kind as source_record_kind,
+                r.observed_alleles as source_record_observed_alleles,
                 r.info as source_record_info,
                 null as source_format,
                 cv.chrom as chrom,

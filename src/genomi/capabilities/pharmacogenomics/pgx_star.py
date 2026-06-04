@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
+from ...active_genome_index.observations import observed_alleles_from_record
 from ..variant import variant_lookup
 
 JsonObject = dict[str, Any]
@@ -198,27 +198,7 @@ def _sample_marker_call(match: JsonObject, effect_allele: str) -> JsonObject:
 
 
 def _observed_alleles(match: JsonObject) -> list[str]:
-    genotype = str(match.get("genotype") or "").strip().upper()
-    ref = str(match.get("ref") or "").strip().upper()
-    alts = [item.strip().upper() for item in str(match.get("alt") or "").split(",") if item.strip()]
-    if re.fullmatch(r"[0-9.]+([/|][0-9.]+)*", genotype):
-        alleles = []
-        for token in re.split(r"[/|]", genotype):
-            if token in {"", "."}:
-                continue
-            try:
-                index = int(token)
-            except ValueError:
-                continue
-            if index == 0 and ref:
-                alleles.append(ref)
-            elif index > 0 and index <= len(alts):
-                alleles.append(alts[index - 1])
-        return alleles
-    letter_tokens = re.findall(r"[ACGT]", genotype)
-    if letter_tokens:
-        return letter_tokens
-    return []
+    return observed_alleles_from_record(match)
 
 
 def _called_star_alleles(marker_calls: list[JsonObject]) -> list[JsonObject]:

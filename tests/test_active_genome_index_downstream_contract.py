@@ -308,7 +308,7 @@ class ActiveGenomeIndexDownstreamContractTests(
     def _assert_parse_ready(self, parsed: dict[str, object], contract: SourceContractCase) -> None:
         self.assertEqual(parsed["status"], "completed")
         self.assertEqual(parsed["source_format"], contract.expected_format)
-        readiness = active_genome_index_readiness(parsed["outputs"]["active_genome_index_path"])
+        readiness = active_genome_index_readiness(parsed["outputs"]["agi_path"])
         self.assertTrue(readiness["complete"], readiness)
         self.assertEqual(readiness["missing_objects"], [])
 
@@ -481,6 +481,12 @@ class ActiveGenomeIndexDownstreamContractTests(
             self.assertEqual(candidates_by_pos[200]["variant"]["source_record_ref"], ".")
             self.assertEqual(candidates_by_pos[200]["variant"]["source_record_alt"], ".")
             self.assertEqual(candidates_by_pos[200]["variant"]["source_record_format"], "GT_ARRAY")
+            self.assertEqual(candidates_by_pos[200]["variant"]["record_kind"], "array_call")
+            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_record_kind"], "array_call")
+            self.assertEqual(
+                candidates_by_pos[200]["variant"]["source_record_observed_alleles"],
+                candidates_by_pos[200]["variant"]["observed_alleles"],
+            )
 
     def _assert_genotype_support_contracts(self, contract: SourceContractCase) -> None:
         for index, locus in enumerate(LOCUS_CONTRACTS):

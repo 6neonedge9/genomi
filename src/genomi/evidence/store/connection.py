@@ -320,7 +320,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
 
         create table if not exists sample_qc (
             sample_id text not null,
-            vcf_path text not null,
+            agi_path text not null,
             genome_build text not null,
             input_type text not null,
             has_reference_blocks integer not null,
@@ -330,11 +330,11 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             summary_json text not null,
             evidence_boundaries_json text not null,
             created_at text not null,
-            primary key (vcf_path, genome_build)
+            primary key (agi_path, genome_build)
         );
 
         create table if not exists genotype_support (
-            vcf_path text not null,
+            agi_path text not null,
             chrom text not null,
             pos integer not null,
             ref text not null,
@@ -349,13 +349,13 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             filter text,
             raw_json text not null,
             created_at text not null,
-            primary key (vcf_path, chrom, pos, ref, alt, genome_build)
+            primary key (agi_path, chrom, pos, ref, alt, genome_build)
         );
         create index if not exists genotype_support_variant_idx
           on genotype_support(chrom, pos, ref, alt, genome_build);
 
         create table if not exists region_callability (
-            vcf_path text not null,
+            agi_path text not null,
             region text not null,
             chrom text not null,
             start integer not null,
@@ -367,7 +367,7 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
             evidence_class text not null,
             raw_json text not null,
             created_at text not null,
-            primary key (vcf_path, region, genome_build)
+            primary key (agi_path, region, genome_build)
         );
         create index if not exists region_callability_region_idx
           on region_callability(chrom, start, end, genome_build);

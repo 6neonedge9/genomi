@@ -31,7 +31,7 @@ def _register_stale_genome(home, *, stored_schema: int = 1):
         _upsert_metadata(connection, "schema_version", stored_schema)
         connection.commit()
     runtime_context.set_active_genome_index(
-        vcf, status="parsed", active_genome_index_path=index, genome_build="GRCh38"
+        vcf, status="parsed", agi_path=index, genome_build="GRCh38"
     )
     return vcf, index
 

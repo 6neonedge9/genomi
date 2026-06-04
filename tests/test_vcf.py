@@ -180,78 +180,77 @@ class VcfParsingTests(unittest.TestCase):
 class IndexTests(unittest.TestCase):
     def test_index_and_queries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            summary = create_active_genome_index(FIXTURE, active_genome_index_path)
+            summary = create_active_genome_index(FIXTURE, agi_path)
 
             self.assertEqual(summary["stats"]["total_records"], 5)
             self.assertEqual(summary["stats"]["variant_records"], 2)
             self.assertEqual(summary["stats"]["reference_records"], 3)
 
-            rsid_records = query_rsid(FIXTURE, "rs199706086", active_genome_index_path)
+            rsid_records = query_rsid(agi_path, "rs199706086")
             self.assertEqual(len(rsid_records), 1)
             self.assertEqual(rsid_records[0]["variant_key"], "1:10250:A:C")
 
-            variant_records = query_variant(FIXTURE, "1", 10257, "A", "C", active_genome_index_path)
+            variant_records = query_variant(agi_path, "1", 10257, "A", "C")
             self.assertEqual(len(variant_records), 1)
             self.assertEqual(variant_records[0]["id"], "rs111200574")
 
-            region_records = query_region(FIXTURE, "1", 10250, 10257, active_genome_index_path, variants_only=True)
+            region_records = query_region(agi_path, "1", 10250, 10257, variants_only=True)
             self.assertEqual([record["pos"] for record in region_records], [10250, 10257])
 
             pass_only_records = query_region(
-                FIXTURE,
+                agi_path,
                 "1",
                 10595,
                 10595,
-                active_genome_index_path,
                 variants_only=False,
                 pass_only=True,
             )
             self.assertEqual(pass_only_records, [])
 
-            coverage = coverage_query(FIXTURE, "1", 10001, 10249, active_genome_index_path)
+            coverage = coverage_query(agi_path, "1", 10001, 10249)
             self.assertEqual(coverage["covered_fraction"], 1)
             self.assertEqual(coverage["segments"], [{"start": 10001, "end": 10249}])
 
-            failures = failure_summary(FIXTURE, active_genome_index_path, example_limit=2)
+            failures = failure_summary(FIXTURE, agi_path, example_limit=2)
             self.assertEqual(failures["filter"], "FAIL")
             self.assertEqual(failures["by_variant_status"], [{"status": "reference_or_no_call", "records": 1}])
             self.assertEqual(len(failures["examples"]), 1)
 
     def test_create_active_genome_index_reuses_existing_matching_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            first = create_active_genome_index(FIXTURE, active_genome_index_path)
-            first_mtime = active_genome_index_path.stat().st_mtime_ns
-            second = create_active_genome_index(FIXTURE, active_genome_index_path)
+            first = create_active_genome_index(FIXTURE, agi_path)
+            first_mtime = agi_path.stat().st_mtime_ns
+            second = create_active_genome_index(FIXTURE, agi_path)
 
             self.assertEqual(first["status"], "completed")
             self.assertEqual(second["status"], "cached")
             self.assertEqual(second["stats"], first["stats"])
-            self.assertEqual(active_genome_index_path.stat().st_mtime_ns, first_mtime)
+            self.assertEqual(agi_path.stat().st_mtime_ns, first_mtime)
 
     def test_create_active_genome_index_reuses_full_index_for_later_capped_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            first = create_active_genome_index(FIXTURE, active_genome_index_path)
-            first_mtime = active_genome_index_path.stat().st_mtime_ns
-            second = create_active_genome_index(FIXTURE, active_genome_index_path, max_records=1)
+            first = create_active_genome_index(FIXTURE, agi_path)
+            first_mtime = agi_path.stat().st_mtime_ns
+            second = create_active_genome_index(FIXTURE, agi_path, max_records=1)
 
             self.assertEqual(first["status"], "completed")
             self.assertEqual(first["stats"]["total_records"], 5)
             self.assertEqual(second["status"], "cached")
             self.assertEqual(second["stats"], first["stats"])
-            self.assertEqual(active_genome_index_path.stat().st_mtime_ns, first_mtime)
+            self.assertEqual(agi_path.stat().st_mtime_ns, first_mtime)
 
     def test_create_active_genome_index_rebuilds_capped_index_for_later_full_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            first = create_active_genome_index(FIXTURE, active_genome_index_path, max_records=1)
-            second = create_active_genome_index(FIXTURE, active_genome_index_path)
+            first = create_active_genome_index(FIXTURE, agi_path, max_records=1)
+            second = create_active_genome_index(FIXTURE, agi_path)
 
             self.assertEqual(first["status"], "completed")
             self.assertEqual(first["stats"]["total_records"], 1)
@@ -260,10 +259,10 @@ class IndexTests(unittest.TestCase):
 
     def test_create_active_genome_index_rebuilds_incomplete_existing_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            create_active_genome_index(FIXTURE, active_genome_index_path)
-            with sqlite3.connect(active_genome_index_path) as connection:
+            create_active_genome_index(FIXTURE, agi_path)
+            with sqlite3.connect(agi_path) as connection:
                 connection.execute(
                     "update metadata set value = ? where key = 'active_genome_index_complete'",
                     (json.dumps(False),),
@@ -275,8 +274,8 @@ class IndexTests(unittest.TestCase):
                 connection.execute("update stats set value = '999' where key = 'total_records'")
                 connection.commit()
 
-            readiness = active_genome_index_readiness(active_genome_index_path)
-            second = create_active_genome_index(FIXTURE, active_genome_index_path)
+            readiness = active_genome_index_readiness(agi_path)
+            second = create_active_genome_index(FIXTURE, agi_path)
 
         self.assertFalse(readiness["complete"])
         self.assertEqual(second["status"], "completed")
@@ -285,18 +284,18 @@ class IndexTests(unittest.TestCase):
 
     def test_queries_reject_incomplete_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
-            create_active_genome_index(FIXTURE, active_genome_index_path)
-            with sqlite3.connect(active_genome_index_path) as connection:
+            agi_path = Path(tmp) / "tiny.sqlite"
+            create_active_genome_index(FIXTURE, agi_path)
+            with sqlite3.connect(agi_path) as connection:
                 connection.execute(
                     "update metadata set value = ? where key = 'active_genome_index_complete'",
                     (json.dumps(False),),
                 )
                 connection.commit()
 
-            summary = active_genome_index_summary(active_genome_index_path)
+            summary = active_genome_index_summary(agi_path)
             with self.assertRaisesRegex(RuntimeError, "Active Genome Index is not complete"):
-                query_rsid(FIXTURE, "rs199706086", active_genome_index_path)
+                query_rsid(agi_path, "rs199706086")
 
         self.assertFalse(summary["active_genome_index_readiness"]["complete"])
         self.assertEqual(summary["active_genome_index_readiness"]["reason"], "completion_marker_missing_or_false")
@@ -304,32 +303,32 @@ class IndexTests(unittest.TestCase):
     def test_create_active_genome_index_reuses_index_after_same_sized_materialized_vcf_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "input.vcf"
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
             vcf_path.write_bytes(FIXTURE.read_bytes())
 
-            first = create_active_genome_index(vcf_path, active_genome_index_path)
-            first_mtime = active_genome_index_path.stat().st_mtime_ns
+            first = create_active_genome_index(vcf_path, agi_path)
+            first_mtime = agi_path.stat().st_mtime_ns
             os.utime(vcf_path, ns=(vcf_path.stat().st_atime_ns, vcf_path.stat().st_mtime_ns + 1_000_000_000))
-            second = create_active_genome_index(vcf_path, active_genome_index_path)
+            second = create_active_genome_index(vcf_path, agi_path)
 
             self.assertEqual(first["status"], "completed")
             self.assertEqual(second["status"], "cached")
             self.assertEqual(second["stats"], first["stats"])
-            self.assertEqual(active_genome_index_path.stat().st_mtime_ns, first_mtime)
+            self.assertEqual(agi_path.stat().st_mtime_ns, first_mtime)
 
     def test_read_queries_do_not_create_missing_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "missing.sqlite"
+            agi_path = Path(tmp) / "missing.sqlite"
 
             with self.assertRaises(FileNotFoundError):
-                active_genome_index_summary(active_genome_index_path)
+                active_genome_index_summary(agi_path)
 
-            self.assertFalse(active_genome_index_path.exists())
+            self.assertFalse(agi_path.exists())
 
     def test_index_queries_return_each_sample_genotype(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "multi.vcf"
-            active_genome_index_path = Path(tmp) / "multi.sqlite"
+            agi_path = Path(tmp) / "multi.sqlite"
             vcf_path.write_text(
                 "\n".join(
                     [
@@ -342,8 +341,8 @@ class IndexTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            summary = create_active_genome_index(vcf_path, active_genome_index_path)
-            records = query_rsid(vcf_path, "rs1", active_genome_index_path)
+            summary = create_active_genome_index(vcf_path, agi_path)
+            records = query_rsid(agi_path, "rs1")
 
         self.assertEqual(summary["stats"]["total_records"], 2)
         self.assertEqual([record["sample_name"] for record in records], ["unknown", "Sample1"])
@@ -353,7 +352,7 @@ class IndexTests(unittest.TestCase):
     def test_index_preserves_vcf_info_gene_annotations(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "ann.vcf"
-            active_genome_index_path = Path(tmp) / "ann.sqlite"
+            agi_path = Path(tmp) / "ann.sqlite"
             vcf_path.write_text(
                 "\n".join(
                     [
@@ -366,8 +365,8 @@ class IndexTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            create_active_genome_index(vcf_path, active_genome_index_path)
-            records = query_rsid(vcf_path, "rs1", active_genome_index_path)
+            create_active_genome_index(vcf_path, agi_path)
+            records = query_rsid(agi_path, "rs1")
 
         self.assertEqual(records[0]["info_genes"], ["HFE"])
 
@@ -379,7 +378,7 @@ class IndexTests(unittest.TestCase):
         # a single-threaded build.
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "parallel.vcf"
-            active_genome_index_path = Path(tmp) / "parallel.sqlite"
+            agi_path = Path(tmp) / "parallel.sqlite"
             with vcf_path.open("w", encoding="utf-8") as handle:
                 handle.write("##fileformat=VCFv4.2\n")
                 handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1\n")
@@ -388,8 +387,8 @@ class IndexTests(unittest.TestCase):
                         f"1\t{pos}\trs{pos}\tA\tG\t.\tPASS\tANN=G|missense_variant|MODERATE|HFE|ENSG1;END={pos}\tGT:DP:GQ\t0/1:42:99\n"
                     )
 
-            summary = create_active_genome_index(vcf_path, active_genome_index_path, parallel_workers=4)
-            records = query_rsid(vcf_path, "rs7999", active_genome_index_path)
+            summary = create_active_genome_index(vcf_path, agi_path, parallel_workers=4)
+            records = query_rsid(agi_path, "rs7999")
 
         # Parallelism actually fired (multiple bgzip blocks → multiple workers).
         self.assertGreater(summary["parallel_workers"], 1)
@@ -434,8 +433,8 @@ class IndexTests(unittest.TestCase):
             serial = create_active_genome_index(serial_vcf, serial_index, parallel_workers=1)
             parallel = create_active_genome_index(parallel_vcf, parallel_index, parallel_workers=4)
 
-            serial_coverage = coverage_query(serial_vcf, "1", 1, 6000, serial_index)
-            parallel_coverage = coverage_query(parallel_vcf, "1", 1, 6000, parallel_index)
+            serial_coverage = coverage_query(serial_index, "1", 1, 6000)
+            parallel_coverage = coverage_query(parallel_index, "1", 1, 6000)
 
         # Parallelism actually fired and both saw the same raw record counts.
         self.assertEqual(serial["parallel_workers"], 1)
@@ -493,8 +492,8 @@ class IndexTests(unittest.TestCase):
             # (empty). reference_pending is surfaced by the central reader's
             # parse-state (and stamped on operation results by the dispatch
             # chokepoint) — not by the library coverage_query itself.
-            self.assertEqual(len(query_rsid(two_vcf, "rs500", two_index)), 1)
-            cov_a = coverage_query(two_vcf, "1", 1, 499, two_index)
+            self.assertEqual(len(query_rsid(two_index, "rs500")), 1)
+            cov_a = coverage_query(two_index, "1", 1, 499)
             self.assertEqual(cov_a["covered_fraction"], 0.0)
             reader_a = open_reader(two_index, need=ActiveGenomeIndexNeed.REFERENCE)
             self.assertTrue(reader_a.reference_pending)
@@ -512,8 +511,8 @@ class IndexTests(unittest.TestCase):
             # flag. (Raw stored row counts can differ by coalescing granularity /
             # shard-seam count — the semantic invariant is coverage + stats, the
             # same equivalence test_parallel_and_serial_agree relies on.)
-            cov_b = coverage_query(two_vcf, "1", 1, 6000, two_index)
-            cov_full = coverage_query(full_vcf, "1", 1, 6000, full_index)
+            cov_b = coverage_query(two_index, "1", 1, 6000)
+            cov_full = coverage_query(full_index, "1", 1, 6000)
             self.assertEqual(cov_b["covered_fraction"], cov_full["covered_fraction"])
             self.assertEqual(cov_b["covered_bases"], cov_full["covered_bases"])
             self.assertEqual(cov_b["segments"], cov_full["segments"])
@@ -565,7 +564,7 @@ class IndexTests(unittest.TestCase):
     def test_index_queries_are_available_after_raw_vcf_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "digitized.vcf"
-            active_genome_index_path = Path(tmp) / "digitized.sqlite"
+            agi_path = Path(tmp) / "digitized.sqlite"
             vcf_path.write_text(
                 "\n".join(
                     [
@@ -577,10 +576,10 @@ class IndexTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            create_active_genome_index(vcf_path, active_genome_index_path)
+            create_active_genome_index(vcf_path, agi_path)
             vcf_path.unlink()
 
-            records = query_rsid(vcf_path, "rs1", active_genome_index_path)
+            records = query_rsid(agi_path, "rs1")
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["genotype"], "0/1")
@@ -593,10 +592,10 @@ class IndexTests(unittest.TestCase):
 
     def test_index_includes_offset_sample_lookup_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
-            create_active_genome_index(FIXTURE, active_genome_index_path)
+            agi_path = Path(tmp) / "tiny.sqlite"
+            create_active_genome_index(FIXTURE, agi_path)
 
-            with sqlite3.connect(active_genome_index_path) as connection:
+            with sqlite3.connect(agi_path) as connection:
                 index_names = {
                     row[0]
                     for row in connection.execute(
@@ -609,17 +608,17 @@ class IndexTests(unittest.TestCase):
 
     def test_index_build_does_not_leave_bulk_load_wal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
 
-            create_active_genome_index(FIXTURE, active_genome_index_path)
+            create_active_genome_index(FIXTURE, agi_path)
 
-            self.assertFalse(Path(f"{active_genome_index_path}-wal").exists())
-            self.assertFalse(Path(f"{active_genome_index_path}-journal").exists())
+            self.assertFalse(Path(f"{agi_path}-wal").exists())
+            self.assertFalse(Path(f"{agi_path}-journal").exists())
 
     def test_point_region_query_finds_covering_record_beyond_lookback_window(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "spanning.vcf"
-            active_genome_index_path = Path(tmp) / "spanning.sqlite"
+            agi_path = Path(tmp) / "spanning.sqlite"
             rows = [
                 "##fileformat=VCFv4.2",
                 "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
@@ -631,8 +630,8 @@ class IndexTests(unittest.TestCase):
             )
             vcf_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
-            create_active_genome_index(vcf_path, active_genome_index_path)
-            records = query_region(vcf_path, "1", 950, 950, active_genome_index_path, variants_only=False)
+            create_active_genome_index(vcf_path, agi_path)
+            records = query_region(agi_path, "1", 950, 950, variants_only=False)
 
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]["pos"], 100)
@@ -640,14 +639,14 @@ class IndexTests(unittest.TestCase):
 
     def test_export_variants_writes_plain_vcf_from_index_offsets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            active_genome_index_path = Path(tmp) / "tiny.sqlite"
+            agi_path = Path(tmp) / "tiny.sqlite"
             output_path = Path(tmp) / "variants.vcf"
-            create_active_genome_index(FIXTURE, active_genome_index_path)
+            create_active_genome_index(FIXTURE, agi_path)
 
             result = export_variants(
                 FIXTURE,
                 output_path,
-                active_genome_index_path,
+                agi_path,
                 pass_only=True,
                 primary_contigs_only=True,
             )
@@ -663,7 +662,7 @@ class IndexTests(unittest.TestCase):
             cached = export_variants(
                 FIXTURE,
                 output_path,
-                active_genome_index_path,
+                agi_path,
                 pass_only=True,
                 primary_contigs_only=True,
             )
@@ -673,7 +672,7 @@ class IndexTests(unittest.TestCase):
     def test_export_variants_can_rewrite_chr_prefixed_contigs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "chr.vcf"
-            active_genome_index_path = Path(tmp) / "chr.sqlite"
+            agi_path = Path(tmp) / "chr.sqlite"
             output_path = Path(tmp) / "variants.vcf"
             vcf_path.write_text(
                 "\n".join(
@@ -691,12 +690,12 @@ class IndexTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            create_active_genome_index(vcf_path, active_genome_index_path)
+            create_active_genome_index(vcf_path, agi_path)
 
             result = export_variants(
                 vcf_path,
                 output_path,
-                active_genome_index_path,
+                agi_path,
                 pass_only=True,
                 primary_contigs_only=True,
                 chrom_style="no-chr",
@@ -713,7 +712,7 @@ class IndexTests(unittest.TestCase):
     def test_export_variants_deduplicates_multi_sample_index_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "multi.vcf"
-            active_genome_index_path = Path(tmp) / "multi.sqlite"
+            agi_path = Path(tmp) / "multi.sqlite"
             output_path = Path(tmp) / "variants.vcf"
             vcf_path.write_text(
                 "\n".join(
@@ -726,9 +725,9 @@ class IndexTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            create_active_genome_index(vcf_path, active_genome_index_path)
+            create_active_genome_index(vcf_path, agi_path)
 
-            result = export_variants(vcf_path, output_path, active_genome_index_path)
+            result = export_variants(vcf_path, output_path, agi_path)
             records = [
                 line for line in output_path.read_text(encoding="utf-8").splitlines() if not line.startswith("#")
             ]
@@ -745,7 +744,7 @@ class IndexTests(unittest.TestCase):
     def test_export_variants_rows_match_header_width_for_multi_sample(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "multi.vcf"
-            active_genome_index_path = Path(tmp) / "multi.sqlite"
+            agi_path = Path(tmp) / "multi.sqlite"
             output_path = Path(tmp) / "variants.vcf"
             vcf_path.write_text(
                 "\n".join(
@@ -762,9 +761,9 @@ class IndexTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
-            create_active_genome_index(vcf_path, active_genome_index_path)
+            create_active_genome_index(vcf_path, agi_path)
 
-            export_variants(vcf_path, output_path, active_genome_index_path)
+            export_variants(vcf_path, output_path, agi_path)
             lines = output_path.read_text(encoding="utf-8").splitlines()
             header_width = next(len(line.split("\t")) for line in lines if line.startswith("#CHROM"))
             data_rows = [line.split("\t") for line in lines if not line.startswith("#")]

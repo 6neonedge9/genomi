@@ -18,6 +18,7 @@ and operations layers (no circular imports).
 from __future__ import annotations
 
 import contextlib
+import json
 import sqlite3
 import re
 from dataclasses import dataclass, field
@@ -32,6 +33,7 @@ from ._agi_readiness import (
     ensure_active_genome_index_complete,
 )
 from ._agi_schema import connect_existing_readonly, read_header_from_active_genome_index
+from .dosage import dosage_for_variants as _dosage_for_variants
 
 JsonObject = dict[str, Any]
 
@@ -68,10 +70,9 @@ class ActiveGenomeIndexReader:
     never instantiate against an ungated path.
     """
 
-    active_genome_index_path: Path
+    agi_path: Path
     need: ActiveGenomeIndexNeed
     readiness: JsonObject = field(default_factory=dict)
-    vcf_path: Path | None = None
     genome_build: str | None = None
 
     # --- parse-state identification -------------------------------------
@@ -108,15 +109,13 @@ class ActiveGenomeIndexReader:
 
     # --- data access (the ONLY AGI read path) --------------------------
     def query_rsid(self, rsid: str, *, limit: int = 50, pass_only: bool = False) -> list[dict[str, Any]]:
-        return query_rsid_filtered(
-            self._source_hint, rsid, self.active_genome_index_path, limit=limit, pass_only=pass_only
-        )
+        return query_rsid_filtered(self.agi_path, rsid, limit=limit, pass_only=pass_only)
 
     def query_variant(
         self, chrom: str, pos: int, ref: str, alt: str, *, limit: int = 50, pass_only: bool = False
     ) -> list[dict[str, Any]]:
         return query_variant(
-            self._source_hint, chrom, pos, ref, alt, self.active_genome_index_path, limit=limit, pass_only=pass_only
+            self.agi_path, chrom, pos, ref, alt, limit=limit, pass_only=pass_only
         )
 
     def query_region(
@@ -130,18 +129,17 @@ class ActiveGenomeIndexReader:
         limit: int = 200,
     ) -> list[dict[str, Any]]:
         return query_region(
-            self._source_hint,
+            self.agi_path,
             chrom,
             start,
             end,
-            self.active_genome_index_path,
             variants_only=variants_only,
             pass_only=pass_only,
             limit=limit,
         )
 
     def coverage(self, chrom: str, start: int, end: int, *, limit: int = 200) -> dict[str, Any]:
-        return coverage_query(self._source_hint, chrom, start, end, self.active_genome_index_path, limit=limit)
+        return coverage_query(self.agi_path, chrom, start, end, limit=limit)
 
     def iter_pass_variant_rsid_batches(self, *, batch_size: int) -> Iterator[dict[str, list[dict[str, Any]]]]:
         sample_by_rsid: dict[str, list[dict[str, Any]]] = {}
@@ -184,13 +182,26 @@ class ActiveGenomeIndexReader:
                 ).fetchall()
             ]
 
+    def canonical_vcf_path(self) -> Path | None:
+        """Return the AGI-owned canonical VCF artifact when this index has one."""
+        with self.connect() as connection:
+            row = connection.execute("select value from metadata where key = 'vcf_path'").fetchone()
+        if row is None or row["value"] in (None, ""):
+            return None
+        raw_value = str(row["value"])
+        try:
+            decoded = json.loads(raw_value)
+        except json.JSONDecodeError:
+            decoded = raw_value
+        path = Path(str(decoded))
+        return path if path.exists() else None
+
     def attach_to(self, connection: sqlite3.Connection, alias: str) -> None:
         """Attach this AGI to an existing SQLite connection for set-based joins."""
-        if self.need is not ActiveGenomeIndexNeed.NONE:
-            ensure_active_genome_index_complete(self.active_genome_index_path)
+        self.ensure_ready()
         if not _SQLITE_ALIAS_RE.fullmatch(alias):
             raise ValueError(f"invalid SQLite alias for Active Genome Index attachment: {alias!r}")
-        connection.execute(f"attach database ? as {alias}", (str(self.active_genome_index_path),))
+        connection.execute(f"attach database ? as {alias}", (str(self.agi_path),))
 
     def dosage_for_variants(
         self,
@@ -198,15 +209,9 @@ class ActiveGenomeIndexReader:
         *,
         skip_ambiguous_palindromic: bool = True,
     ) -> list[dict[str, Any]]:
-        """Return per-variant sample dosages using AGI-owned read access.
-
-        The PRS harmonizer still owns score-allele math, but callers must enter
-        through the reader so capability code does not open the AGI directly.
-        """
-        from ..capabilities.prs import harmonize
-
+        """Return per-variant sample dosages using AGI-owned read access."""
         with self.connect() as connection:
-            return harmonize.dosage_for_variants(
+            return _dosage_for_variants(
                 connection,
                 variants,
                 skip_ambiguous_palindromic=skip_ambiguous_palindromic,
@@ -225,27 +230,27 @@ class ActiveGenomeIndexReader:
         lifecycle / ``ActiveGenomeIndexIncomplete`` exceptions that
         ``call_operation`` maps to structured envelopes; ``NONE`` skips the gate
         (build-on-demand callers manage their own index lifecycle)."""
-        if self.need is not ActiveGenomeIndexNeed.NONE:
-            ensure_active_genome_index_complete(self.active_genome_index_path)
-        connection = connect_existing_readonly(self.active_genome_index_path)
+        self.ensure_ready()
+        connection = connect_existing_readonly(self.agi_path)
         try:
             yield connection
         finally:
             connection.close()
 
-    @property
-    def _source_hint(self) -> Path:
-        # The query helpers take a vcf_path positionally but only use it to
-        # derive a default index path when none is passed — and we always pass
-        # the resolved index path, so the hint is never consulted.
-        return self.vcf_path or self.active_genome_index_path
+    def ensure_ready(self) -> None:
+        """Apply this reader's readiness gate without opening a connection.
 
+        Some operation handlers hand the resolved AGI path to helpers owned by
+        ``active_genome_index`` rather than reading through ``connect`` directly.
+        They still need the same lifecycle gate at the reader boundary.
+        """
+        if self.need is not ActiveGenomeIndexNeed.NONE:
+            ensure_active_genome_index_complete(self.agi_path)
 
 def open_reader(
-    active_genome_index_path: str | Path,
+    agi_path: str | Path,
     *,
     need: ActiveGenomeIndexNeed,
-    vcf_path: str | Path | None = None,
     genome_build: str | None = None,
 ) -> ActiveGenomeIndexReader:
     """Build an :class:`ActiveGenomeIndexReader` bound to one index path.
@@ -258,12 +263,11 @@ def open_reader(
     triggering — the gate. ``need`` is carried on the reader and decides what
     the lazy gate raises and what gets stamped ``reference_pending`` downstream.
     """
-    path = Path(active_genome_index_path)
+    path = Path(agi_path)
     return ActiveGenomeIndexReader(
-        active_genome_index_path=path,
+        agi_path=path,
         need=need,
         readiness=active_genome_index_readiness(path),
-        vcf_path=Path(vcf_path) if vcf_path is not None else None,
         genome_build=genome_build,
     )
 

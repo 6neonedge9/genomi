@@ -118,12 +118,12 @@ from .handlers_sequence import (
     _sequence_translate,
 )
 from .handlers_vcf_variant import (
+    _agi_callability,
     _agi_build_reference_pass,
+    _agi_genotype_support,
+    _agi_qc,
+    _agi_summary,
     _variant_lookup,
-    _vcf_callability,
-    _vcf_genotype_support,
-    _vcf_qc,
-    _vcf_summary,
 )
 
 
@@ -150,10 +150,10 @@ OPERATIONS: list[Operation] = [
     Operation('active_genome_index.clear_selection', _genomi_clear_selection),
     Operation('genomi.parse_source', _genomi_parse_source),
     Operation('active_genome_index.build_reference_pass', _agi_build_reference_pass),
-    Operation('active_genome_index.summarize', _vcf_summary),
-    Operation('active_genome_index.classify_callset_qc', _vcf_qc, agi_need=_AGI_REFERENCE),
-    Operation('active_genome_index.classify_genotype_support', _vcf_genotype_support, agi_need=_AGI_REFERENCE),
-    Operation('active_genome_index.classify_region_callability', _vcf_callability, agi_need=_AGI_REFERENCE),
+    Operation('active_genome_index.summarize', _agi_summary),
+    Operation('active_genome_index.classify_callset_qc', _agi_qc, agi_need=_AGI_REFERENCE),
+    Operation('active_genome_index.classify_genotype_support', _agi_genotype_support, agi_need=_AGI_REFERENCE),
+    Operation('active_genome_index.classify_region_callability', _agi_callability, agi_need=_AGI_REFERENCE),
     Operation('variant.resolve', _variant_lookup),
     Operation('clinvar.match_variants', _clinvar_match),
     Operation('clinvar.scan_candidates', _clinvar_scan),

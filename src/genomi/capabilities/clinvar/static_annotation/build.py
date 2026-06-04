@@ -7,7 +7,7 @@ from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
     ActiveGenomeIndexReader,
     create_active_genome_index,
-    default_active_genome_index_path,
+    default_agi_path,
     open_reader,
     preflight,
 )
@@ -94,7 +94,7 @@ def build_static_annotation(
     public_read_db_path = db_path
     public_write_db_path = db_path
     public_force = force
-    active_genome_index_path = default_active_genome_index_path(vcf_path)
+    agi_path = default_agi_path(vcf_path)
     exported_path = default_export_variants_path(
         vcf_path,
         pass_only=True,
@@ -150,7 +150,7 @@ def build_static_annotation(
     steps.append(
         workflow_step(
             "build-active-genome-index",
-            create_active_genome_index(vcf_path, active_genome_index_path, include_reference=True, max_records=max_records, parallel_workers=parallel_workers),
+            create_active_genome_index(vcf_path, agi_path, include_reference=True, max_records=max_records, parallel_workers=parallel_workers),
             "static",
             reason="The Active Genome Index can now feed deterministic sample QC and PASS variant export.",
             commands=["genomi call active_genome_index.classify_callset_qc --params '{\"vcf\":\"<vcf>\"}'", "genomi call genomi.parse_source --params '{\"source\":\"<vcf>\"}'"],
@@ -161,7 +161,7 @@ def build_static_annotation(
             "sample-qc",
             assess_sample_qc(
                 vcf_path,
-                active_genome_index_path=active_genome_index_path,
+                agi_path=agi_path,
                 evidence_db=db_path,
                 output=run_output_path(vcf_path, "sample-qc.json"),
                 genome_build=effective_genome_build,
@@ -211,7 +211,7 @@ def build_static_annotation(
                 export_variants(
                     vcf_path,
                     exported_path,
-                    active_genome_index_path,
+                    agi_path,
                     pass_only=True,
                     primary_contigs_only=primary_contigs_only,
                     chrom_style=chrom_style,
@@ -351,9 +351,8 @@ def build_static_annotation(
         )
         matches = run_output_path(vcf_path, "clinvar.matches.jsonl")
         active_genome_index_reader = open_reader(
-            active_genome_index_path,
+            agi_path,
             need=ActiveGenomeIndexNeed.VARIANT,
-            vcf_path=vcf_path,
             genome_build=effective_genome_build,
         )
         match_result = match_clinvar_variants_from_active_genome_index(
@@ -507,7 +506,7 @@ def match_static_clinvar(
     # Personal-genome context comes only from the Active Genome Index. Resolve
     # the index for this sample and match against it; never read the raw source.
     vcf = Path(vcf)
-    agi_path = default_active_genome_index_path(vcf)
+    agi_path = default_agi_path(vcf)
     if not agi_path.exists():
         return {
             "schema": "genomi-clinvar-match-v1",
@@ -538,10 +537,10 @@ def match_static_clinvar_from_active_genome_index(
         if isinstance(active_genome_index, ActiveGenomeIndexReader)
         else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
     )
-    active_genome_index_path = reader.active_genome_index_path
+    agi_path = reader.agi_path
     db_path = Path(evidence_db)
     output_path = Path(output)
-    effective_genome_build = resolve_genome_build(active_genome_index_path, genome_build)
+    effective_genome_build = resolve_genome_build(agi_path, genome_build)
     cache_build, missing_library = _resolve_clinvar_cache_build(
         db_path,
         effective_genome_build,

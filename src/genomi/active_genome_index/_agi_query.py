@@ -8,43 +8,40 @@ from typing import Any
 import json
 import sqlite3
 from ._agi_readiness import ensure_active_genome_index_complete
-from ._agi_schema import connect_existing_readonly, default_active_genome_index_path
+from ._agi_schema import connect_existing_readonly
 from .record_kinds import is_reference_block_record
 
 
-def query_rsid(vcf_path: str | Path, rsid: str, active_genome_index_path: str | Path | None = None, *, limit: int = 50) -> list[dict[str, Any]]:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
-    return query_rsid_filtered(vcf_path, rsid, active_genome_index_path, limit=limit, pass_only=False)
+def query_rsid(agi_path: str | Path, rsid: str, *, limit: int = 50) -> list[dict[str, Any]]:
+    return query_rsid_filtered(agi_path, rsid, limit=limit, pass_only=False)
 
 def query_rsid_filtered(
-    vcf_path: str | Path,
+    agi_path: str | Path,
     rsid: str,
-    active_genome_index_path: str | Path | None = None,
     *,
     limit: int = 50,
     pass_only: bool = False,
 ) -> list[dict[str, Any]]:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    agi_path = Path(agi_path)
     sql = "select offset, sample_index from records where rsid = ?"
     params: list[Any] = [rsid]
     if pass_only:
         sql += " and filter = 'PASS'"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
-    return _query_offsets(vcf_path, active_genome_index_path, sql, params)
+    return _query_offsets(agi_path, sql, params)
 
 def query_variant(
-    vcf_path: str | Path,
+    agi_path: str | Path,
     chrom: str,
     pos: int,
     ref: str,
     alt: str,
-    active_genome_index_path: str | Path | None = None,
     *,
     limit: int = 50,
     pass_only: bool = False,
 ) -> list[dict[str, Any]]:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    agi_path = Path(agi_path)
     sql = """
         select offset, sample_index from records
         where chrom = ? and pos = ? and ref = ? and alt = ?
@@ -54,24 +51,23 @@ def query_variant(
         sql += " and filter = 'PASS'"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
-    return _query_offsets(vcf_path, active_genome_index_path, sql, params)
+    return _query_offsets(agi_path, sql, params)
 
 def query_region(
-    vcf_path: str | Path,
+    agi_path: str | Path,
     chrom: str,
     start: int,
     end: int,
-    active_genome_index_path: str | Path | None = None,
     *,
     variants_only: bool = False,
     pass_only: bool = False,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    agi_path = Path(agi_path)
+    ensure_active_genome_index_complete(agi_path)
     if start == end:
         return _query_point_region(
-            vcf_path,
-            active_genome_index_path,
+            agi_path,
             chrom,
             start,
             variants_only=variants_only,
@@ -89,18 +85,17 @@ def query_region(
         sql += " and filter = 'PASS'"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
-    return _query_offsets(vcf_path, active_genome_index_path, sql, params)
+    return _query_offsets(agi_path, sql, params)
 
 def coverage_query(
-    vcf_path: str | Path,
+    agi_path: str | Path,
     chrom: str,
     start: int,
     end: int,
-    active_genome_index_path: str | Path | None = None,
     *,
     limit: int = 200,
 ) -> dict[str, Any]:
-    records = query_region(vcf_path, chrom, start, end, active_genome_index_path, variants_only=False, limit=limit)
+    records = query_region(agi_path, chrom, start, end, variants_only=False, limit=limit)
     covered_segments: list[tuple[int, int]] = []
     for record in records:
         if record["filter"] != "PASS" or not is_reference_block_record(record):
@@ -129,22 +124,20 @@ def coverage_query(
     return result
 
 def _query_offsets(
-    vcf_path: str | Path,
-    active_genome_index_path: str | Path,
+    agi_path: str | Path,
     sql: str,
     params: Iterable[Any],
 ) -> list[dict[str, Any]]:
-    ensure_active_genome_index_complete(active_genome_index_path)
-    with connect_existing_readonly(active_genome_index_path) as connection:
+    ensure_active_genome_index_complete(agi_path)
+    with connect_existing_readonly(agi_path) as connection:
         offsets = [
             (int(row["offset"]), _row_sample_index(row))
             for row in _execute_offset_query(connection, sql, params)
         ]
-    return _records_from_active_genome_index_offsets(active_genome_index_path, offsets)
+    return _records_from_active_genome_index_offsets(agi_path, offsets)
 
 def _query_point_region(
-    vcf_path: str | Path,
-    active_genome_index_path: Path,
+    agi_path: Path,
     chrom: str,
     pos: int,
     *,
@@ -169,7 +162,7 @@ def _query_point_region(
     exact_params.append(limit)
 
     offset_rows: list[tuple[int, int, int, int, int]] = []
-    with connect_existing_readonly(active_genome_index_path) as connection:
+    with connect_existing_readonly(agi_path) as connection:
         offset_rows.extend(_offset_rows(_execute_offset_query(connection, exact_sql, exact_params)))
         remaining = limit - len(offset_rows)
         if remaining > 0:
@@ -187,7 +180,7 @@ def _query_point_region(
     offset_rows = _dedupe_offset_rows(offset_rows)
     offset_rows.sort(key=lambda item: (item[2], item[3], item[0], item[1]))
     return _records_from_active_genome_index_offsets(
-        active_genome_index_path,
+        agi_path,
         [(offset, sample_index) for offset, sample_index, _chrom_sort_value, _pos, _end in offset_rows[:limit]],
     )
 
@@ -310,9 +303,9 @@ def _dedupe_offset_rows(offset_rows: list[tuple[int, int, int, int, int]]) -> li
         output.append(row)
     return output
 
-def _records_from_active_genome_index_offsets(active_genome_index_path: str | Path, offsets: Iterable[tuple[int, int]]) -> list[dict[str, Any]]:
+def _records_from_active_genome_index_offsets(agi_path: str | Path, offsets: Iterable[tuple[int, int]]) -> list[dict[str, Any]]:
     records = []
-    with connect_existing_readonly(active_genome_index_path) as connection:
+    with connect_existing_readonly(agi_path) as connection:
         for offset, sample_index in offsets:
             row = connection.execute(
                 """

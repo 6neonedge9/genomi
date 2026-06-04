@@ -66,7 +66,7 @@
           "vcf": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "genome_build": {
@@ -90,7 +90,7 @@
       "context_optional": [
         "source",
         "vcf",
-        "active_genome_index_path",
+        "agi_path",
         "genome_build"
       ],
       "privacy_scope": "local_reference_panel_private_projection",
@@ -121,7 +121,7 @@
           "vcf": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "genome_build": {
@@ -151,7 +151,7 @@
       "context_optional": [
         "source",
         "vcf",
-        "active_genome_index_path",
+        "agi_path",
         "genome_build"
       ],
       "privacy_scope": "local_reference_panel_private_projection",
@@ -182,7 +182,7 @@
           "vcf": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "active_genome_index_path": {
+          "agi_path": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
           "genome_build": {
@@ -212,7 +212,7 @@
       "context_optional": [
         "source",
         "vcf",
-        "active_genome_index_path",
+        "agi_path",
         "genome_build"
       ],
       "privacy_scope": "local_reference_panel_private_projection",

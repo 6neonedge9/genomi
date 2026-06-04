@@ -171,7 +171,7 @@ def _prs_check_score_overlap(params: JsonObject) -> JsonObject:
         reader,
         pgs_id=_optional_str(params, "pgs_id"),
         score_dir=_optional_path(params, "score_dir"),
-        genome_build=_private_build(reader, params),
+        genome_build=reader.genome_build or "GRCh38",
         skip_ambiguous_palindromic=_bool(params, "skip_ambiguous_palindromic", True),
     )
 
@@ -182,7 +182,7 @@ def _prs_calculate_score(params: JsonObject) -> JsonObject:
         reader,
         pgs_id=_optional_str(params, "pgs_id"),
         score_dir=_optional_path(params, "score_dir"),
-        genome_build=_private_build(reader, params),
+        genome_build=reader.genome_build or "GRCh38",
         skip_ambiguous_palindromic=_bool(params, "skip_ambiguous_palindromic", True),
         score_mean=_optional_float(params, "score_mean"),
         score_sd=_optional_float(params, "score_sd"),

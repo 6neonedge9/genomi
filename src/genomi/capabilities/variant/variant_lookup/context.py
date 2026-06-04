@@ -96,8 +96,8 @@ def _sample_context(
     for run, selection in runs:
         summary = _run_summary(run, selection)
         searched_active_genome_indexes.append(summary)
-        active_genome_index_path = run.get("active_genome_index_path")
-        if not active_genome_index_path:
+        agi_path = run.get("agi_path")
+        if not agi_path:
             summary["query_available"] = False
             continue
         # The reader is the one door to AGI data. need=NONE: variant.resolve
@@ -106,9 +106,8 @@ def _sample_context(
         # completion marker, and a variants_ready gVCF is fine since variant
         # rows are final — so the generic readiness gate must not apply here.
         reader = open_reader(
-            Path(str(active_genome_index_path)),
+            Path(str(agi_path)),
             need=ActiveGenomeIndexNeed.NONE,
-            vcf_path=run.get("vcf"),
             genome_build=run.get("genome_build"),
         )
         if run.get("source_format") in {"vcf", "gvcf"}:
@@ -120,7 +119,7 @@ def _sample_context(
                     f"Active Genome Index {run.get('agi_id')} is not complete; rerun genomi.parse_source to resume/rebuild it."
                 )
                 continue
-        elif not reader.active_genome_index_path.exists():
+        elif not reader.agi_path.exists():
             summary["query_available"] = False
             summary["availability_note"] = "active_genome_index_not_found"
             continue

@@ -434,7 +434,7 @@ class CandidateInventoryTests(EvidenceImportTestBase):
                 "A",
                 "C",
                 evidence_db=db,
-                active_genome_index_path=Path(tmp) / "active-genome-index.sqlite",
+                agi_path=Path(tmp) / "active-genome-index.sqlite",
                 min_depth=100,
             )
 

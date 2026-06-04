@@ -127,7 +127,7 @@ def collect_score_context(
     score_build = scoring_files.normalize_build(str(manifest.get("genome_build") or normalized_build))
     score_summary = _polygenic_score_summary(cache["score_dir"], manifest)
 
-    active_genome_index_file = reader.active_genome_index_path
+    agi_path = reader.agi_path
     variants = scoring_files.load_variants(cache["score_dir"])
     original_variant_count = len(variants)
     lift_summary: JsonObject | None = None
@@ -193,7 +193,7 @@ def collect_score_context(
     sample_qc = _sample_qc(
         genome_build=normalized_build,
         score_build=score_build,
-        active_genome_index_path=active_genome_index_file,
+        agi_path=agi_path,
         score_variant_count=original_variant_count,
         matched=matched,
         missing=missing,
@@ -216,7 +216,7 @@ def _sample_qc(
     *,
     genome_build: str,
     score_build: str,
-    active_genome_index_path: Path,
+    agi_path: Path,
     score_variant_count: int,
     matched: list[JsonObject],
     missing: list[JsonObject],
@@ -233,7 +233,7 @@ def _sample_qc(
     payload: JsonObject = {
         "genome_build": genome_build,
         "score_genome_build": score_build,
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "score_variant_count": score_variant_count,
         "matched_variant_count": matched_count,
         "missing_variant_count": missing_count,

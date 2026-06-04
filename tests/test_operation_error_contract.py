@@ -38,7 +38,7 @@ PATH_BAG = {
     "source": "/tmp/genomi-contract-missing.vcf",
     "db": "/tmp/genomi-contract-missing.db",
     "shared_db": "/tmp/genomi-contract-missing.db",
-    "active_genome_index_path": "/tmp/genomi-contract-missing.active-genome-index.sqlite",
+    "agi_path": "/tmp/genomi-contract-missing.active-genome-index.sqlite",
     "matches": "/tmp/genomi-contract-missing.jsonl",
     "output": "/tmp/genomi-contract-missing-out.json",
     "report_json": "/tmp/genomi-contract-missing.report.json",

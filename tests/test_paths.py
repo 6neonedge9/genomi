@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from genomi.active_genome_index.active_genome_index import default_active_genome_index_path
+from genomi.active_genome_index.active_genome_index import default_agi_path
 from genomi.active_genome_index.normalize import default_normalized_path
 from genomi.capabilities.clinvar.static_annotation import init_static_run
 from genomi.evidence import (
@@ -57,7 +57,7 @@ class GenomiDataPathTests(unittest.TestCase):
             self.assertEqual(run_reference_dir(vcf, root=root), Path(".genomi-data") / slug / "reference")
             self.assertEqual(default_evidence_path(vcf, root=root), Path(".genomi-data") / slug / "evidence/evidence.sqlite")
             self.assertEqual(shared_evidence_db_path(root=root), Path(".genomi-data/shared-evidence.sqlite"))
-            self.assertEqual(default_active_genome_index_path(vcf, root=root), Path(".genomi-data") / slug / "work/active-genome-index.sqlite")
+            self.assertEqual(default_agi_path(vcf, root=root), Path(".genomi-data") / slug / "work/active-genome-index.sqlite")
 
     def test_missing_raw_vcf_keeps_filename_fallback_for_planning(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

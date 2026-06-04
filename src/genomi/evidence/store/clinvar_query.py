@@ -73,7 +73,7 @@ def query_sample_qc(
             _sample_qc_row(row)
             for row in connection.execute(
                 """
-                select sample_id, vcf_path, genome_build, input_type, has_reference_blocks,
+                select sample_id, agi_path, genome_build, input_type, has_reference_blocks,
                        has_depth, has_genotype_quality, absence_claims_allowed,
                        summary_json, evidence_boundaries_json, created_at
                 from sample_qc
@@ -111,7 +111,7 @@ def query_genotype_support(
             _genotype_support_row(row)
             for row in connection.execute(
                 """
-                select vcf_path, chrom, pos, ref, alt, genome_build, support_status,
+                select agi_path, chrom, pos, ref, alt, genome_build, support_status,
                        evidence_class, genotype, zygosity, depth, genotype_quality,
                        filter, raw_json, created_at
                 from genotype_support
@@ -151,7 +151,7 @@ def query_region_callability_for_locus(
             _region_callability_row(row)
             for row in connection.execute(
                 """
-                select vcf_path, region, chrom, start, end, genome_build, callability_status,
+                select agi_path, region, chrom, start, end, genome_build, callability_status,
                        covered_fraction, can_support_negative_claim, evidence_class,
                        raw_json, created_at
                 from region_callability
@@ -244,7 +244,7 @@ def _sample_qc_row(row: sqlite3.Row) -> dict[str, Any]:
         "source": "private_db",
         "table": "sample_qc",
         "sample_id": row["sample_id"],
-        "vcf_path": row["vcf_path"],
+        "agi_path": row["agi_path"],
         "genome_build": row["genome_build"],
         "input_type": row["input_type"],
         "has_reference_blocks": bool(row["has_reference_blocks"]),
@@ -265,7 +265,7 @@ def _genotype_support_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "source": "private_db",
         "table": "genotype_support",
-        "vcf_path": row["vcf_path"],
+        "agi_path": row["agi_path"],
         "chrom": row["chrom"],
         "pos": row["pos"],
         "ref": row["ref"],
@@ -295,7 +295,7 @@ def _region_callability_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "source": "private_db",
         "table": "region_callability",
-        "vcf_path": row["vcf_path"],
+        "agi_path": row["agi_path"],
         "region": row["region"],
         "chrom": row["chrom"],
         "start": row["start"],

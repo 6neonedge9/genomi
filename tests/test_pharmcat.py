@@ -588,7 +588,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
                 {
                     "nickname": "Test user",
                     "source": str(vcf),
-                    "active_genome_index_path": parsed["outputs"]["active_genome_index_path"],
+                    "agi_path": parsed["outputs"]["agi_path"],
                 },
             )
 
@@ -613,7 +613,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
                 {
                     "nickname": "Test user",
                     "source": str(vcf),
-                    "active_genome_index_path": parsed["outputs"]["active_genome_index_path"],
+                    "agi_path": parsed["outputs"]["agi_path"],
                 },
             )
 
@@ -625,11 +625,45 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "planned")
         runner.assert_called_once()
-        self.assertEqual(Path(runner.call_args.kwargs["vcf"]).resolve(strict=False), vcf.resolve(strict=False))
+        pharmcat_vcf = Path(runner.call_args.kwargs["vcf"])
+        self.assertEqual(pharmcat_vcf.name, "canonical.vcf.gz")
+        self.assertTrue(pharmcat_vcf.exists())
         self.assertEqual(
-            Path(runner.call_args.kwargs["active_genome_index_path"]).resolve(strict=False),
-            Path(parsed["outputs"]["active_genome_index_path"]).resolve(strict=False),
+            Path(runner.call_args.kwargs["agi_path"]).resolve(strict=False),
+            Path(parsed["outputs"]["agi_path"]).resolve(strict=False),
         )
+
+    def test_run_pharmcat_preflights_explicit_agi_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "sample.vcf"
+            index = Path(tmp) / "selected.sqlite"
+            output = Path(tmp) / "out"
+            vcf.write_text(
+                "##fileformat=VCFv4.2\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n"
+                "10\t94761900\trs4244285\tG\tA\t.\tPASS\t.\tGT\t0/1\n",
+                encoding="utf-8",
+            )
+            with (
+                patch("genomi.capabilities.pharmacogenomics.pharmcat.execution.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"),
+                patch(
+                    "genomi.capabilities.pharmacogenomics.pharmcat.execution._input_preflight",
+                    return_value={"schema": "genomi-pharmcat-input-preflight-v1", "status": "completed"},
+                ) as preflight,
+                patch(
+                    "genomi.capabilities.pharmacogenomics.pharmcat.execution._prepare_pharmcat_input",
+                    return_value={"status": "active_genome_index_input_unavailable", "remediated": False},
+                ),
+            ):
+                result = run_pharmcat(
+                    vcf=vcf,
+                    agi_path=index,
+                    output_dir=output,
+                    dry_run=True,
+                )
+
+        self.assertEqual(result["status"], "active_genome_index_input_unavailable")
+        self.assertEqual(Path(preflight.call_args.kwargs["agi_path"]), index)
 
 
 if __name__ == "__main__":

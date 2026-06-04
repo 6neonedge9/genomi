@@ -126,7 +126,7 @@ def _with_context(
     active = runtime_context.active_accessible_run()
     if active is not None:
         if not resolved.get("source"):
-            resolved["source"] = active.get("source") or active.get("vcf")
+            resolved["source"] = active.get("source")
         if db and not resolved.get("db"):
             resolved["db"] = active.get("evidence_db")
         if matches and not resolved.get("matches"):
@@ -211,17 +211,16 @@ def _remember_source_result(
 def _hide_intake_source_after_digitization(result: JsonObject) -> JsonObject:
     payload = dict(result)
     source_path = payload.pop("source", None)
-    intake_path = payload.pop("vcf", None)
     comparable_variant_export = payload.pop("comparable_vcf", None)
     if comparable_variant_export:
         payload["comparable_variant_export"] = comparable_variant_export
     payload["intake_source"] = {
         "role": "ingestion_source_for_digitization",
         "hidden_after_digitization": True,
-        "available_for_rebuild": bool((source_path and Path(str(source_path)).exists()) or (intake_path and Path(str(intake_path)).exists())),
+        "available_for_rebuild": bool(source_path and Path(str(source_path)).exists()),
     }
     payload["digitization_contract"] = runtime_context.DIGITIZATION_CONTRACT
-    hidden_paths = _hidden_intake_path_strings(source_path, intake_path)
+    hidden_paths = _hidden_intake_path_strings(source_path)
     return _redact_intake_paths(payload, hidden_paths)
 
 

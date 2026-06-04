@@ -129,7 +129,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                         "sample_slug": "sample",
                         "vcf": str(vcf),
                         "evidence_db": str(evidence_db),
-                        "outputs": {"active_genome_index_path": str(index)},
+                        "outputs": {"agi_path": str(index)},
                     },
                 )
                 self.approve_access()
@@ -169,7 +169,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                         "sample_slug": "sample",
                         "vcf": str(vcf),
                         "evidence_db": str(evidence_db),
-                        "outputs": {"active_genome_index_path": str(index)},
+                        "outputs": {"agi_path": str(index)},
                     },
                 )
                 self.approve_access()
@@ -216,7 +216,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                         "vcf": str(vcf),
                         "evidence_db": str(evidence_db),
                         "genome_build": "GRCh38",
-                        "outputs": {"active_genome_index_path": str(index), "clinvar_matches": str(matches)},
+                        "outputs": {"agi_path": str(index), "clinvar_matches": str(matches)},
                     },
                 )
                 self.approve_access()
@@ -236,7 +236,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                 self.assertEqual(result["status"], "completed")
                 materialize.assert_called_once()
                 reader = materialize.call_args.args[0]
-                self.assertEqual(reader.active_genome_index_path.resolve(), index.resolve())
+                self.assertEqual(reader.agi_path.resolve(), index.resolve())
                 self.assertEqual(Path(materialize.call_args.kwargs["evidence_db"]).resolve(), evidence_db.resolve())
                 self.assertEqual(Path(materialize.call_args.kwargs["output"]).resolve(), matches.resolve())
                 scan.assert_called_once()

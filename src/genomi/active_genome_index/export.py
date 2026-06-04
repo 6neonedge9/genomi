@@ -10,7 +10,7 @@ from ..runtime.external import file_metadata, matching_manifest, utc_now, write_
 from ..runtime.handoff import evidence_context
 from .active_genome_index import (
     connect,
-    default_active_genome_index_path,
+    default_agi_path,
     read_header_from_active_genome_index,
 )
 
@@ -26,7 +26,7 @@ PRIMARY_CONTIGS_GRCH38_WITH_ALIASES = tuple(
 def export_variants(
     vcf_path: str | Path,
     output_path: str | Path,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     *,
     pass_only: bool = True,
     primary_contigs_only: bool = False,
@@ -39,7 +39,7 @@ def export_variants(
 ) -> dict[str, Any]:
     vcf_path = Path(vcf_path)
     output_path = Path(output_path)
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
     if output_path.suffix == ".gz":
         raise ValueError("export writes plain VCF; use .vcf output, then normalize through genomi call genomi.parse_source")
     if chrom_style not in {"input", "no-chr", "chr"}:
@@ -89,7 +89,7 @@ def export_variants(
     cache_expected = {
         "step": "export-variants",
         "input": file_metadata(vcf_path),
-        "active_genome_index_path": file_metadata(active_genome_index_path),
+        "agi_path": file_metadata(agi_path),
         "filters": filters,
     }
     if not force:
@@ -98,7 +98,7 @@ def export_variants(
             return {
                 "status": "cached",
                 "vcf_path": str(vcf_path),
-                "active_genome_index_path": str(active_genome_index_path),
+                "agi_path": str(agi_path),
                 "output": str(output_path),
                 "manifest_path": manifest_path,
                 "candidate_records": cached.get("candidate_records"),
@@ -114,7 +114,7 @@ def export_variants(
                 ),
             }
 
-    with connect(active_genome_index_path) as connection:
+    with connect(agi_path) as connection:
         candidate_records = int(connection.execute(count_sql, params).fetchone()["records"])
         exported_records = _write_variant_vcf(
             connection,
@@ -133,7 +133,7 @@ def export_variants(
         "step": "export-variants",
         "created_at_utc": utc_now(),
         "input": file_metadata(vcf_path),
-        "active_genome_index_path": file_metadata(active_genome_index_path),
+        "agi_path": file_metadata(agi_path),
         "output": file_metadata(output_path),
         "filters": filters,
         "candidate_records": candidate_records,
@@ -143,7 +143,7 @@ def export_variants(
     return {
         "status": "completed",
         "vcf_path": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "output": str(output_path),
         "manifest_path": manifest_path,
         "candidate_records": candidate_records,

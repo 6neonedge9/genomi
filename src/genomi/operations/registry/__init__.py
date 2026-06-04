@@ -32,7 +32,7 @@ from ...active_genome_index.active_genome_index import (
 # these, e.g. genomi.operations.registry.geo.query_geo_datasets). ---
 from ..catalog import TOOL_CATALOG_FILENAME, load_tool_catalog
 from ...active_genome_index import source_intake
-from ...active_genome_index.active_genome_index import default_active_genome_index_path
+from ...active_genome_index.active_genome_index import default_agi_path
 from ...capabilities.analytical_grounding import analytical_grounding
 from ...capabilities.ancestry import overlap as ancestry_overlap
 from ...capabilities.ancestry import pca as ancestry_pca
@@ -164,12 +164,12 @@ from .handlers_admin import (
     _runtime_check_background_job,
 )
 from .handlers_vcf_variant import (
+    _agi_callability,
+    _agi_genotype_support,
+    _agi_qc,
+    _agi_summary,
     _variant_lookup,
-    _vcf_callability,
-    _vcf_genotype_support,
     _vcf_init,
-    _vcf_qc,
-    _vcf_summary,
 )
 from .handlers_clinvar import (
     _clinvar_match,

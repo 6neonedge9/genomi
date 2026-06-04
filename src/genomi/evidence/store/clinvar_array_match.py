@@ -49,6 +49,8 @@ def clinvar_array_direct_select_sql(
                 r.alt as source_record_alt,
                 r.format as source_record_format,
                 r.genotype as source_record_genotype,
+                r.record_kind as source_record_kind,
+                r.observed_alleles as source_record_observed_alleles,
                 r.info as source_record_info,
                 null as source_format,
                 cv.chrom as chrom,

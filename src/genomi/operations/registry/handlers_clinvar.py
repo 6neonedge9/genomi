@@ -21,7 +21,7 @@ def _clinvar_match(params: JsonObject) -> JsonObject:
     # Active Genome Index, never a raw VCF.
     reader = open_agi(need=ActiveGenomeIndexNeed.VARIANT, action="reading parsed Active Genome Index artifacts", params=params)
     resolved = _with_context(params, db=True, genome_build=True)
-    agi_path = reader.active_genome_index_path
+    agi_path = reader.agi_path
     if not agi_path.exists():
         raise OperationError(
             "needs_active_genome_index",
@@ -60,7 +60,7 @@ def _clinvar_scan(params: JsonObject) -> JsonObject:
 def _materialize_clinvar_matches_for_scan(
     reader: ActiveGenomeIndexReader, resolved: JsonObject, matches_path: Path | None
 ) -> Path | JsonObject:
-    agi_path = reader.active_genome_index_path
+    agi_path = reader.agi_path
     if not agi_path.exists():
         raise OperationError(
             "needs_active_genome_index",

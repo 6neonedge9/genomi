@@ -6,7 +6,7 @@ from typing import Any
 
 from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
-    default_active_genome_index_path,
+    default_agi_path,
     open_reader,
 )
 from ._common import JsonObject, _size
@@ -15,12 +15,12 @@ from ._common import JsonObject, _size
 def _input_preflight(
     vcf_path: Path,
     *,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     scan_records: int = 100,
 ) -> JsonObject:
     # Self-sufficient: read the header and a record sample from the structured
     # Active Genome Index alone — never the intake or the canonical bgzip.
-    agi_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
     if not agi_path.exists():
         return {
             "schema": "genomi-pharmcat-input-preflight-v1",
@@ -47,7 +47,7 @@ def _input_preflight(
     filters: dict[str, int] = {}
     header = None
     try:
-        reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, vcf_path=vcf_path)
+        reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT)
         header = reader.header()
         rows = reader.preflight_records(limit=scan_records)
         for row in rows:

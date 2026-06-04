@@ -234,17 +234,17 @@ def _insert_source_record_batch(connection: sqlite3.Connection, batch: Iterable[
 
 def _cached_array_active_genome_index_if_usable(
     source_path: Path,
-    active_genome_index_path: Path,
+    agi_path: Path,
     *,
     detection: SourceDetection,
     source_format: str,
     genome_build: str,
     max_records: int | None,
 ) -> JsonObject | None:
-    if not active_genome_index_path.exists():
+    if not agi_path.exists():
         return None
     try:
-        with connect_active_genome_index(active_genome_index_path) as connection:
+        with connect_active_genome_index(agi_path) as connection:
             metadata = {row["key"]: json.loads(row["value"]) for row in connection.execute("select key, value from metadata")}
             stats = {row["key"]: int(row["value"]) for row in connection.execute("select key, value from stats")}
             objects = {
@@ -285,7 +285,7 @@ def _cached_array_active_genome_index_if_usable(
         "status": "cached",
         "source": str(source_path),
         "source_format": source_format,
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "schema_version": SCHEMA_VERSION,
         "genome_build": genome_build,
         "stats": stats,

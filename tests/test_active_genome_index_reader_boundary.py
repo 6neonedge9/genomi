@@ -12,8 +12,8 @@ AGI_ROOT = SRC_ROOT / "active_genome_index"
 
 FORBIDDEN_AGI_READ_PATTERNS = {
     r"\breader\.connect\s*\(": "capabilities must expose narrow reader methods instead of opening reader connections",
-    r"\bconnect_readonly_sqlite\s*\(\s*active_genome_index_path": "read AGI SQLite through ActiveGenomeIndexReader",
-    r"\bconnect_active_genome_index_existing\s*\(\s*active_genome_index_path": "read AGI SQLite through ActiveGenomeIndexReader",
+    r"\bconnect_readonly_sqlite\s*\(\s*agi_path": "read AGI SQLite through ActiveGenomeIndexReader",
+    r"\bconnect_active_genome_index_existing\s*\(\s*agi_path": "read AGI SQLite through ActiveGenomeIndexReader",
     r"\bquery_variant\s*\(\s*vcf\b": "call ActiveGenomeIndexReader.query_variant from capability code",
     r"\bquery_region\s*\(\s*vcf\b": "call ActiveGenomeIndexReader.query_region from capability code",
     r"\bquery_rsid_filtered\s*\(\s*vcf\b": "call ActiveGenomeIndexReader.query_rsid from capability code",

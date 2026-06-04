@@ -126,13 +126,13 @@ class CrossBuildClinvarMatchTests(unittest.TestCase):
             encoding="utf-8",
         )
         db_path = self.tmp / "evidence.sqlite"
-        index_path = self.tmp / "sample.index.sqlite"
+        agi_path = self.tmp / "sample.active-genome-index.sqlite"
         output_path = self.tmp / "matches.jsonl"
 
         import_clinvar_vcf(clinvar_vcf, db_path, source_version="fixture", genome_build="GRCh38")
-        create_active_genome_index(sample_vcf, index_path)
+        create_active_genome_index(sample_vcf, agi_path)
         result = match_clinvar_variants_from_active_genome_index(
-            index_path,
+            agi_path,
             db_path,
             output_path,
             genome_build="GRCh37",

@@ -314,6 +314,13 @@ def _build_clinvar_annotation(group: dict[str, Any]) -> dict[str, Any]:
             "genotype": sample.get("genotype"),
             "depth": sample.get("depth"),
             "genotype_quality": sample.get("genotype_quality"),
+            "record_kind": sample.get("record_kind"),
+            "observed_alleles": sample.get("observed_alleles"),
+            "source_record_ref": sample.get("source_record_ref"),
+            "source_record_alt": sample.get("source_record_alt"),
+            "source_record_format": sample.get("source_record_format") or sample.get("format"),
+            "source_record_record_kind": sample.get("source_record_record_kind"),
+            "source_record_observed_alleles": sample.get("source_record_observed_alleles"),
         },
         "genes": genes,
         "evidence_groups": _candidate_evidence_groups(clinical_significance),
@@ -371,14 +378,14 @@ def build_clinvar_rsid_annotation_index(
         if isinstance(active_genome_index, ActiveGenomeIndexReader)
         else open_reader(active_genome_index, need=ActiveGenomeIndexNeed.VARIANT, genome_build=genome_build)
     )
-    active_genome_index_path = reader.active_genome_index_path
+    agi_path = reader.agi_path
     evidence_db = Path(evidence_db)
-    if not active_genome_index_path.exists():
-        raise FileNotFoundError(active_genome_index_path)
+    if not agi_path.exists():
+        raise FileNotFoundError(agi_path)
     if not evidence_db.exists():
         raise FileNotFoundError(evidence_db)
 
-    output_path = Path(output_path) if output_path is not None else Path(f"{active_genome_index_path}.clinvar-rsid-annotations.json")
+    output_path = Path(output_path) if output_path is not None else Path(f"{agi_path}.clinvar-rsid-annotations.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = Path(f"{output_path}.genomi-manifest.json")
     with connect_evidence(evidence_db) as evidence_connection:
@@ -386,7 +393,7 @@ def build_clinvar_rsid_annotation_index(
         clinvar_identity = _clinvar_cache_identity(evidence_connection)
     cache_expected = {
         "step": "build_clinvar_rsid_annotation_index",
-        "input_active_genome_index": file_metadata(active_genome_index_path),
+        "input_active_genome_index": file_metadata(agi_path),
         "evidence_db": str(evidence_db),
         "clinvar_evidence": clinvar_identity,
         "output": str(output_path),
@@ -430,7 +437,7 @@ def build_clinvar_rsid_annotation_index(
     annotations.sort(key=_clinvar_rsid_annotation_sort_key)
     payload = {
         "status": "completed",
-        "input_active_genome_index": str(active_genome_index_path),
+        "input_active_genome_index": str(agi_path),
         "evidence_db": str(evidence_db),
         "output": str(output_path),
         "genome_build": genome_build,

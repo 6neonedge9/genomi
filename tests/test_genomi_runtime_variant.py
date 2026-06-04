@@ -105,7 +105,7 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
 
                 call_operation(
                     "active_genome_index.assign_user_genome",
-                    {"nickname": "u", "source": str(vcf), "active_genome_index_path": str(index), "db": str(db), "genome_build": "GRCh37"},
+                    {"nickname": "u", "source": str(vcf), "agi_path": str(index), "db": str(db), "genome_build": "GRCh37"},
                 )
                 result = call_operation("variant.resolve", {"rsid": "rs429358", "db": str(db), "genome_build": "GRCh37"})
 
@@ -139,7 +139,7 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
                     {
                         "nickname": "No call sample",
                         "source": str(vcf),
-                        "active_genome_index_path": str(index),
+                        "agi_path": str(index),
                         "db": str(db),
                         "genome_build": "GRCh37",
                     },
@@ -217,7 +217,7 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
 
                 call_operation(
                     "active_genome_index.assign_user_genome",
-                    {"nickname": "Test user", "source": str(vcf), "active_genome_index_path": str(index), "db": str(db), "genome_build": "GRCh38"},
+                    {"nickname": "Test user", "source": str(vcf), "agi_path": str(index), "db": str(db), "genome_build": "GRCh38"},
                 )
                 active_result = call_operation("variant.resolve", {"rsid": "rs555"})
 
@@ -270,7 +270,7 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
 
                 call_operation(
                     "active_genome_index.assign_user_genome",
-                    {"nickname": "Test user", "source": str(vcf), "active_genome_index_path": str(index), "genome_build": "GRCh38"},
+                    {"nickname": "Test user", "source": str(vcf), "agi_path": str(index), "genome_build": "GRCh38"},
                 )
                 current = call_operation("genomi.describe_context")
                 lookup = call_operation("variant.resolve", {"rsid": "rs555"})
@@ -332,14 +332,14 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
                     connection.execute(
                         """
                         insert into genotype_support(
-                            vcf_path, chrom, pos, ref, alt, genome_build, support_status,
+                            agi_path, chrom, pos, ref, alt, genome_build, support_status,
                             evidence_class, genotype, zygosity, depth, genotype_quality,
                             filter, raw_json, created_at
                         )
                         values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
-                            str(vcf.resolve(strict=False)),
+                            str(index.resolve(strict=False)),
                             "1",
                             100,
                             "A",
@@ -359,7 +359,7 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
 
                 call_operation(
                     "active_genome_index.assign_user_genome",
-                    {"nickname": "Test user", "source": str(vcf), "active_genome_index_path": str(index), "db": str(db), "genome_build": "GRCh38"},
+                    {"nickname": "Test user", "source": str(vcf), "agi_path": str(index), "db": str(db), "genome_build": "GRCh38"},
                 )
                 result = call_operation("variant.resolve", {"query": "chr1:100:A:G"})
 
@@ -459,9 +459,9 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "na12878",
-                        "vcf": str(vcf),
+                        "source": str(vcf),
                         "evidence_db": str(evidence_db),
-                        "outputs": {"active_genome_index_path": str(index), "clinvar_matches": str(matches)},
+                        "outputs": {"agi_path": str(index), "clinvar_matches": str(matches)},
                     },
                 )
 

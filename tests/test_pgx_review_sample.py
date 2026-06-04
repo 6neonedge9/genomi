@@ -367,7 +367,7 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
                         "nickname": "Test user",
                         "source": str(vcf),
                         "source_format": "vcf",
-                        "active_genome_index_path": str(index),
+                        "agi_path": str(index),
                         "genome_build": "GRCh38",
                     },
                 )

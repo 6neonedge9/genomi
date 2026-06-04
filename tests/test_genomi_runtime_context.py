@@ -306,7 +306,7 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
             runtime_context.set_active_genome_index(
                 source,
                 status="parsed",
-                active_genome_index_path=source.with_suffix(".sqlite"),
+                agi_path=source.with_suffix(".sqlite"),
                 genome_build="GRCh38",
             )
 

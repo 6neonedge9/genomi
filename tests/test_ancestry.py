@@ -12,7 +12,11 @@ from unittest import mock
 
 import numpy as np
 
-from genomi.active_genome_index.active_genome_index import create_active_genome_index, default_active_genome_index_path
+from genomi.active_genome_index.active_genome_index import (
+    ActiveGenomeIndexReader,
+    create_active_genome_index,
+    default_agi_path,
+)
 from genomi.capabilities.ancestry import policy as ancestry_policy
 from genomi.capabilities.ancestry import reference_panels
 from genomi.operations import OperationError, call_operation, list_operations
@@ -178,7 +182,7 @@ class AncestryCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=vcf.with_suffix(".sqlite"),
+            agi_path=vcf.with_suffix(".sqlite"),
             genome_build="GRCh38",
         )
 
@@ -254,6 +258,21 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertEqual(result["sample_qc"]["missing_marker_count"], 7)
         self.assertEqual(result["sample_qc"]["marker_overlap_quality"], "insufficient")
 
+    def test_overlap_uses_bulk_agi_dosage_reader(self) -> None:
+        markers = self._install_synthetic_panel(marker_count=20)
+        vcf = self._write_indexed_vcf("sample_bulk.vcf", markers, usable_count=20)
+
+        with self._tiny_thresholds(), mock.patch.object(
+            ActiveGenomeIndexReader,
+            "query_region",
+            side_effect=AssertionError("ancestry overlap must not query one marker at a time"),
+        ):
+            result = call_operation("ancestry.check_sample_overlap", {"source": str(vcf)})
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["sample_qc"]["usable_marker_count"], 20)
+        self.assertEqual(result["sample_qc"]["missing_marker_count"], 0)
+
     def test_grch37_sample_without_grch37_panel_prompts_install(self) -> None:
         # Only the GRCh38 synthetic panel is installed. A GRCh37 sample must
         # surface the GRCh37-panel install prompt rather than crashing or
@@ -263,7 +282,7 @@ class AncestryCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -293,7 +312,7 @@ class AncestryCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="GRCh37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -315,7 +334,7 @@ class AncestryCapabilityTests(unittest.TestCase):
         runtime_context.set_active_genome_index(
             vcf,
             status="parsed",
-            active_genome_index_path=default_active_genome_index_path(vcf),
+            agi_path=default_agi_path(vcf),
             genome_build="b37",
         )
         runtime_context.approve_agi_access(reason="test approved Active Genome Index access")
@@ -345,7 +364,7 @@ class AncestryCapabilityTests(unittest.TestCase):
             result = call_operation(
                 "ancestry.check_sample_overlap",
                 {
-                    "active_genome_index_path": parsed["outputs"]["active_genome_index_path"],
+                    "agi_path": parsed["outputs"]["agi_path"],
                     "genome_build": "b37",
                 },
             )

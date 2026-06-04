@@ -128,13 +128,13 @@ def _insert_genotype_support(
         connection.execute(
             """
             insert or replace into genotype_support (
-                vcf_path, chrom, pos, ref, alt, genome_build, support_status,
+                agi_path, chrom, pos, ref, alt, genome_build, support_status,
                 evidence_class, genotype, zygosity, depth, genotype_quality,
                 filter, raw_json, created_at
             ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "test.vcf",
+                "test.active-genome-index.sqlite",
                 chrom,
                 pos,
                 ref,

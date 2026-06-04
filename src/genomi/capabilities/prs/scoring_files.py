@@ -185,8 +185,8 @@ def import_scoring_file(
         "source_urls": source_context.source_urls(),
         "limitations": source_context.limitations(),
         "next_actions": [
-            {"action": "check_score_overlap", "operation": "prs.check_score_overlap", "pgs_id": score_id, "genome_build": authoritative_build},
-            {"action": "calculate_score", "operation": "prs.calculate_score", "pgs_id": score_id, "genome_build": authoritative_build},
+            {"action": "check_score_overlap", "operation": "prs.check_score_overlap", "score_dir": str(out_dir)},
+            {"action": "calculate_score", "operation": "prs.calculate_score", "score_dir": str(out_dir)},
         ],
     }
 
@@ -371,24 +371,40 @@ def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
             and not force
         ):
             return "already_exists"
-        backup = _unique_replacement_backup(target_dir)
-        target_dir.replace(backup)
-        try:
-            staging_dir.replace(target_dir)
-        except Exception:
-            if not target_dir.exists() and backup.exists():
-                backup.replace(target_dir)
-            raise
-        shutil.rmtree(backup, ignore_errors=True)
+        _publish_files_into_existing_cache(staging_dir, target_dir)
+        shutil.rmtree(staging_dir, ignore_errors=True)
         return "published"
     staging_dir.replace(target_dir)
     return "published"
 
 
-def _unique_replacement_backup(target_dir: Path) -> Path:
-    backup = Path(tempfile.mkdtemp(prefix=f".{target_dir.name}.replace-", dir=target_dir.parent))
-    backup.rmdir()
-    return backup
+def _publish_files_into_existing_cache(staging_dir: Path, target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    manifest = staging_dir / MANIFEST_NAME
+    for path in sorted(staging_dir.iterdir()):
+        if path.name == MANIFEST_NAME:
+            continue
+        _replace_file(path, target_dir / path.name)
+    _replace_file(manifest, target_dir / MANIFEST_NAME)
+
+
+def _replace_file(source: Path, target: Path) -> None:
+    handle = tempfile.NamedTemporaryFile(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=target.parent,
+        delete=False,
+    )
+    tmp = Path(handle.name)
+    try:
+        with handle:
+            with source.open("rb") as src:
+                shutil.copyfileobj(src, handle)
+        shutil.copystat(source, tmp)
+        tmp.replace(target)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def list_imported_scores(root: str | Path | None = None) -> JsonObject:

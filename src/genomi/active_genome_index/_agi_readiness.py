@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 import json
 import sqlite3
-from ._agi_schema import ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED, ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY, REQUIRED_QUERY_OBJECTS, SCHEMA_VERSION, _rows_as_dicts, _sort_bins, connect, connect_existing, default_active_genome_index_path
+from ._agi_schema import ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED, ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY, REQUIRED_QUERY_OBJECTS, SCHEMA_VERSION, _rows_as_dicts, _sort_bins, connect, connect_existing, default_agi_path
 
 
 class ActiveGenomeIndexSchemaTooNew(RuntimeError):
@@ -29,24 +29,24 @@ class ActiveGenomeIndexIncomplete(RuntimeError):
     gets an actionable status instead of a raw exception — and so no capability
     has to hand-roll its own incomplete-index handling."""
 
-def active_genome_index_summary(active_genome_index_path: str | Path) -> dict[str, Any]:
-    with connect_existing(active_genome_index_path) as connection:
+def active_genome_index_summary(agi_path: str | Path) -> dict[str, Any]:
+    with connect_existing(agi_path) as connection:
         readiness = _active_genome_index_readiness_from_connection(connection)
     return {
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "active_genome_index_readiness": _public_active_genome_index_readiness(readiness),
         "metadata": readiness["metadata"],
         "stats": readiness["stats"],
     }
 
-def active_genome_index_readiness(active_genome_index_path: str | Path) -> dict[str, Any]:
-    path = Path(active_genome_index_path)
+def active_genome_index_readiness(agi_path: str | Path) -> dict[str, Any]:
+    path = Path(agi_path)
     if not path.exists():
         return {
             "status": "missing",
             "complete": False,
             "reason": "active_genome_index_not_found",
-            "active_genome_index_path": str(path),
+            "agi_path": str(path),
             "retry_operation": "genomi.parse_source",
         }
     try:
@@ -58,17 +58,17 @@ def active_genome_index_readiness(active_genome_index_path: str | Path) -> dict[
             "complete": False,
             "reason": "active_genome_index_unreadable",
             "error": str(exc),
-            "active_genome_index_path": str(path),
+            "agi_path": str(path),
             "retry_operation": "genomi.parse_source",
         }
-    return _public_active_genome_index_readiness(readiness, active_genome_index_path=path)
+    return _public_active_genome_index_readiness(readiness, agi_path=path)
 
-def reference_pending(active_genome_index_path: str | Path) -> bool:
+def reference_pending(agi_path: str | Path) -> bool:
     """True when the index is variants_ready but its reference-block tail is
     still being appended (Phase B). Reference-dependent reads use this to stamp
     their result so a transient empty/negative is not read as a final answer."""
     try:
-        return bool(active_genome_index_readiness(active_genome_index_path).get("variants_ready"))
+        return bool(active_genome_index_readiness(agi_path).get("variants_ready"))
     except (ActiveGenomeIndexNeedsReparse, ActiveGenomeIndexSchemaTooNew, RuntimeError):
         return False
 
@@ -95,8 +95,8 @@ REFERENCE_PENDING_FAILED_NOTE = (
     "lookups are already final."
 )
 
-def ensure_active_genome_index_complete(active_genome_index_path: str | Path) -> None:
-    readiness = active_genome_index_readiness(active_genome_index_path)
+def ensure_active_genome_index_complete(agi_path: str | Path) -> None:
+    readiness = active_genome_index_readiness(agi_path)
     if readiness.get("complete"):
         return
     # A variants_ready index is a usable read target: every variant is stored
@@ -153,13 +153,13 @@ def preflight(vcf_path: str | Path, *, scan_records: int = 1000) -> dict[str, An
 
 def failure_summary(
     vcf_path: str | Path,
-    active_genome_index_path: str | Path | None = None,
+    agi_path: str | Path | None = None,
     *,
     example_limit: int = 5,
 ) -> dict[str, Any]:
-    active_genome_index_path = Path(active_genome_index_path) if active_genome_index_path is not None else default_active_genome_index_path(vcf_path)
-    ensure_active_genome_index_complete(active_genome_index_path)
-    with connect_existing(active_genome_index_path) as connection:
+    agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf_path)
+    ensure_active_genome_index_complete(agi_path)
+    with connect_existing(agi_path) as connection:
         by_variant_status = _rows_as_dicts(
             connection.execute(
                 """
@@ -230,7 +230,7 @@ def failure_summary(
 
     return {
         "vcf_path": str(vcf_path),
-        "active_genome_index_path": str(active_genome_index_path),
+        "agi_path": str(agi_path),
         "filter": "FAIL",
         "filter_description": "Did not meet quality or depth criteria",
         "by_variant_status": by_variant_status,
@@ -309,20 +309,37 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
     missing_objects = sorted(f"{kind}:{name}" for kind, name in REQUIRED_QUERY_OBJECTS - objects)
     marker_complete = metadata.get("active_genome_index_complete") is True
     status = str(metadata.get("active_genome_index_build_status") or ("completed" if marker_complete else "unknown"))
-    complete = marker_complete and status == ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED and not missing_objects and bool(stats)
+    schema_compat = check_agi_schema_compatibility(connection)
+    schema_reason: str | None = None
+    if schema_compat == AGI_SCHEMA_NEEDS_REPARSE:
+        status = "needs_reparse"
+        schema_reason = "active_genome_index_needs_reparse"
+    elif schema_compat == AGI_SCHEMA_TOO_NEW:
+        status = "schema_too_new"
+        schema_reason = "active_genome_index_schema_too_new"
+    complete = (
+        schema_reason is None
+        and marker_complete
+        and status == ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED
+        and not missing_objects
+        and bool(stats)
+    )
     # A two-phase gVCF build reaches variants_ready when every variant is
     # stored and the query objects/stats exist, but the reference tail is still
     # being appended (active_genome_index_complete stays False). It is queryable
     # for variants now; only "confirmed reference vs not-callable" is provisional.
     variants_ready = (
-        not complete
+        schema_reason is None
+        and not complete
         and status == ACTIVE_GENOME_INDEX_BUILD_STATUS_VARIANTS_READY
         and not missing_objects
         and bool(stats)
     )
-    reason = None
+    reason = schema_reason
     if not complete and not variants_ready:
-        if not marker_complete:
+        if schema_reason is not None:
+            pass
+        elif not marker_complete:
             reason = "completion_marker_missing_or_false"
         elif status != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
             reason = "build_status_not_completed"
@@ -334,20 +351,6 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
             reason = "active_genome_index_not_complete"
     elif variants_ready:
         reason = "reference_pass_pending"
-    else:
-        # Even a structurally complete Active Genome Index is unusable if its
-        # schema_version doesn't match the runtime. Downgrade readiness so
-        # ensure_active_genome_index_complete (and every query path that funnels through
-        # it) raises the lifecycle exception.
-        schema_compat = check_agi_schema_compatibility(connection)
-        if schema_compat == AGI_SCHEMA_NEEDS_REPARSE:
-            complete = False
-            status = "needs_reparse"
-            reason = "active_genome_index_needs_reparse"
-        elif schema_compat == AGI_SCHEMA_TOO_NEW:
-            complete = False
-            status = "schema_too_new"
-            reason = "active_genome_index_schema_too_new"
     return {
         "complete": complete,
         "variants_ready": variants_ready,
@@ -359,7 +362,7 @@ def _active_genome_index_readiness_from_connection(connection: sqlite3.Connectio
         "missing_objects": missing_objects,
     }
 
-def _public_active_genome_index_readiness(readiness: dict[str, Any], *, active_genome_index_path: Path | None = None) -> dict[str, Any]:
+def _public_active_genome_index_readiness(readiness: dict[str, Any], *, agi_path: Path | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {
         "status": readiness.get("status") or "unknown",
         "complete": bool(readiness.get("complete")),
@@ -386,8 +389,8 @@ def _public_active_genome_index_readiness(readiness: dict[str, Any], *, active_g
             result["note"] = REFERENCE_PENDING_FAILED_NOTE
         else:
             result["note"] = REFERENCE_PENDING_NOTE
-    if active_genome_index_path is not None:
-        result["active_genome_index_path"] = str(active_genome_index_path)
+    if agi_path is not None:
+        result["agi_path"] = str(agi_path)
     return result
 
 
