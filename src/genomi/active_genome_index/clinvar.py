@@ -14,9 +14,6 @@ JsonObject = dict[str, Any]
 def stage_clinvar_match_records(
     reader: ActiveGenomeIndexReader,
     connection: sqlite3.Connection,
-    *,
-    pass_only: bool,
-    max_records: int | None,
 ) -> JsonObject:
     """Materialize the AGI rows ClinVar matching may read into temp tables."""
 
@@ -65,18 +62,8 @@ def stage_clinvar_match_records(
             where record_kind in ('variant_call', 'array_call')
         """
         connection.execute(sql)
-        skipped_non_pass = 0
-        if pass_only:
-            row = connection.execute(
-                """
-                select count(*) as skipped_non_pass
-                from temp.selected_active_genome_index_records
-                where filter not in ('PASS', '.')
-                """
-            ).fetchone()
-            skipped_non_pass = int(row["skipped_non_pass"] or 0)
         connection.commit()
-        return {"source_format": _source_format(connection, alias), "skipped_non_pass": skipped_non_pass}
+        return {"source_format": _source_format(connection, alias)}
     finally:
         if connection.in_transaction:
             connection.rollback()

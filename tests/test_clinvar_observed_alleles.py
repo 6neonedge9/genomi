@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexNeed, create_active_genome_index, open_reader
+from genomi.active_genome_index.source_intake.dispatch import parse_source
 from genomi.evidence import (
     import_clinvar_vcf,
     match_clinvar_variants,
@@ -94,6 +95,98 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         self.assertEqual(result["stats"]["scanned_records"], 1)
         self.assertEqual(payload["source_format"], "vcf")
         self.assertEqual(payload["match_provenance"]["source_record"]["source_format"], "vcf")
+
+    def test_active_genome_index_max_records_windows_before_pass_filter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            clinvar_vcf = self._write_clinvar_vcf(Path(tmp) / "clinvar.vcf")
+            import_clinvar_vcf(clinvar_vcf, db, source_version="fixture")
+            sample_vcf = Path(tmp) / "sample-window.vcf"
+            sample_vcf.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                        "1\t100\trsFiltered\tA\tC\t.\tLowQual\t.\tGT\t0/1",
+                        "1\t100\trsPassing\tA\tC\t.\tPASS\t.\tGT\t0/1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            agi_path = Path(tmp) / "sample-window.sqlite"
+            output = Path(tmp) / "agi-window.jsonl"
+            create_active_genome_index(sample_vcf, agi_path, include_reference=False, reuse_existing=False)
+
+            reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, genome_build="GRCh38")
+            result = match_clinvar_variants_from_active_genome_index(
+                reader,
+                db,
+                output,
+                max_records=1,
+            )
+            output_text = output.read_text(encoding="utf-8")
+
+        self.assertEqual(result["stats"]["skipped_non_pass_records"], 1)
+        self.assertEqual(result["stats"]["scanned_records"], 0)
+        self.assertEqual(result["stats"]["queried_alleles"], 0)
+        self.assertEqual(result["stats"]["matched_alleles"], 0)
+        self.assertEqual(result["stats"]["written_records"], 0)
+        self.assertEqual(output_text, "")
+
+    def test_consumer_array_matching_uses_each_observed_alt_allele(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            clinvar_vcf = Path(tmp) / "clinvar-array.vcf"
+            clinvar_vcf.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO",
+                        "1\t200\t2000\tC\tA,G\t.\t.\tALLELEID=2;CLNSIG=Pathogenic;CLNREVSTAT=criteria_provided,_single_submitter;CLNDN=condition;GENEINFO=GENE2:2",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            import_clinvar_vcf(clinvar_vcf, db, source_version="fixture", genome_build="GRCh37")
+            array_source = Path(tmp) / "genome_23andme.txt"
+            array_source.write_text(
+                "\n".join(
+                    [
+                        "# 23andMe raw data",
+                        "# rsid\tchromosome\tposition\tgenotype",
+                        "rsArray\t1\t200\tAG",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            parsed = parse_source(array_source, evidence_db=Path(tmp) / "array-evidence.sqlite", force=True)
+            agi_path = Path(str(parsed["outputs"]["agi_path"]))
+            output = Path(tmp) / "array-matches.jsonl"
+
+            reader = open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT, genome_build="GRCh37")
+            result = match_clinvar_variants_from_active_genome_index(
+                reader,
+                db,
+                output,
+                genome_build="GRCh37",
+            )
+            payloads = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+
+        self.assertEqual(result["stats"]["queried_alleles"], 2)
+        self.assertEqual(result["stats"]["matched_alleles"], 2)
+        self.assertEqual(result["stats"]["written_records"], 2)
+        self.assertEqual([payload["clinvar"]["alt"] for payload in payloads], ["A", "G"])
+        self.assertEqual(
+            [payload["match_basis"] for payload in payloads],
+            ["consumer_array_allele_inference", "consumer_array_allele_inference"],
+        )
+        for payload in payloads:
+            self.assertEqual(payload["sample_variant"]["observed_alleles"], ["A", "G"])
+            self.assertEqual(payload["match_provenance"]["source_record"]["observed_alleles"], ["A", "G"])
 
     def _write_clinvar_vcf(self, path: Path) -> Path:
         path.write_text(

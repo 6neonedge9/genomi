@@ -78,6 +78,12 @@ class SourceContractCase:
         return EXPECTED_CLINVAR_MATCHED_ALLELES
 
     @property
+    def expected_clinvar_queried_alleles(self) -> int:
+        if self.is_consumer_array:
+            return sum(len(set(str(locus["bases"]))) for locus in LOCUS_MODEL)
+        return EXPECTED_CLINVAR_MATCHED_ALLELES
+
+    @property
     def expected_source_kind(self) -> str:
         return {
             "bam": "alignment_reads",
@@ -476,7 +482,7 @@ class ActiveGenomeIndexDownstreamContractTests(
         )
         self.assertEqual(clinvar_result["status"], "completed", clinvar_result)
         self.assertEqual(clinvar_result["stats"]["scanned_records"], contract.expected_clinvar_scanned_records)
-        self.assertEqual(clinvar_result["stats"]["queried_alleles"], contract.expected_clinvar_scanned_records)
+        self.assertEqual(clinvar_result["stats"]["queried_alleles"], contract.expected_clinvar_queried_alleles)
         self.assertEqual(clinvar_result["stats"]["matched_alleles"], EXPECTED_CLINVAR_MATCHED_ALLELES)
         self.assertEqual(clinvar_result["stats"]["written_records"], EXPECTED_CLINVAR_MATCHED_ALLELES)
         self._assert_clinvar_payloads_are_real_alleles(matches_path, expected_format=contract.expected_format)

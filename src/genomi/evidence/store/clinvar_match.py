@@ -44,7 +44,12 @@ from .clinvar_match_provenance import (
     build_clinvar_match_payload,
 )
 
-
+_SELECTED_AGI_RECORD_COLUMNS = """
+                record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
+                info,
+                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
+                observed_alleles
+"""
 
 def match_clinvar_variants(
     vcf_path: str | Path,
@@ -339,10 +344,12 @@ def match_clinvar_variants_from_active_genome_index(
         staged = stage_clinvar_match_records(
             reader,
             evidence_connection,
+        )
+        skipped_non_pass = _count_selected_non_pass_records(
+            evidence_connection,
             pass_only=pass_only,
             max_records=max_records,
         )
-        skipped_non_pass = int(staged.get("skipped_non_pass") or 0)
         selection_params = (max_records,) if max_records is not None else ()
         stats_row = evidence_connection.execute(
             f"""
@@ -353,9 +360,10 @@ def match_clinvar_variants_from_active_genome_index(
                     sum(
                         case
                             when record_kind = 'array_call'
-                                 and genotype is not null
-                                 and upper(genotype) not in ('', '.', '--', '00', 'NN')
-                                then 1
+                                then (
+                                    select count(distinct upper(observed.value))
+                                    from json_each(observed_alleles) as observed
+                                )
                             when alt is null or alt in ('', '.') then 0
                             when observed_alleles is not null then (
                                 select count(distinct observed.value)
@@ -442,30 +450,58 @@ def _selected_active_genome_index_records_cte_sql(
         # sample_pos_original so the writer can keep audit honest.
         return """
             with selected_records as (
-                select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                       info,
-                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
-                       observed_alleles,
+                select """ + _SELECTED_AGI_RECORD_COLUMNS + """,
                        sample_chrom_original, sample_pos_original
                 from temp.lifted_selected_records
             )
         """
+    source_cte = _source_active_genome_index_records_cte_sql(max_records=max_records)
     sql = """
-            with selected_records as (
-                select record_rowid, chrom, chrom_sort, pos, rsid, ref, alt, qual, filter,
-                       info,
-                       sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind,
-                       observed_alleles
-                from temp.selected_active_genome_index_records
-                where record_kind in ('variant_call', 'array_call')
+            with """ + source_cte + """,
+            selected_records as (
+                select """ + _SELECTED_AGI_RECORD_COLUMNS + """
+                from source_records
+                where 1 = 1
         """
     if pass_only:
         sql += " and filter in ('PASS', '.')"
+    sql += ")"
+    return sql
+
+
+def _source_active_genome_index_records_cte_sql(*, max_records: int | None) -> str:
+    sql = """
+            source_records as (
+                select """ + _SELECTED_AGI_RECORD_COLUMNS + """
+                from temp.selected_active_genome_index_records
+                where record_kind in ('variant_call', 'array_call')
+        """
     if max_records is not None:
-        sql += " order by chrom_sort, pos, sample_index"
+        sql += " order by chrom_sort, pos, record_rowid, sample_index"
         sql += " limit ?"
     sql += ")"
     return sql
+
+
+def _count_selected_non_pass_records(
+    connection: sqlite3.Connection,
+    *,
+    pass_only: bool,
+    max_records: int | None,
+) -> int:
+    if not pass_only:
+        return 0
+    selection_params = (max_records,) if max_records is not None else ()
+    row = connection.execute(
+        f"""
+        with {_source_active_genome_index_records_cte_sql(max_records=max_records)}
+        select count(*) as skipped_non_pass
+        from source_records
+        where filter not in ('PASS', '.')
+        """,
+        selection_params,
+    ).fetchone()
+    return int(row["skipped_non_pass"] or 0)
 
 
 def _populate_lifted_selected_active_genome_index_records_table(

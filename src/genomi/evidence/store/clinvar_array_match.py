@@ -77,10 +77,10 @@ def clinvar_array_direct_select_sql(
               and r.record_kind = 'array_call'
               and upper(cv.ref) in ('A', 'C', 'G', 'T')
               and upper(cv.alt) in ('A', 'C', 'G', 'T')
-              and r.genotype is not null
-              and length(upper(r.genotype)) between 1 and 2
-              and upper(r.genotype) not in ('', '.', '--', '00', 'NN')
-              and instr(upper(r.genotype), upper(cv.alt)) > 0
-              and replace(replace(upper(r.genotype), upper(cv.ref), ''), upper(cv.alt), '') = ''
+              and exists (
+                  select 1
+                  from json_each(r.observed_alleles) as observed
+                  where upper(observed.value) = upper(cv.alt)
+              )
               {where}
         """
