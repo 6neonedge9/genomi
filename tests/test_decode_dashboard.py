@@ -390,6 +390,7 @@ class RenderDashboardTests(unittest.TestCase):
                 "overview": {
                     "nickname": "matthew",
                     "genome_build": "GRCh38",
+                    "agi_source_format": "vcf",
                     "active_genome_index_completed_at": "2026-05-25T21:20:00Z",
                     "active_genome_index": {"variant_count": 5_148_321},
                 },
@@ -401,6 +402,7 @@ class RenderDashboardTests(unittest.TestCase):
         ov = parsed["overview"]
         self.assertEqual(ov["sampleId"], "matthew")
         self.assertEqual(ov["genomeBuild"], "GRCh38")
+        self.assertEqual(ov["genomeSource"], "vcf")
         self.assertEqual(ov["parsedAt"], "2026-05-25T21:20:00Z")
         self.assertEqual(ov["variantCount"], 5_148_321)
         self.assertIn("overview", result["panels_rendered"])

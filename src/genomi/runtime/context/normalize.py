@@ -43,11 +43,11 @@ DIGITIZATION_CONTRACT: JsonObject = {
 }
 
 
-def _context_source_format(source_path: Path, source_format: object | None) -> str:
+def _infer_agi_source_format(agi_intake_path: Path, source_format: object | None) -> str:
     requested = str(source_format or "").strip().lower()
     if requested:
         return requested
-    name = source_path.name.lower()
+    name = agi_intake_path.name.lower()
     if name.endswith((".g.vcf.gz", ".gvcf.gz")):
         return "gvcf"
     if name.endswith((".vcf", ".vcf.gz")):
@@ -147,9 +147,11 @@ def _legacy_agi_record_keys() -> tuple[str, ...]:
         "source_format",
         "source_kind",
         "source_member",
+        "active_vcf",
         "comparable_vcf",
         "comparable_variant_export",
-        "source" + "_label",
+        "selected_vcf",
+        "source_label",
         "vcf",
         "vcf_path",
     )

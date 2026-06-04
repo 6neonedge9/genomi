@@ -151,7 +151,7 @@ def _require_context_value(params: JsonObject, key: str, message: str) -> None:
 
 
 def _remember_source_result(
-    source: Path,
+    agi_intake_source_path: Path,
     result: JsonObject,
     *,
     status: str,
@@ -160,7 +160,7 @@ def _remember_source_result(
 ) -> JsonObject:
     try:
         active = runtime_context.set_active_agi_from_source(
-            source,
+            agi_intake_source_path,
             agi_source_format=result.get("source_format"),
             operation_result=result,
             status=status,
@@ -177,17 +177,20 @@ def _remember_source_result(
 
 def _hide_intake_source_after_digitization(result: JsonObject) -> JsonObject:
     payload = dict(result)
-    source_path = payload.pop("source", None)
+    agi_intake_source_path = payload.pop("source", None)
     agi_comparable_variant_export = payload.pop("agi_comparable_variant_export", None)
     if agi_comparable_variant_export:
         payload["agi_comparable_variant_export"] = agi_comparable_variant_export
     payload["intake_source"] = {
         "role": "ingestion_source_for_digitization",
         "hidden_after_digitization": True,
-        "available_for_rebuild": bool(source_path and Path(str(source_path)).exists()),
+        "available_for_rebuild": bool(
+            agi_intake_source_path
+            and Path(str(agi_intake_source_path)).exists()
+        ),
     }
     payload["digitization_contract"] = runtime_context.DIGITIZATION_CONTRACT
-    hidden_paths = _hidden_intake_path_strings(source_path)
+    hidden_paths = _hidden_intake_path_strings(agi_intake_source_path)
     return _redact_intake_paths(payload, hidden_paths)
 
 

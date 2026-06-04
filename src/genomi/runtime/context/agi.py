@@ -23,13 +23,13 @@ from .normalize import (
     DIGITIZATION_CONTRACT,
     JsonObject,
     _attach_agi_to_user,
-    _context_source_format,
     _default_user,
     _empty_agi_access_status,
     _ensure_user_record,
     _find_user,
     _find_user_id_for_agi,
     _grant_agi_access,
+    _infer_agi_source_format,
     _mark_default_user,
     _normalize_agi_record,
     _normalize_user_record,
@@ -385,29 +385,71 @@ def infer_agi_record(
     genome_build: str | None = None,
     root: str | Path | None = None,
 ) -> JsonObject:
-    source_path = Path(agi_intake_source_path)
+    agi_intake_path = Path(agi_intake_source_path)
     outputs = _outputs_from_result(operation_result)
     result = operation_result or {}
-    effective_format = _context_source_format(source_path, result.get("source_format") or agi_source_format)
-    sample_slug = str(result.get("sample_slug") or sample_slug_from_source(source_path, source_format=effective_format))
+    effective_format = _infer_agi_source_format(
+        agi_intake_path,
+        result.get("source_format") or agi_source_format,
+    )
+    sample_slug = str(
+        result.get("sample_slug")
+        or sample_slug_from_source(agi_intake_path, source_format=effective_format)
+    )
     is_vcf = effective_format in {"vcf", "gvcf"}
+    default_agi = (
+        default_agi_path(agi_intake_path, root=root)
+        if is_vcf
+        else run_output_path_for_source(
+            agi_intake_path,
+            "active-genome-index.sqlite",
+            source_format=effective_format,
+            root=root,
+        )
+    )
+    default_matches = (
+        run_output_path(agi_intake_path, "clinvar.matches.jsonl", root=root)
+        if is_vcf
+        else None
+    )
+    default_candidate_inventory = (
+        run_output_path(agi_intake_path, "clinvar.candidates.json", root=root)
+        if is_vcf
+        else None
+    )
     run: JsonObject = {
         "agi_id": sample_slug,
         "sample_slug": sample_slug,
         "status": status,
-        "agi_intake_source_path": _path_str(result.get("source") or source_path),
+        "agi_intake_source_path": _path_str(result.get("source") or agi_intake_path),
         "agi_source_format": effective_format,
         "agi_source_kind": result.get("source_kind"),
         "agi_source_member": result.get("source_member"),
-        "project_dir": _path_str(result.get("project_dir") or run_project_dir_for_source(source_path, source_format=effective_format, root=root)),
-        "work_dir": _path_str(result.get("work_dir") or run_work_dir_for_source(source_path, source_format=effective_format, root=root)),
-        "evidence_dir": _path_str(result.get("evidence_dir") or run_evidence_dir_for_source(source_path, source_format=effective_format, root=root)),
-        "reference_dir": _path_str(result.get("reference_dir") or run_reference_dir_for_source(source_path, source_format=effective_format, root=root)),
-        "evidence_db": _path_str(db or result.get("evidence_db") or run_evidence_db_path_for_source(source_path, source_format=effective_format, root=root)),
+        "project_dir": _path_str(
+            result.get("project_dir")
+            or run_project_dir_for_source(agi_intake_path, source_format=effective_format, root=root)
+        ),
+        "work_dir": _path_str(
+            result.get("work_dir")
+            or run_work_dir_for_source(agi_intake_path, source_format=effective_format, root=root)
+        ),
+        "evidence_dir": _path_str(
+            result.get("evidence_dir")
+            or run_evidence_dir_for_source(agi_intake_path, source_format=effective_format, root=root)
+        ),
+        "reference_dir": _path_str(
+            result.get("reference_dir")
+            or run_reference_dir_for_source(agi_intake_path, source_format=effective_format, root=root)
+        ),
+        "evidence_db": _path_str(
+            db
+            or result.get("evidence_db")
+            or run_evidence_db_path_for_source(agi_intake_path, source_format=effective_format, root=root)
+        ),
         "shared_evidence_db": _path_str(shared_db or result.get("shared_evidence_db") or shared_evidence_db_path(root)),
-        "agi_path": _path_str(agi_path or outputs.get("agi_path") or (default_agi_path(source_path, root=root) if is_vcf else run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=effective_format, root=root))),
-        "matches": _path_str(matches or outputs.get("clinvar_matches") or (run_output_path(source_path, "clinvar.matches.jsonl", root=root) if is_vcf else None)),
-        "candidate_inventory": _path_str(outputs.get("clinvar_scan") or (run_output_path(source_path, "clinvar.candidates.json", root=root) if is_vcf else None)),
+        "agi_path": _path_str(agi_path or outputs.get("agi_path") or default_agi),
+        "matches": _path_str(matches or outputs.get("clinvar_matches") or default_matches),
+        "candidate_inventory": _path_str(outputs.get("clinvar_scan") or default_candidate_inventory),
         "agi_comparable_variant_export": _path_str(
             result.get("agi_comparable_variant_export")
             or outputs.get("exported_primary_variants")
@@ -449,7 +491,7 @@ def describe_agi_record(run: JsonObject | None) -> JsonObject | None:
     if active_genome_index_state is not None:
         payload["active_genome_index_readiness"] = active_genome_index_state
     if digitized:
-        source_path = payload.pop("agi_intake_source_path", None)
+        agi_intake_source_path = payload.pop("agi_intake_source_path", None)
         payload["availability"] = {
             key: value
             for key, value in availability.items()
@@ -458,7 +500,10 @@ def describe_agi_record(run: JsonObject | None) -> JsonObject | None:
         payload["intake_source"] = {
             "role": "ingestion_source_for_digitization",
             "hidden_after_digitization": True,
-            "available_for_rebuild": bool(source_path and Path(str(source_path)).exists()),
+            "available_for_rebuild": bool(
+                agi_intake_source_path
+                and Path(str(agi_intake_source_path)).exists()
+            ),
         }
     return payload
 
@@ -546,7 +591,7 @@ def _resolve_access_target(
     root: str | Path | None,
 ) -> JsonObject | None:
     if source:
-        existing = _find_agi_by_source(registry, context, source)
+        existing = _find_agi_by_intake_source(registry, context, source)
         if isinstance(existing, dict):
             return existing
         inferred = infer_agi_record(source, status="set", root=root)
@@ -563,21 +608,25 @@ def _resolve_access_target(
     return active if isinstance(active, dict) else None
 
 
-def _find_agi_by_source(registry: JsonObject, context: JsonObject, source: str | Path) -> JsonObject | None:
-    target = _resolved_source_path(source)
+def _find_agi_by_intake_source(
+    registry: JsonObject,
+    context: JsonObject,
+    agi_intake_source: str | Path,
+) -> JsonObject | None:
+    target = _resolved_intake_source_path(agi_intake_source)
     for container in (context.get("agis"), registry.get("agis")):
         if not isinstance(container, dict):
             continue
         for run in container.values():
             if not isinstance(run, dict) or not run.get("agi_intake_source_path"):
                 continue
-            if _resolved_source_path(run["agi_intake_source_path"]) == target:
+            if _resolved_intake_source_path(run["agi_intake_source_path"]) == target:
                 return run
     return None
 
 
-def _resolved_source_path(source: str | Path) -> str:
-    return str(Path(source).expanduser().resolve(strict=False))
+def _resolved_intake_source_path(agi_intake_source: str | Path) -> str:
+    return str(Path(agi_intake_source).expanduser().resolve(strict=False))
 
 
 def _find_agi(registry: JsonObject, agi_id_or_nickname: str) -> JsonObject | None:

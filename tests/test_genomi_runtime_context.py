@@ -426,6 +426,8 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
                             "status": "parsed",
                             "source": "/tmp/legacy-source.vcf",
                             "source_format": "vcf",
+                            "active_vcf": "/tmp/legacy-active.vcf",
+                            "selected_vcf": "/tmp/legacy-selected.vcf",
                             "vcf_path": "/tmp/legacy-source.vcf",
                             "agi_path": "/tmp/legacy-active-genome-index.sqlite",
                         }

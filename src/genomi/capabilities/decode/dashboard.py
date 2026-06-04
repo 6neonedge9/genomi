@@ -181,8 +181,8 @@ def _normalize_overview(raw: Any) -> JsonObject | None:
             or _pass_rate(raw)
         ),
         "meanDepth": _deep_pick(raw, "meanDepth", "mean_depth", "mean_dp"),
-        "genomeSource": _pick(raw, "genomeSource", "genome_source", "source_format")
-            or _deep_pick(raw, "dataSourceType"),
+        "genomeSource": _pick(raw, "genomeSource", "genome_source", "agi_source_format")
+            or _deep_pick(raw, "agi_source_format", "dataSourceType"),
         "parsedAt": _pick(raw, "parsedAt", "parsed_at", "active_genome_index_completed_at", "updated_at", "file_date"),
         "sourceCoverage": _pick(raw, "sourceCoverage", "source_coverage"),
     }
