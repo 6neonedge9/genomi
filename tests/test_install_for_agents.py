@@ -40,7 +40,7 @@ class InstallForAgentsTests(unittest.TestCase):
         )
         self.assertEqual(
             install_for_agents.parse_library_selection("common-questions"),
-            ["clinvar-grch38", "hpo", "gencc"],
+            ["clinvar-grch38", "hpo", "gencc", "pgs-catalog-score-metadata"],
         )
         self.assertEqual(
             install_for_agents.parse_library_selection("medication-response"),
