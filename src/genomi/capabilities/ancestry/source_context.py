@@ -118,7 +118,6 @@ def build_source_context() -> dict[str, Any]:
         "supported_genome_builds": policy.supported_build_payload(),
         "overlap_policy": policy.overlap_thresholds(),
         "default_reference_panel": panels[0],
-        "reference_panel": panels[0],
         "reference_panels": panels,
         "label_definitions": label_definitions(),
         "method_scope": {

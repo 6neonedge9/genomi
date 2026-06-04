@@ -22,17 +22,17 @@ LOW_OVERLAP_FRACTION = policy.LOW_OVERLAP_FRACTION
 
 
 def check_sample_overlap(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     genome_build: str = "GRCh38",
     panel_root: str | Path | None = None,
 ) -> JsonObject:
-    panel_or_missing = _load_panel_or_missing(genome_build, panel_root, reader)
+    panel_or_missing = _load_panel_or_missing(genome_build, panel_root)
     if isinstance(panel_or_missing, dict) and panel_or_missing.get("status") == "panel_not_installed":
         return panel_or_missing
     panel = panel_or_missing
     genotype_context = collect_sample_genotypes(
-        reader,
+        agi_reader,
         genome_build=genome_build,
         panel=panel,
     )
@@ -52,7 +52,6 @@ def check_sample_overlap(
 def _load_panel_or_missing(
     genome_build: str,
     panel_root: str | Path | None,
-    reader: ActiveGenomeIndexReader,
 ) -> JsonObject:
     """Load the panel that matches the sample's genome build.
 
@@ -67,11 +66,10 @@ def _load_panel_or_missing(
     except FileNotFoundError:
         return _panel_not_installed_payload(
             genome_build=normalized_build,
-            agi_path=str(reader.agi_path),
         )
 
 
-def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObject:
+def _panel_not_installed_payload(*, genome_build: str) -> JsonObject:
     from ...runtime.libraries import manager
 
     library = source_context.panel_library_for_build(genome_build)
@@ -83,7 +81,6 @@ def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObj
     )
     sample_qc = {
         "genome_build": genome_build,
-        "agi_path": agi_path,
         "panel_marker_count": 0,
         "usable_marker_count": 0,
         "missing_marker_count": 0,
@@ -127,7 +124,7 @@ def _panel_not_installed_payload(*, genome_build: str, agi_path: str) -> JsonObj
 
 
 def collect_sample_genotypes(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     genome_build: str = "GRCh38",
     panel: JsonObject | None = None,
@@ -137,12 +134,11 @@ def collect_sample_genotypes(
     markers = list(panel_payload["markers"])
     panel_marker_count = len(markers)
 
-    agi_path = reader.agi_path
     # No readiness / incompleteness handling here: open_agi gated access
     # upstream (missing / incomplete -> active_genome_index_incomplete). A
     # variants_ready index proceeds; the dispatch chokepoint stamps
     # reference_pending.
-    marker_results = _marker_dosage_results(reader, markers)
+    marker_results = _marker_dosage_results(agi_reader, markers)
     dosages: dict[str, float] = {}
     missing_marker_ids: list[str] = []
     missing_marker_reasons: dict[str, int] = {}
@@ -180,7 +176,6 @@ def collect_sample_genotypes(
         usable_marker_count=usable_marker_count,
         missing_marker_count=len(missing_marker_ids),
         genome_build=normalized_build,
-        agi_path=str(agi_path),
         overlap_status=_overlap_status(fraction),
         projection_allowed=fraction >= LOW_OVERLAP_FRACTION,
         marker_overlap_quality=_marker_overlap_quality(fraction),
@@ -198,7 +193,7 @@ def collect_sample_genotypes(
     }
 
 
-def _marker_dosage_results(reader: ActiveGenomeIndexReader, markers: list[JsonObject]) -> list[JsonObject]:
+def _marker_dosage_results(agi_reader: ActiveGenomeIndexReader, markers: list[JsonObject]) -> list[JsonObject]:
     dosage_variants = [
         {
             "variant_index": index,
@@ -213,7 +208,7 @@ def _marker_dosage_results(reader: ActiveGenomeIndexReader, markers: list[JsonOb
         }
         for index, marker in enumerate(markers)
     ]
-    raw_results = reader.dosage_for_variants(
+    raw_results = agi_reader.dosage_for_variants(
         dosage_variants,
         skip_ambiguous_palindromic=False,
     )
@@ -280,7 +275,6 @@ def _sample_qc(
     usable_marker_count: int,
     missing_marker_count: int,
     genome_build: str,
-    agi_path: str,
     overlap_status: str,
     projection_allowed: bool,
     marker_overlap_quality: str,
@@ -291,7 +285,6 @@ def _sample_qc(
     return {
         "genome_build": genome_build,
         "supported_genome_builds": list(reference_panels.SUPPORTED_BUILDS),
-        "agi_path": agi_path,
         "panel_marker_count": marker_count,
         "usable_marker_count": usable_marker_count,
         "missing_marker_count": missing_marker_count,

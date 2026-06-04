@@ -29,7 +29,7 @@ DOCS: list[tuple[str, str, str]] = [
     ("Skills", "skills/pharmacogenomics/SKILL.md", "Drug response, PharmCAT, ClinPGx, PGxDB, CPIC, DPWG, and FDA PGx evidence."),
     ("Skills", "skills/gwas-catalog/SKILL.md", "GWAS Catalog association-record retrieval and source-field comparison."),
     ("Skills", "skills/functional-genomics/SKILL.md", "Perturbation, dependency, viability, resistance, and screen evidence."),
-    ("Skills", "skills/ancestry/SKILL.md", "1000 Genomes GRCh38 PCA projection and qualitative reference-panel similarity."),
+    ("Skills", "skills/ancestry/SKILL.md", "1000 Genomes GRCh37/GRCh38 PCA projection and qualitative reference-panel similarity."),
     ("Skills", "skills/prs/SKILL.md", "PGS Catalog score discovery, local score import, overlap QC, and raw PRS calculation."),
     ("Skills", "skills/nutrigenomics/SKILL.md", "Declared nutrient-metabolism, food-tolerance, and taste-perception domains with curated single-marker records."),
     ("Skills", "skills/journal/SKILL.md", "Journal and research memory entries, evidence trace links, and reviewed findings."),

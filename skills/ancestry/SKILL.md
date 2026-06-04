@@ -69,10 +69,13 @@ The required optional library is build-specific:
 `ancestry-1000g-30x-grch38` for GRCh38 samples and
 `ancestry-1000g-30x-grch37` for GRCh37 samples. If a private ancestry tool
 returns `requires_library_install`, explain that the compact local panel is
-needed for marker overlap and PCA projection, then ask before installing:
+needed for marker overlap and PCA projection, then ask before installing with
+the returned `ask_user.install_command` or `missing_library.install_command`.
+For example:
 
 ```bash
 genomi install --libraries ancestry-1000g-30x-grch38
+genomi install --libraries ancestry-1000g-30x-grch38,liftover-chains,ancestry-1000g-30x-grch37
 ```
 
 Do not treat a missing panel as evidence about the sample.

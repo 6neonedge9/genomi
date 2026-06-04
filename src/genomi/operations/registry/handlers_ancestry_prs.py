@@ -25,8 +25,8 @@ from .coerce import (
 from .errors import JsonObject
 
 
-def _private_build(reader: ActiveGenomeIndexReader, params: JsonObject) -> str:
-    return str(params.get("genome_build") or reader.genome_build or "GRCh38")
+def _private_build(agi_reader: ActiveGenomeIndexReader, params: JsonObject) -> str:
+    return str(params.get("genome_build") or agi_reader.genome_build or "GRCh38")
 
 
 def _ancestry_list_reference_panels(_: JsonObject) -> JsonObject:
@@ -38,12 +38,12 @@ def _ancestry_build_source_context(_: JsonObject) -> JsonObject:
 
 
 def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="checking sample overlap with an ancestry reference panel", params=params)
-    genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    agi_reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="checking sample overlap with an ancestry reference panel", params=params)
+    genome_build = ancestry_policy.normalize_build(_private_build(agi_reader, params))
     unsupported = _unsupported_ancestry_build("ancestry.check_sample_overlap", genome_build)
     if unsupported is not None:
         return unsupported
-    mismatch = _ancestry_build_mismatch("ancestry.check_sample_overlap", reader, params, genome_build)
+    mismatch = _ancestry_build_mismatch("ancestry.check_sample_overlap", agi_reader, params, genome_build)
     if mismatch is not None:
         return mismatch
     missing = _ancestry_missing_library(
@@ -54,18 +54,18 @@ def _ancestry_check_sample_overlap(params: JsonObject) -> JsonObject:
     if missing is not None:
         return missing
     return ancestry_overlap.check_sample_overlap(
-        reader,
+        agi_reader,
         genome_build=genome_build,
     )
 
 
 def _ancestry_project_pca(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="projecting a sample into ancestry reference-panel PCA space", params=params)
-    genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    agi_reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="projecting a sample into ancestry reference-panel PCA space", params=params)
+    genome_build = ancestry_policy.normalize_build(_private_build(agi_reader, params))
     unsupported = _unsupported_ancestry_build("ancestry.project_pca", genome_build)
     if unsupported is not None:
         return unsupported
-    mismatch = _ancestry_build_mismatch("ancestry.project_pca", reader, params, genome_build)
+    mismatch = _ancestry_build_mismatch("ancestry.project_pca", agi_reader, params, genome_build)
     if mismatch is not None:
         return mismatch
     missing = _ancestry_missing_library(
@@ -76,19 +76,19 @@ def _ancestry_project_pca(params: JsonObject) -> JsonObject:
     if missing is not None:
         return missing
     return ancestry_pca.project_sample_pca(
-        reader,
+        agi_reader,
         genome_build=genome_build,
         nearest_reference_count=_int(params, "nearest_reference_count", 10),
     )
 
 
 def _ancestry_estimate_population_context(params: JsonObject) -> JsonObject:
-    reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="estimating qualitative ancestry reference-panel similarity", params=params)
-    genome_build = ancestry_policy.normalize_build(_private_build(reader, params))
+    agi_reader = open_agi(need=ActiveGenomeIndexNeed.REFERENCE, action="estimating qualitative ancestry reference-panel similarity", params=params)
+    genome_build = ancestry_policy.normalize_build(_private_build(agi_reader, params))
     unsupported = _unsupported_ancestry_build("ancestry.estimate_population_context", genome_build)
     if unsupported is not None:
         return unsupported
-    mismatch = _ancestry_build_mismatch("ancestry.estimate_population_context", reader, params, genome_build)
+    mismatch = _ancestry_build_mismatch("ancestry.estimate_population_context", agi_reader, params, genome_build)
     if mismatch is not None:
         return mismatch
     missing = _ancestry_missing_library(
@@ -99,7 +99,7 @@ def _ancestry_estimate_population_context(params: JsonObject) -> JsonObject:
     if missing is not None:
         return missing
     return ancestry_pca.estimate_population_context(
-        reader,
+        agi_reader,
         genome_build=genome_build,
         nearest_reference_count=_int(params, "nearest_reference_count", 10),
     )
@@ -187,13 +187,13 @@ def _unsupported_ancestry_build(operation: str, genome_build: str) -> JsonObject
 
 def _ancestry_build_mismatch(
     operation: str,
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     params: JsonObject,
     requested_build: str,
 ) -> JsonObject | None:
-    if params.get("genome_build") in (None, "") or not reader.genome_build:
+    if params.get("genome_build") in (None, "") or not agi_reader.genome_build:
         return None
-    agi_build = ancestry_policy.normalize_build(reader.genome_build)
+    agi_build = ancestry_policy.normalize_build(agi_reader.genome_build)
     if agi_build not in ancestry_policy.SUPPORTED_BUILDS or agi_build == requested_build:
         return None
     result: JsonObject = {

@@ -13,13 +13,13 @@ JsonObject = dict[str, Any]
 
 
 def project_sample_pca(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     genome_build: str = "GRCh38",
     panel_root: str | Path | None = None,
     nearest_reference_count: int = 10,
 ) -> JsonObject:
-    panel_or_missing = overlap._load_panel_or_missing(genome_build, panel_root, reader)
+    panel_or_missing = overlap._load_panel_or_missing(genome_build, panel_root)
     if isinstance(panel_or_missing, dict) and panel_or_missing.get("status") == "panel_not_installed":
         result = {
             "status": "panel_not_installed",
@@ -35,7 +35,7 @@ def project_sample_pca(
         return result
     panel = panel_or_missing
     genotype_context = overlap.collect_sample_genotypes(
-        reader,
+        agi_reader,
         genome_build=genome_build,
         panel=panel,
     )
@@ -72,14 +72,14 @@ def project_sample_pca(
 
 
 def estimate_population_context(
-    reader: ActiveGenomeIndexReader,
+    agi_reader: ActiveGenomeIndexReader,
     *,
     genome_build: str = "GRCh38",
     panel_root: str | Path | None = None,
     nearest_reference_count: int = 10,
 ) -> JsonObject:
     projection_result = project_sample_pca(
-        reader,
+        agi_reader,
         genome_build=genome_build,
         panel_root=panel_root,
         nearest_reference_count=nearest_reference_count,

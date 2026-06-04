@@ -19,6 +19,7 @@ from genomi.active_genome_index.active_genome_index import (
 )
 from genomi.capabilities.ancestry import policy as ancestry_policy
 from genomi.capabilities.ancestry import reference_panels
+from genomi.capabilities.ancestry import source_context as ancestry_source_context
 from genomi.operations import OperationError, call_operation, list_operations
 from genomi.runtime import context as runtime_context
 
@@ -259,8 +260,8 @@ class AncestryCapabilityTests(unittest.TestCase):
         self.assertIn("CEU", nearest_labels)
         self.assertIn("EUR", nearest_labels)
         self.assertIn("reference cluster", result["interpretation"]["summary"])
-        self.assertNotIn("ethnicity", result["interpretation"]["summary"].lower())
-        self.assertNotIn("determine origin", result["interpretation"]["summary"].lower())
+        self.assertTrue(result["interpretation"]["not_identity"])
+        self.assertEqual(result["interpretation"]["language_boundary"], ancestry_source_context.BOUNDARY_NOTE)
 
     def test_overlap_thresholds_block_low_overlap_projection(self) -> None:
         # 1 of 8 panel markers usable = 12.5% — below LOW_OVERLAP_FRACTION (20%),
@@ -486,8 +487,6 @@ class AncestryCapabilityTests(unittest.TestCase):
             for index in range(marker_count)
         ]
         genotype_rows = [[2.0, 2.0, 0.0, 0.0] for _ in markers]
-        from genomi.capabilities.ancestry import source_context as ancestry_source_context
-
         _write_synthetic_panel(
             reference_panels.panel_dir(genome_build=genome_build),
             samples=samples,
