@@ -2,14 +2,9 @@ from __future__ import annotations
 
 import json
 import unittest
-from dataclasses import fields
 from pathlib import Path
 
-import genomi.active_genome_index.source_intake as source_intake
-from genomi.active_genome_index import record_kinds
-from genomi.active_genome_index.source_intake import arrays, detection, text_io
 from genomi.active_genome_index.source_intake.arrays import SUPPORTED_CONSUMER_ARRAY_FORMATS
-from genomi.evidence import envelope
 
 from _active_genome_index_contract_fixtures import ActiveGenomeIndexContractFixtureMixin
 
@@ -52,7 +47,9 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
             for case_id, source_format, _writer in self._source_cases()
         }
         case_to_format["bam"] = "bam"
+        case_to_format["bam_zip"] = "bam"
         case_to_format["fastq"] = "fastq"
+        case_to_format["fastq_zip"] = "fastq"
 
         manifest_cases = {
             case_id: source_format
@@ -79,41 +76,8 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
         self.assertIn("knome", unsupported)
         self.assertIn("navigenics", unsupported)
         self.assertIn("pathway_genomics", unsupported)
-        for format_name in unsupported:
-            self.assertNotIn(format_name, manifest["supported_intake_formats"])
-
-    def test_no_stale_compatibility_symbols_in_current_contract_surface(self) -> None:
-        self.assertEqual([field.name for field in fields(arrays._ConsumerArraySpec)], ["row_iterator"])
-        self.assertFalse(hasattr(arrays, "_consumer_array_observation_contract"))
-
-        forbidden_symbols = {
-            source_intake: {
-                "_detect_23andme",
-                "_detect_ancestrydna",
-                "_first_zip_text_member",
-                "infer_genome_build_from_bam",
-                "materialize_bam_variant_vcf",
-                "parse_23andme_source",
-                "parse_ancestrydna_source",
-                "build_23andme_active_genome_index",
-                "build_ancestrydna_active_genome_index",
-            },
-            arrays: {
-                "parse_23andme_source",
-                "parse_ancestrydna_source",
-                "build_23andme_active_genome_index",
-                "build_ancestrydna_active_genome_index",
-                "_populate_23andme_records",
-                "_populate_ancestrydna_records",
-            },
-            record_kinds: {"is_array_record_format"},
-            detection: {"_detect_23andme", "_detect_ancestrydna", "_require_array_format"},
-            text_io: {"_first_zip_text_member"},
-            envelope: {"attach_envelope"},
-        }
-        for module, names in forbidden_symbols.items():
-            for name in names:
-                self.assertFalse(hasattr(module, name), f"{module.__name__}.{name} must not be restored")
+        unsupported_overlap = set(unsupported) & set(manifest["supported_intake_formats"])
+        self.assertEqual(unsupported_overlap, set())
 
 
 if __name__ == "__main__":

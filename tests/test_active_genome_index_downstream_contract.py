@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import os
 import tempfile
@@ -163,39 +163,10 @@ class ActiveGenomeIndexDownstreamContractTests(
                             clinvar_db=clinvar_db,
                         )
 
-                reference = self._write_reference_fasta(Path("contract-reference.fa"))
-                with self.subTest(source="bam"):
-                    bam = self._write_bam_source(Path("Nebula_Genomics_BAM_format.bam"))
-                    with self._mock_derived_vcf_materialization():
-                        self._assert_source_contract(
-                            bam,
-                            contract=SourceContractCase(
-                                case_id="bam",
-                                expected_format="bam",
-                                writer=self._write_bam_source,
-                                parse_overrides={"reference_fasta": str(reference)},
-                            ),
-                            imported_score=imported_score,
-                            clinvar_db=clinvar_db,
-                        )
-
-                with self.subTest(source="fastq"):
-                    fastq = self._write_fastq_sources(Path("60820188475559_SA_L001_R1_001.fastq.gz"))
-                    with self._mock_derived_vcf_materialization(), mock.patch(
-                        "genomi.active_genome_index.source_intake.sequencing.align_fastq_to_bam",
-                        side_effect=self._fake_align_fastq_to_bam,
-                    ):
-                        self._assert_source_contract(
-                            fastq,
-                            contract=SourceContractCase(
-                                case_id="fastq",
-                                expected_format="fastq",
-                                writer=self._write_fastq_sources,
-                                parse_overrides={"reference_fasta": str(reference)},
-                            ),
-                            imported_score=imported_score,
-                            clinvar_db=clinvar_db,
-                        )
+                self._assert_sequencing_source_contracts(
+                    imported_score=imported_score,
+                    clinvar_db=clinvar_db,
+                )
             finally:
                 os.chdir(previous)
 
@@ -299,6 +270,74 @@ class ActiveGenomeIndexDownstreamContractTests(
         self._assert_genotype_support_contracts(contract)
         pgx_result = self._assert_pgx_contract(contract, clinvar_db)
         self._assert_decode_dashboard_contract(contract, pgx_result, matches_path)
+
+    def _assert_sequencing_source_contracts(
+        self,
+        *,
+        imported_score: dict[str, object],
+        clinvar_db: Path,
+    ) -> None:
+        reference = self._write_reference_fasta(Path("contract-reference.fa"))
+        cases = [
+            (
+                SourceContractCase(
+                    case_id="bam",
+                    expected_format="bam",
+                    writer=self._write_bam_source,
+                    parse_overrides={"reference_fasta": str(reference)},
+                ),
+                Path("Nebula_Genomics_BAM_format.bam"),
+                False,
+            ),
+            (
+                SourceContractCase(
+                    case_id="bam_zip",
+                    expected_format="bam",
+                    writer=self._write_bam_zip_source,
+                    parse_overrides={"reference_fasta": str(reference)},
+                ),
+                Path("Nebula_Genomics_BAM_format.zip"),
+                False,
+            ),
+            (
+                SourceContractCase(
+                    case_id="fastq",
+                    expected_format="fastq",
+                    writer=self._write_fastq_sources,
+                    parse_overrides={"reference_fasta": str(reference)},
+                ),
+                Path("60820188475559_SA_L001_R1_001.fastq.gz"),
+                True,
+            ),
+            (
+                SourceContractCase(
+                    case_id="fastq_zip",
+                    expected_format="fastq",
+                    writer=self._write_fastq_zip_sources,
+                    parse_overrides={"reference_fasta": str(reference)},
+                ),
+                Path("GENOS_fastq_pair.zip"),
+                True,
+            ),
+        ]
+        for contract, stem, needs_fastq_alignment in cases:
+            with self.subTest(source=contract.case_id):
+                source = contract.writer(stem)
+                with ExitStack() as stack:
+                    stack.enter_context(self._mock_derived_vcf_materialization())
+                    if needs_fastq_alignment:
+                        stack.enter_context(
+                            mock.patch(
+                                "genomi.active_genome_index.source_intake.sequencing.align_fastq_to_bam",
+                                side_effect=self._fake_align_fastq_to_bam,
+                            )
+                        )
+                    self._assert_source_contract(
+                        source,
+                        contract=contract,
+                        imported_score=imported_score,
+                        clinvar_db=clinvar_db,
+                    )
 
     def _parse_contract_source(self, source: Path, *, contract: SourceContractCase) -> dict[str, object]:
         parse_params = {"source": str(source), "genome_build": "GRCh37", "force": True}

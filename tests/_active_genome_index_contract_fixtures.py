@@ -101,9 +101,13 @@ class ActiveGenomeIndexContractFixtureMixin:
             ("vcf_bz2", "vcf", self._write_vcf_bzip2_source),
             ("vcf_xz", "vcf", self._write_vcf_xz_source),
             ("vcf_zip", "vcf", self._write_vcf_zip_source),
+            ("vcf_tar", "vcf", self._write_vcf_tar_source),
             ("gvcf", "gvcf", self._write_gvcf_source),
             ("gvcf_gz", "gvcf", self._write_gvcf_gzip_source),
             ("gvcf_bz2", "gvcf", self._write_gvcf_bzip2_source),
+            ("gvcf_xz", "gvcf", self._write_gvcf_xz_source),
+            ("gvcf_zip", "gvcf", self._write_gvcf_zip_source),
+            ("gvcf_tar", "gvcf", self._write_gvcf_tar_source),
             ("23andme_txt", "23andme", self._write_23andme_text_source),
             ("23andme_zip", "23andme", self._write_23andme_zip_source),
             ("ancestrydna_txt", "ancestrydna", self._write_ancestry_text_source),
@@ -124,6 +128,12 @@ class ActiveGenomeIndexContractFixtureMixin:
         path.write_bytes(b"BAM\x01")
         return path
 
+    def _write_bam_zip_source(self, stem: Path) -> Path:
+        path = stem.with_name("Nebula_Genomics_BAM_format.zip")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("reads/Nebula_Genomics_BAM_format.bam", b"BAM\x01")
+        return path
+
     def _write_fastq_sources(self, r1_path: Path) -> Path:
         r2_path = r1_path.with_name(r1_path.name.replace("_R1_", "_R2_"))
         sequence = "ACGT" * 40
@@ -133,6 +143,15 @@ class ActiveGenomeIndexContractFixtureMixin:
         with gzip.open(r2_path, "wb") as handle:
             handle.write(record)
         return r1_path
+
+    def _write_fastq_zip_sources(self, stem: Path) -> Path:
+        path = stem.with_name("GENOS_fastq_pair.zip")
+        sequence = "ACGT" * 40
+        record = f"@contract\n{sequence}\n+\n{'I' * len(sequence)}\n".encode("utf-8")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("reads/60820188475559_SA_L001_R1_001.fastq.gz", gzip.compress(record))
+            archive.writestr("reads/60820188475559_SA_L001_R2_001.fastq.gz", gzip.compress(record))
+        return path
 
     @contextmanager
     def _mock_derived_vcf_materialization(self):
@@ -344,6 +363,10 @@ class ActiveGenomeIndexContractFixtureMixin:
             archive.writestr("68484e35b07b48cd9eed01d1a0110ff0.vcf", self._contract_vcf_text())
         return path
 
+    def _write_vcf_tar_source(self, stem: Path) -> Path:
+        path = stem.with_name("pgp-supported-vcf-wrapper.tar.gz")
+        return self._write_tar_member(path, "genome/sample.vcf", self._contract_vcf_text().encode("utf-8"))
+
     def _write_contract_vcf(self, path: Path) -> Path:
         path.write_text(self._contract_vcf_text(), encoding="utf-8")
         return path
@@ -394,6 +417,21 @@ class ActiveGenomeIndexContractFixtureMixin:
         path = stem.with_name("huA2692E-veritas-gVCF-4.2.vcf.bz2")
         path.write_bytes(bz2.compress(self._contract_gvcf_text().encode("utf-8")))
         return path
+
+    def _write_gvcf_xz_source(self, stem: Path) -> Path:
+        path = stem.with_name("huA2692E-veritas-gVCF-4.2.vcf.xz")
+        path.write_bytes(lzma.compress(self._contract_gvcf_text().encode("utf-8")))
+        return path
+
+    def _write_gvcf_zip_source(self, stem: Path) -> Path:
+        path = stem.with_name("huA2692E-veritas-gVCF-4.2.zip")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("huA2692E-veritas-gVCF-4.2.vcf", self._contract_gvcf_text())
+        return path
+
+    def _write_gvcf_tar_source(self, stem: Path) -> Path:
+        path = stem.with_name("pgp-supported-gvcf-wrapper.tar.gz")
+        return self._write_tar_member(path, "gvcf/huA2692E-veritas-gVCF-4.2.vcf", self._contract_gvcf_text().encode("utf-8"))
 
     def _contract_gvcf_text(self) -> str:
         rows = [
@@ -465,9 +503,11 @@ class ActiveGenomeIndexContractFixtureMixin:
 
     def _write_ancestry_tar_source(self, stem: Path) -> Path:
         path = stem.with_name("AncestryDNA.tar.gz")
-        content = self._ancestry_text().encode("utf-8")
+        return self._write_tar_member(path, "AncestryDNA.txt", self._ancestry_text().encode("utf-8"))
+
+    def _write_tar_member(self, path: Path, member_name: str, content: bytes) -> Path:
         with tarfile.open(path, "w:gz") as archive:
-            info = tarfile.TarInfo("AncestryDNA.txt")
+            info = tarfile.TarInfo(member_name)
             info.size = len(content)
             archive.addfile(info, fileobj=io.BytesIO(content))
         return path

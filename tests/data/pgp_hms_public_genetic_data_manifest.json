@@ -90,7 +90,8 @@
         "vcf_gz",
         "vcf_bz2",
         "vcf_xz",
-        "vcf_zip"
+        "vcf_zip",
+        "vcf_tar"
       ]
     },
     "gvcf": {
@@ -102,7 +103,10 @@
       "contract_fixture_cases": [
         "gvcf",
         "gvcf_gz",
-        "gvcf_bz2"
+        "gvcf_bz2",
+        "gvcf_xz",
+        "gvcf_zip",
+        "gvcf_tar"
       ]
     },
     "bam": {
@@ -113,7 +117,8 @@
         "nebula genomics bam file"
       ],
       "contract_fixture_cases": [
-        "bam"
+        "bam",
+        "bam_zip"
       ]
     },
     "fastq": {
@@ -124,7 +129,8 @@
         "paired FASTQ"
       ],
       "contract_fixture_cases": [
-        "fastq"
+        "fastq",
+        "fastq_zip"
       ]
     }
   },
