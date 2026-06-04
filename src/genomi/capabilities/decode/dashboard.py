@@ -50,10 +50,7 @@ _REACT_PATH = _VENDOR_DIR / "react.production.min.js"
 _REACT_DOM_PATH = _VENDOR_DIR / "react-dom.production.min.js"
 _APP_JS_CHUNK_RE = re.compile(r"dashboard\.compiled\.(?P<index>\d+)\.js$")
 
-_EVIDENCE_RE = re.compile(
-    r"window\.__GENOMI_DASHBOARD__\s*=\s*(?P<json>\{.*?\})\s*;",
-    re.DOTALL,
-)
+_EVIDENCE_ASSIGNMENT = "window.__GENOMI_DASHBOARD__"
 
 
 class DashboardRenderError(Exception):
@@ -143,20 +140,15 @@ def _pass_rate(raw: Any) -> float | None:
     """
     if not isinstance(raw, dict):
         return None
-    candidates: list[dict] = [raw]
-    for parent_key in ("active_genome_index", "stats", "summary"):
-        sub = raw.get(parent_key)
-        if isinstance(sub, dict):
-            candidates.append(sub)
-            for nested_key in ("stats", "summary"):
-                nested = sub.get(nested_key)
-                if isinstance(nested, dict):
-                    candidates.append(nested)
-    for c in candidates:
-        pr = c.get("pass_records")
-        tr = c.get("total_records")
+    queue: list[tuple[dict, int]] = [(raw, 0)]
+    while queue:
+        cur, depth = queue.pop(0)
+        pr = cur.get("pass_records")
+        tr = cur.get("total_records")
         if isinstance(pr, (int, float)) and isinstance(tr, (int, float)) and tr > 0:
             return round(100 * pr / tr, 1)
+        if depth < 4:
+            queue.extend((value, depth + 1) for value in cur.values() if isinstance(value, dict))
     return None
 
 
@@ -626,15 +618,20 @@ def _json_blob(evidence: JsonObject) -> str:
 
 def _read_existing_evidence(path: Path) -> JsonObject:
     text = path.read_text(encoding="utf-8")
-    match = _EVIDENCE_RE.search(text)
-    if not match:
+    assignment_index = text.find(_EVIDENCE_ASSIGNMENT)
+    if assignment_index < 0:
         raise DashboardRenderError(
             "dashboard_corrupt",
             f"Existing dashboard at {path} does not contain a __GENOMI_DASHBOARD__ block.",
         )
-    raw = match.group("json").replace("<\\/", "</")
+    json_start = text.find("{", assignment_index)
+    if json_start < 0:
+        raise DashboardRenderError(
+            "dashboard_corrupt",
+            f"Existing dashboard at {path} does not contain a dashboard evidence object.",
+        )
     try:
-        loaded = json.loads(raw)
+        loaded, _end = json.JSONDecoder().raw_decode(text[json_start:].replace("<\\/", "</"))
     except json.JSONDecodeError as exc:
         raise DashboardRenderError(
             "dashboard_corrupt",
@@ -713,11 +710,14 @@ def default_output_path(work_dir: str | Path | None) -> Path:
     return base / (slug or "dashboard") / "dashboard.html"
 
 
-def _load_variants_all_source(source: str | Path) -> list[dict[str, Any]] | None:
+def _load_variants_all_source(source: str | Path) -> list[dict[str, Any]]:
     """Read a JSONL file of ClinVar match rows and normalize each to the dashboard schema."""
     path = Path(source)
     if not path.is_file():
-        return None
+        raise DashboardRenderError(
+            "variants_all_source_not_found",
+            f"variants_all_source does not exist or is not a file: {path}",
+        )
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -731,7 +731,7 @@ def _load_variants_all_source(source: str | Path) -> list[dict[str, Any]] | None
             normalized = _normalize_variants_row(raw)
             if normalized:
                 rows.append(normalized)
-    return rows or None
+    return rows
 
 
 def render_dashboard(
@@ -782,9 +782,7 @@ def render_dashboard(
     if variants_all_source:
         ev = dict(evidence) if isinstance(evidence, dict) else {}
         if "variants_all" not in ev:
-            rows = _load_variants_all_source(variants_all_source)
-            if rows:
-                ev["variants_all"] = rows
+            ev["variants_all"] = _load_variants_all_source(variants_all_source)
         evidence = ev
 
     cleared = _explicitly_empty_panels(evidence) | _normalize_clear_panels(clear_panels)

@@ -20,16 +20,16 @@ from genomi.operations import (
 )
 from genomi.runtime import context as runtime_context
 
-EVIDENCE_RE = re.compile(
-    r"window\.__GENOMI_DASHBOARD__\s*=\s*(\{.*?\})\s*;",
-    re.DOTALL,
-)
-
 
 def _extract_evidence(html: str) -> dict:
-    match = EVIDENCE_RE.search(html)
-    assert match, "no __GENOMI_DASHBOARD__ block in HTML"
-    return json.loads(match.group(1).replace("<\\/", "</"))
+    marker = "window.__GENOMI_DASHBOARD__"
+    assignment_index = html.find(marker)
+    assert assignment_index >= 0, "no __GENOMI_DASHBOARD__ block in HTML"
+    json_start = html.find("{", assignment_index)
+    assert json_start >= 0, "no __GENOMI_DASHBOARD__ object in HTML"
+    parsed, _end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
+    assert isinstance(parsed, dict), "__GENOMI_DASHBOARD__ is not an object"
+    return parsed
 
 
 def _panel_keys(payload: dict) -> set[str]:
@@ -231,6 +231,77 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(_panel_keys(parsed), {"overview"})
         self.assertTrue({"variants_all"}.issubset(set(result["panels_empty"])))
 
+    def test_render_update_empty_variants_all_source_clears_stale_panel(self) -> None:
+        out = self.tmpdir / "dash.html"
+        source = self.tmpdir / "empty-clinvar.matches.jsonl"
+        source.write_text("", encoding="utf-8")
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {"sampleId": "HG-SOURCE-EMPTY", "variantCount": 4500000},
+                "variants_all": [{"rsid": "rs-old", "gene": "OLD"}],
+            },
+            mode="full",
+            output=out,
+        )
+
+        result = decode_dashboard.render_dashboard(
+            evidence={},
+            mode="update",
+            output=out,
+            variants_all_source=source,
+        )
+
+        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        self.assertEqual(_panel_keys(parsed), {"overview"})
+        self.assertIn("variants_all", result["panels_empty"])
+
+    def test_render_update_missing_variants_all_source_raises(self) -> None:
+        out = self.tmpdir / "dash.html"
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {"sampleId": "HG-SOURCE-MISSING", "variantCount": 4500000},
+                "variants_all": [{"rsid": "rs-old", "gene": "OLD"}],
+            },
+            mode="full",
+            output=out,
+        )
+
+        with self.assertRaises(decode_dashboard.DashboardRenderError) as ctx:
+            decode_dashboard.render_dashboard(
+                evidence={},
+                mode="update",
+                output=out,
+                variants_all_source=self.tmpdir / "missing.jsonl",
+            )
+
+        self.assertEqual(ctx.exception.code, "variants_all_source_not_found")
+
+    def test_render_update_reads_existing_evidence_with_brace_semicolon_text(self) -> None:
+        out = self.tmpdir / "dash.html"
+        decode_dashboard.render_dashboard(
+            evidence={
+                "overview": {
+                    "sampleId": "HG-BRACE",
+                    "variantCount": 4500000,
+                    "genomeSource": "literal }; sequence from upstream metadata",
+                },
+            },
+            mode="full",
+            output=out,
+        )
+
+        decode_dashboard.render_dashboard(
+            evidence={
+                "pgx": [{"gene": "CYP2C19", "phenotype": "Intermediate"}],
+            },
+            mode="update",
+            output=out,
+        )
+
+        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        self.assertEqual(parsed["overview"]["sampleId"], "HG-BRACE")
+        self.assertEqual(parsed["pgx"][0]["gene"], "CYP2C19")
+
     def test_normalizes_snake_case_overview(self) -> None:
         """Raw active_genome_index.summarize-style keys map to dashboard schema."""
         out = self.tmpdir / "dash.html"
@@ -333,6 +404,7 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(ov["variantCount"], 5_151_074)
         self.assertEqual(ov["sampleId"], "SQ73VL33")
         self.assertEqual(ov["genomeBuild"], "GRCh38.p13")
+        self.assertEqual(ov["genotypeQuality"], 94.9)
 
     def test_supplied_list_panel_wrong_type_raises(self) -> None:
         """A list panel handed a dict fails loudly instead of rendering odd."""
