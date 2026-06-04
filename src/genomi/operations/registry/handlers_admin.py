@@ -600,7 +600,7 @@ def _reparse_stale_genomes() -> JsonObject:
         )
         entry: JsonObject = {
             "agi_id": agi_id,
-            "stored_schema": stored,
+            "stored_agi_schema_version": stored,
             "agi_intake_source_available": agi_intake_source_available,
         }
         if not agi_intake_source_available:
@@ -614,7 +614,7 @@ def _reparse_stale_genomes() -> JsonObject:
         except Exception as exc:  # pragma: no cover - best effort per genome
             skipped.append({**entry, "reason": f"launch_failed: {exc}"})
     return {
-        "effective_schema_version": effective_schema,
+        "effective_agi_schema_version": effective_schema,
         "checked": checked,
         "stale": len(launched) + len(skipped),
         "launched": launched,
