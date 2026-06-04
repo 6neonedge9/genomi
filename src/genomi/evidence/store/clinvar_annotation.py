@@ -38,7 +38,6 @@ from .candidate_scoring import (
 from .clinvar_match_provenance import (
     MATCH_BASIS_EXACT_ALLELE,
     match_basis_from_record,
-    match_kind_from_record,
 )
 
 
@@ -215,7 +214,6 @@ def build_clinvar_annotation_index(
     gene_counts: Counter[str] = Counter()
     evidence_group_counts: Counter[str] = Counter()
     match_basis_counts: Counter[str] = Counter()
-    match_kind_counts: Counter[str] = Counter()
     exact_match_variants = 0
     for annotation in annotations:
         clinical_significance_counts.update(dict(annotation["clinvar"]["clinical_significance_counts"]))
@@ -224,7 +222,6 @@ def build_clinvar_annotation_index(
         evidence_group_counts.update(annotation["evidence_groups"])
         provenance = annotation["match_provenance"]
         match_basis_counts.update(dict(provenance["match_basis_counts"]))
-        match_kind_counts.update(dict(provenance["match_kind_counts"]))
         if provenance["primary_match_basis"] == MATCH_BASIS_EXACT_ALLELE:
             exact_match_variants += 1
 
@@ -251,7 +248,6 @@ def build_clinvar_annotation_index(
             "matched_variants": len(annotations),
             "exact_match_variants": exact_match_variants,
             "match_basis_counts": match_basis_counts.most_common(),
-            "match_kind_counts": match_kind_counts.most_common(),
             "gene_counts": gene_counts.most_common(25),
             "clinical_significance_counts": clinical_significance_counts.most_common(),
             "review_status_counts": review_status_counts.most_common(),
@@ -298,7 +294,6 @@ def _build_clinvar_annotation(group: dict[str, Any]) -> dict[str, Any]:
     conditions = _ordered_unique(record.get("conditions") for record in clinvar_records if record.get("conditions"))
     clinvar_ids = _ordered_unique(record.get("clinvar_id") for record in clinvar_records if record.get("clinvar_id"))
     match_basis = Counter(match_basis_from_record(item) for item in records)
-    match_kind = Counter(match_kind_from_record(item) for item in records)
     return {
         "candidate_allele": candidate_allele,
         "variant": {
@@ -324,9 +319,7 @@ def _build_clinvar_annotation(group: dict[str, Any]) -> dict[str, Any]:
         "evidence_groups": _candidate_evidence_groups(clinical_significance),
         "match_provenance": {
             "primary_match_basis": _primary_counter_value(match_basis),
-            "primary_match_kind": _primary_counter_value(match_kind),
             "match_basis_counts": match_basis.most_common(),
-            "match_kind_counts": match_kind.most_common(),
         },
         "clinvar": {
             "match_records": len(records),

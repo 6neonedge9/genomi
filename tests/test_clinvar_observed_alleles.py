@@ -37,7 +37,7 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing required match_basis"):
             match_basis_from_record({"sample_variant": {}, "clinvar": {}})
         with self.assertRaisesRegex(ValueError, "unknown ClinVar match_basis"):
-            match_basis_from_record({"match_basis": "legacy_exact"})
+            match_basis_from_record({"match_provenance": {"match_basis": "legacy_exact"}})
 
     def test_match_model_maps_active_genome_index_sample_modes_to_public_provenance(self) -> None:
         self.assertEqual(match_basis_for_sample_mode(MATCH_BASIS_EXACT_ALLELE), MATCH_BASIS_EXACT_ALLELE)
@@ -159,7 +159,8 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
 
         self.assertEqual(result["stats"]["skipped_non_pass_records"], 1)
         self.assertEqual(result["stats"]["scanned_records"], 1)
-        self.assertEqual(payload["source_format"], "vcf")
+        self.assertEqual(sorted(payload), ["clinvar", "match_provenance", "sample_variant"])
+        self.assertEqual(payload["match_provenance"]["source_format"], "vcf")
         self.assertEqual(payload["match_provenance"]["source_record"]["source_format"], "vcf")
 
     def test_active_genome_index_max_records_windows_before_pass_filter(self) -> None:
@@ -247,7 +248,7 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         self.assertEqual(result["stats"]["written_records"], 2)
         self.assertEqual([payload["clinvar"]["alt"] for payload in payloads], ["A", "G"])
         self.assertEqual(
-            [payload["match_basis"] for payload in payloads],
+            [payload["match_provenance"]["match_basis"] for payload in payloads],
             ["consumer_array_allele_inference", "consumer_array_allele_inference"],
         )
         for payload in payloads:

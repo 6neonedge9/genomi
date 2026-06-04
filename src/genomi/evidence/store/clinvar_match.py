@@ -828,7 +828,6 @@ def _clinvar_index_direct_select_sql(
             select
                 r.clinvar_batch_id as batch_id,
                 {match_basis} as match_basis,
-                {match_basis} as match_kind,
                 {sample_chrom_select},
                 {sample_pos_select},
                 r.rsid as sample_rsid,

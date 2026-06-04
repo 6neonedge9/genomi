@@ -704,7 +704,9 @@ class ActiveGenomeIndexContractFixtureMixin:
             sample = payload["sample_variant"]
             clinvar = payload["clinvar"]
             provenance_source = payload["match_provenance"]["source_record"]
+            match_basis = payload["match_provenance"]["match_basis"]
             genotype = str(sample["genotype"] or "")
+            self.assertEqual(sorted(payload), ["clinvar", "match_provenance", "sample_variant"])
             self.assertIn("source_record_info", sample)
             self.assertEqual(provenance_source["info"], sample["source_record_info"])
             if "/" not in genotype and "|" not in genotype:
@@ -712,16 +714,14 @@ class ActiveGenomeIndexContractFixtureMixin:
             if expected_format in {"vcf", "gvcf", "bam", "fastq"}:
                 self.assertEqual(sample["ref"], clinvar["ref"])
                 self.assertEqual(sample["alt"], clinvar["alt"])
-                self.assertEqual(payload["match_basis"], "exact_allele")
+                self.assertEqual(match_basis, "exact_allele")
                 self.assertEqual(sample["source_record_ref"], sample["ref"])
                 self.assertEqual(sample["source_record_alt"], sample["alt"])
                 self.assertEqual(sample["record_kind"], "variant_call")
                 self.assertEqual(provenance_source["record_kind"], "variant_call")
             else:
-                self.assertEqual(payload["match_basis"], "consumer_array_allele_inference")
-                self.assertEqual(payload["match_kind"], "consumer_array_allele_inference")
-                self.assertEqual(payload["source_format"], expected_format)
-                self.assertEqual(sample["source_format"], expected_format)
+                self.assertEqual(match_basis, "consumer_array_allele_inference")
+                self.assertEqual(payload["match_provenance"]["source_format"], expected_format)
                 self.assertEqual(provenance_source["source_format"], expected_format)
                 self.assertEqual(sample["record_kind"], "array_call")
                 self.assertEqual(sample["ref"], ".")

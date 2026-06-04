@@ -80,7 +80,10 @@ class CrossBuildClinvarMatchUnitTests(unittest.TestCase):
         self.assertEqual(result["stats"]["lifted_alleles"], 2)
         self.assertEqual(result["stats"]["lift_dropped_alleles"], 0)
         self.assertEqual(result["stats"]["matched_alleles"], 2)
-        self.assertEqual([payload["match_basis"] for payload in payloads], ["liftover_multiallelic_alt", "liftover_multiallelic_alt"])
+        self.assertEqual(
+            [payload["match_provenance"]["match_basis"] for payload in payloads],
+            ["liftover_multiallelic_alt", "liftover_multiallelic_alt"],
+        )
         for payload in payloads:
             self.assertEqual(payload["match_provenance"]["liftover"]["source_build"], "GRCh37")
             self.assertEqual(payload["match_provenance"]["liftover"]["target_build"], "GRCh38")
@@ -148,16 +151,16 @@ class CrossBuildClinvarMatchTests(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         payload = json.loads(lines[0])
         # Sample coordinates stay on the sample's GRCh37 build for audit.
-        self.assertEqual(payload["match_basis"], "liftover_exact_allele")
+        liftover = payload["match_provenance"]["liftover"]
+        self.assertEqual(sorted(payload), ["clinvar", "match_provenance", "sample_variant"])
         self.assertEqual(payload["match_provenance"]["match_basis"], "liftover_exact_allele")
         self.assertEqual(payload["match_provenance"]["evidence_scope"], "liftover_sample_allele")
-        self.assertEqual(payload["match_provenance"]["liftover"], payload["liftover"])
         self.assertEqual(payload["sample_variant"]["pos"], _APOE_GRCH37_POS)
         self.assertEqual(payload["sample_variant"]["genome_build"], "GRCh37")
         # Liftover block records how the query reached the GRCh38 cache row.
-        self.assertEqual(payload["liftover"]["source_build"], "GRCh37")
-        self.assertEqual(payload["liftover"]["target_build"], "GRCh38")
-        self.assertEqual(payload["liftover"]["lifted_pos"], _APOE_GRCH38_POS)
+        self.assertEqual(liftover["source_build"], "GRCh37")
+        self.assertEqual(liftover["target_build"], "GRCh38")
+        self.assertEqual(liftover["lifted_pos"], _APOE_GRCH38_POS)
 
     def test_grch37_sample_matches_grch38_clinvar_via_from_index_path(self) -> None:
         # The indexed batch path (used by clinvar.scan_candidates against an
@@ -212,15 +215,15 @@ class CrossBuildClinvarMatchTests(unittest.TestCase):
         lines = output_path.read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 1)
         payload = json.loads(lines[0])
-        self.assertEqual(payload["match_basis"], "liftover_exact_allele")
+        liftover = payload["match_provenance"]["liftover"]
+        self.assertEqual(sorted(payload), ["clinvar", "match_provenance", "sample_variant"])
         self.assertEqual(payload["match_provenance"]["match_basis"], "liftover_exact_allele")
         self.assertEqual(payload["match_provenance"]["evidence_scope"], "liftover_sample_allele")
-        self.assertEqual(payload["match_provenance"]["liftover"], payload["liftover"])
         self.assertEqual(payload["sample_variant"]["pos"], _APOE_GRCH37_POS)
         self.assertEqual(payload["sample_variant"]["genome_build"], "GRCh37")
-        self.assertEqual(payload["liftover"]["source_build"], "GRCh37")
-        self.assertEqual(payload["liftover"]["target_build"], "GRCh38")
-        self.assertEqual(payload["liftover"]["lifted_pos"], _APOE_GRCH38_POS)
+        self.assertEqual(liftover["source_build"], "GRCh37")
+        self.assertEqual(liftover["target_build"], "GRCh38")
+        self.assertEqual(liftover["lifted_pos"], _APOE_GRCH38_POS)
         # ClinVar coordinates stay on the cache's GRCh38 build.
         self.assertEqual(payload["clinvar"]["pos"], _APOE_GRCH38_POS)
         self.assertEqual(payload["clinvar"]["genome_build"], "GRCh38")
@@ -270,7 +273,11 @@ class CrossBuildClinvarMatchTests(unittest.TestCase):
         self.assertEqual(result["stats"]["matched_alleles"], 1)
         self.assertEqual(result["stats"]["lifted_alleles"], 0)
         payload = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
-        self.assertNotIn("liftover", payload)
+        self.assertEqual(
+            sorted(payload["match_provenance"]),
+            ["asserted_sample_allele", "evidence_scope", "match_basis", "source_format", "source_record"],
+        )
+        self.assertEqual(payload["match_provenance"]["match_basis"], "exact_allele")
 
 
 if __name__ == "__main__":

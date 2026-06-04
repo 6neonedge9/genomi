@@ -36,7 +36,6 @@ from .clinvar_query import (
 from .clinvar_match_provenance import (
     MATCH_BASIS_CONSUMER_ARRAY_ALLELE_INFERENCE,
     match_basis_from_record,
-    match_kind_from_record,
 )
 from .population import (
     _population_freshness_summary,
@@ -102,9 +101,6 @@ def _build_candidate(
             "genotype_quality": sample.get("genotype_quality"),
             "record_kind": sample.get("record_kind"),
             "observed_alleles": sample.get("observed_alleles"),
-            "match_basis": match_provenance["primary_match_basis"],
-            "match_kind": match_provenance["primary_match_kind"],
-            "source_format": match_provenance.get("primary_source_format"),
             "source_record_ref": sample.get("source_record_ref"),
             "source_record_alt": sample.get("source_record_alt"),
             "source_record_format": sample.get("source_record_format") or sample.get("format"),
@@ -120,7 +116,6 @@ def _build_candidate(
             "clinvar_ids": clinvar_ids[:20],
             "conditions": conditions[:20],
             "match_basis_counts": match_provenance["match_basis_counts"],
-            "match_kind_counts": match_provenance["match_kind_counts"],
             "source_format_counts": match_provenance["source_format_counts"],
             "source_record_format_counts": match_provenance["source_record_format_counts"],
         },
@@ -142,7 +137,6 @@ def _build_candidate(
 
 def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]:
     match_basis: Counter[str] = Counter(match_basis_from_record(item) for item in records)
-    match_kind: Counter[str] = Counter(match_kind_from_record(item) for item in records)
     source_formats: Counter[str] = Counter(
         source_format for item in records if (source_format := _record_source_format(item))
     )
@@ -154,10 +148,8 @@ def _candidate_match_provenance(records: list[dict[str, Any]]) -> dict[str, Any]
         raise ValueError("ClinVar candidate group has no match_basis records")
     return {
         "primary_match_basis": primary_match_basis,
-        "primary_match_kind": _primary_counter_value(match_kind) or primary_match_basis,
         "primary_source_format": _primary_counter_value(source_formats),
         "match_basis_counts": match_basis.most_common(),
-        "match_kind_counts": match_kind.most_common(),
         "source_format_counts": source_formats.most_common(),
         "source_record_format_counts": source_record_formats.most_common(),
     }
@@ -168,9 +160,7 @@ def _record_source_format(item: dict[str, Any]) -> str | None:
     provenance = item.get("match_provenance") if isinstance(item.get("match_provenance"), dict) else {}
     source_record = provenance.get("source_record") if isinstance(provenance.get("source_record"), dict) else {}
     source_format = (
-        item.get("source_format")
-        or sample.get("source_format")
-        or provenance.get("source_format")
+        provenance.get("source_format")
         or source_record.get("source_format")
     )
     return str(source_format) if source_format else None

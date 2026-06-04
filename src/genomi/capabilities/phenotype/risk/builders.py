@@ -261,15 +261,13 @@ def _active_candidate_result_state(
 
 def _active_candidate_summary(candidate: dict[str, Any], *, genes: list[str], condition: str | None) -> dict[str, Any]:
     variant = candidate.get("variant") or {}
+    match_provenance = candidate.get("match_provenance") or {}
     candidate_genes = [str(item).upper() for item in candidate.get("genes") or []]
     conditions = [str(item) for item in (candidate.get("clinvar") or {}).get("conditions") or []]
     target_match_status = _target_match_status(candidate_genes, conditions, genes=genes, condition=condition)
     return {
         "candidate_id": _variant_candidate_id(variant),
-        "match_basis": candidate.get("match_basis"),
-        "match_kind": candidate.get("match_kind"),
-        "match_provenance": candidate.get("match_provenance") or {},
-        "source_format": candidate.get("source_format") or variant.get("source_format"),
+        "match_provenance": match_provenance,
         "variant": {
             "chrom": variant.get("chrom"),
             "pos": variant.get("pos"),
@@ -429,7 +427,7 @@ def _sample_variant_lane(candidate: dict[str, Any]) -> str:
         return NEGATIVE_OR_CONFLICTING_EVIDENCE
     if "clinvar_risk_association_protective" in set(candidate.get("evidence_groups") or []):
         return NEARBY_TRAIT_MATCH
-    if candidate.get("match_basis") == "consumer_array_allele_inference":
+    if _candidate_primary_match_basis(candidate) == "consumer_array_allele_inference":
         return SAME_GENE_OR_LOCUS
     return DIRECT_SOURCE_MATCH
 
@@ -449,9 +447,17 @@ def _sample_variant_text(candidate: dict[str, Any]) -> str:
         f"{label}:{count}" for label, count in (candidate.get("clinical_significance_counts") or [])[:3]
     )
     genes = ", ".join(candidate.get("genes") or [])
-    basis = candidate.get("match_basis")
+    basis = _candidate_primary_match_basis(candidate)
     provenance_note = "consumer-array allele inference" if basis == "consumer_array_allele_inference" else str(basis or "")
     return f"{candidate['candidate_id']} {genes} {significance} {provenance_note}".strip()
+
+
+def _candidate_primary_match_basis(candidate: dict[str, Any]) -> str | None:
+    provenance = candidate.get("match_provenance")
+    if not isinstance(provenance, dict):
+        return None
+    basis = provenance.get("primary_match_basis")
+    return str(basis) if basis else None
 
 
 def _sample_variant_counter_evidence(candidate: dict[str, Any]) -> list[dict[str, Any]]:

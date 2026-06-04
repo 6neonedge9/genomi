@@ -442,9 +442,9 @@ class EvidenceImportTests(EvidenceImportTestBase):
             self.assertEqual(len(lines), 2)
             self.assertIn('"clinical_significance": "Benign"', lines[0])
             payloads = [json.loads(line) for line in lines]
-            self.assertEqual({payload["match_basis"] for payload in payloads}, {"exact_allele"})
-            self.assertEqual(payloads[0]["match_kind"], "exact_allele")
-            self.assertEqual(payloads[0]["source_format"], "vcf")
+            self.assertEqual({payload["match_provenance"]["match_basis"] for payload in payloads}, {"exact_allele"})
+            self.assertEqual(sorted(payloads[0]), ["clinvar", "match_provenance", "sample_variant"])
+            self.assertEqual(payloads[0]["match_provenance"]["source_format"], "vcf")
             self.assertEqual(payloads[0]["sample_variant"]["source_record_ref"], payloads[0]["sample_variant"]["ref"])
             self.assertEqual(payloads[0]["sample_variant"]["source_record_alt"], payloads[0]["sample_variant"]["alt"])
             self.assertTrue(Path(result["manifest_path"]).exists())
@@ -464,7 +464,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             self.assertEqual(agi_result["stats"]["matched_alleles"], 2)
             self.assertIn('"chrom": "chr1"', agi_output.read_text(encoding="utf-8").splitlines()[0])
             active_payload = json.loads(agi_output.read_text(encoding="utf-8").splitlines()[0])
-            self.assertEqual(active_payload["match_basis"], "exact_allele")
+            self.assertEqual(active_payload["match_provenance"]["match_basis"], "exact_allele")
             self.assertEqual(active_payload["sample_variant"]["source_record_ref"], active_payload["sample_variant"]["ref"])
 
             incomplete_active_genome_index = Path(tmp) / "incomplete-active-genome-index.sqlite"
@@ -533,9 +533,6 @@ class EvidenceImportTests(EvidenceImportTestBase):
             matches.write_text(
                 json.dumps(
                     {
-                        "match_basis": "consumer_array_allele_inference",
-                        "match_kind": "consumer_array_allele_inference",
-                        "source_format": "23andme",
                         "sample_variant": {
                             "chrom": "1",
                             "pos": 200,
@@ -566,6 +563,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                         },
                         "match_provenance": {
                             "match_basis": "consumer_array_allele_inference",
+                            "source_format": "23andme",
                             "inferred_clinvar_allele": {"chrom": "1", "pos": 200, "ref": "T", "alt": "G"},
                         },
                     }
@@ -617,7 +615,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             self.assertEqual(result["stats"]["matched_alleles"], 2)
             payloads = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
             self.assertEqual(len(payloads), 2)
-            self.assertEqual({payload["match_basis"] for payload in payloads}, {"multiallelic_alt"})
+            self.assertEqual({payload["match_provenance"]["match_basis"] for payload in payloads}, {"multiallelic_alt"})
             self.assertEqual({payload["sample_variant"]["alt"] for payload in payloads}, {"C", "G"})
             for payload in payloads:
                 self.assertEqual(payload["sample_variant"]["source_record_alt"], "C,G")

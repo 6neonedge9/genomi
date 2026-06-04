@@ -21,19 +21,15 @@ def build_clinvar_match_payload(
     sample_variant: dict[str, Any],
     clinvar: dict[str, Any],
     match_basis: str,
-    match_kind: str | None = None,
     source_format: str | None = None,
     source_record: dict[str, Any] | None = None,
     inferred_clinvar_allele: dict[str, Any] | None = None,
     liftover: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     basis = _require_match_basis(match_basis)
-    kind = match_kind or basis
     sample = dict(sample_variant)
     source = dict(source_record or {})
     source_format = source_format or source.get("source_format")
-    if source_format is not None:
-        sample["source_format"] = source_format
     _copy_source_record_field(sample, source, "ref")
     _copy_source_record_field(sample, source, "alt")
     _copy_source_record_field(sample, source, "format")
@@ -46,7 +42,6 @@ def build_clinvar_match_payload(
 
     provenance: dict[str, Any] = {
         "match_basis": basis,
-        "match_kind": kind,
         "evidence_scope": _evidence_scope_for_match_basis(basis),
         "asserted_sample_allele": {
             "chrom": sample.get("chrom"),
@@ -79,38 +74,18 @@ def build_clinvar_match_payload(
     if liftover is not None:
         provenance["liftover"] = liftover
 
-    payload: dict[str, Any] = {
-        "match_basis": basis,
-        "match_kind": kind,
+    return {
         "sample_variant": sample,
         "clinvar": dict(clinvar),
         "match_provenance": provenance,
     }
-    if source_format is not None:
-        payload["source_format"] = source_format
-    if liftover is not None:
-        payload["liftover"] = liftover
-    return payload
 
 
 def match_basis_from_record(item: dict[str, Any]) -> str:
-    basis = item.get("match_basis")
-    if basis:
-        return _require_match_basis(str(basis))
     provenance = item.get("match_provenance")
     if isinstance(provenance, dict) and provenance.get("match_basis"):
         return _require_match_basis(str(provenance["match_basis"]))
     raise ValueError("ClinVar match record is missing required match_basis")
-
-
-def match_kind_from_record(item: dict[str, Any]) -> str:
-    kind = item.get("match_kind")
-    if kind:
-        return str(kind)
-    provenance = item.get("match_provenance")
-    if isinstance(provenance, dict) and provenance.get("match_kind"):
-        return str(provenance["match_kind"])
-    return match_basis_from_record(item)
 
 
 def _write_clinvar_match_rows(
@@ -202,7 +177,6 @@ def _write_clinvar_match_rows(
             sample_variant=sample_variant,
             clinvar={field: row[field] for field in clinvar_fields},
             match_basis=_row_value(row, row_keys, "match_basis"),
-            match_kind=_row_value(row, row_keys, "match_kind"),
             source_format=source_format,
             source_record=source_record,
             inferred_clinvar_allele=inferred_clinvar_allele,
