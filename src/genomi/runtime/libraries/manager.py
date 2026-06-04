@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import sys
 import urllib.error
 import urllib.request
@@ -35,6 +36,7 @@ from . import transforms
 from .registry import all_ids, all_specs, get, has, purposes, resolve_selection  # noqa: F401
 
 _ONLINE_PROBE_TIMEOUT = 10
+_LINUX_X64_MACHINES = {"x86_64", "amd64"}
 
 
 # --------------------------------------------------------------------------- #
@@ -58,6 +60,26 @@ def _install_libraries(spec: LibrarySpec) -> list[str]:
     if spec.kind is Kind.DERIVED:
         return [*spec.source.derived_from, spec.id]
     return [spec.id]
+
+
+def _platform_skip_reason(spec: LibrarySpec) -> str | None:
+    if not spec.platform_linux_x64_only:
+        return None
+    machine = platform.machine().lower()
+    if sys.platform == "linux" and machine in _LINUX_X64_MACHINES:
+        return None
+    return f"linux x86_64 only; current platform is sys.platform={sys.platform!r}, machine={machine or 'unknown'!r}"
+
+
+def _source_status(url: str, exc: BaseException) -> dict[str, Any]:
+    status: dict[str, Any] = {
+        "reachable": False,
+        "url": url,
+        "error": str(exc),
+    }
+    if isinstance(exc, urllib.error.HTTPError):
+        status["http_status"] = exc.code
+    return status
 
 
 def install_command(library_ids: list[str] | tuple[str, ...]) -> str:
@@ -213,10 +235,27 @@ def status(library_id: str, *, root: str | Path | None = None) -> dict[str, Any]
     required = _required_paths(spec, root)
     existing = [path for path in required if path.exists()]
     missing = [path for path in required if not path.exists()]
+    platform_reason = _platform_skip_reason(spec)
+    if platform_reason:
+        return {
+            **base,
+            "installed": False,
+            "status": "not_applicable",
+            "reason": platform_reason,
+            "required_paths": [str(path) for path in required],
+            "existing_paths": [str(path) for path in existing],
+            "missing_paths": [str(path) for path in missing],
+        }
+    if not missing:
+        state = "installed"
+    elif spec.manual_source_required:
+        state = "manual_source_required"
+    else:
+        state = "not_installed"
     return {
         **base,
         "installed": not missing,
-        "status": "installed" if not missing else "not_installed",
+        "status": state,
         "required_paths": [str(path) for path in required],
         "existing_paths": [str(path) for path in existing],
         "missing_paths": [str(path) for path in missing],
@@ -230,13 +269,19 @@ def _inventory_ids() -> list[str]:
 
 def inventory(*, root: str | Path | None = None) -> dict[str, Any]:
     statuses = [status(library_id, root=root) for library_id in _inventory_ids()]
+    installed_count = sum(1 for item in statuses if item["installed"])
+    not_applicable_count = sum(1 for item in statuses if item["status"] == "not_applicable")
+    manual_source_required_count = sum(1 for item in statuses if item["status"] == "manual_source_required")
+    missing_count = sum(1 for item in statuses if item["status"] == "not_installed")
     return {
         "genomi_home": str(genomi_data_root(root)),
         "libraries": statuses,
         "summary": {
             "library_count": len(statuses),
-            "installed_count": sum(1 for item in statuses if item["installed"]),
-            "missing_count": sum(1 for item in statuses if not item["installed"]),
+            "installed_count": installed_count,
+            "missing_count": missing_count,
+            "manual_source_required_count": manual_source_required_count,
+            "not_applicable_count": not_applicable_count,
         },
     }
 
@@ -303,6 +348,14 @@ def ensure(
     st = status(library_id, root=root)
     if st["installed"]:
         return {**st, "status": "available"}
+    if st["status"] == "not_applicable":
+        return {
+            **st,
+            "tool_will_work": False,
+            "operation": operation,
+            "intent": intent,
+            "genome_build": genome_build,
+        }
     return missing_request(
         library_id, intent=intent, operation=operation, genome_build=genome_build, root=root
     )
@@ -505,7 +558,12 @@ def _refresh_xlsx_tsv(spec: LibrarySpec, *, force: bool, root: str | Path | None
             },
         )
         return {"status": "completed", "library": spec.id, "output": str(output)}
-    return {"status": source.get("status", "cached"), "library": spec.id, "output": str(output)}
+    result = {"status": source.get("status", "cached"), "library": spec.id, "output": str(output)}
+    if source.get("freshness"):
+        result["freshness"] = source["freshness"]
+    if source.get("source_status"):
+        result["source_status"] = source["source_status"]
+    return result
 
 
 def _refresh_github_release(
@@ -518,7 +576,21 @@ def _refresh_github_release(
     manifest_path = _manifest_path(output)
     version = overrides.get("pharmcat_version")
     installed_tag = (read_manifest(manifest_path) or {}).get("pharmcat_version") if output.is_file() else None
-    release = _fetch_github_release(spec, version)
+    try:
+        release = _fetch_github_release(spec, version)
+    except (urllib.error.URLError, OSError) as exc:
+        if output.is_file() and not force:
+            payload = {
+                "status": "cached",
+                "library": spec.id,
+                "output": str(output),
+                "freshness": "source_unavailable",
+                "source_status": _source_status(spec.source.github_release_api or "", exc),
+            }
+            if installed_tag:
+                payload["pharmcat_version"] = installed_tag
+            return payload
+        raise
     latest_tag = release.get("tag_name")
     if output.is_file() and not force and installed_tag and latest_tag and installed_tag == latest_tag:
         return {"status": "up_to_date", "library": spec.id, "output": str(output), "pharmcat_version": latest_tag}
@@ -526,7 +598,20 @@ def _refresh_github_release(
     asset = _select_pharmcat_jar_asset(release)
     if asset is None:
         raise ValueError("PharmCAT release does not contain an all-in-one JAR asset.")
-    source_fetch.download(asset["browser_download_url"], output, user_agent=_user_agent(spec))
+    try:
+        source_fetch.download(asset["browser_download_url"], output, user_agent=_user_agent(spec))
+    except (urllib.error.URLError, OSError) as exc:
+        if output.is_file() and not force:
+            payload = {
+                "status": "cached",
+                "library": spec.id,
+                "output": str(output),
+                "pharmcat_version": installed_tag or latest_tag,
+                "freshness": "download_unavailable",
+                "source_status": _source_status(str(asset["browser_download_url"]), exc),
+            }
+            return payload
+        raise
     write_manifest(
         manifest_path,
         {
@@ -590,14 +675,9 @@ def _refresh_pinned_sha(
     required = _required_paths(spec, root)
     single_file = len(required) == 1 and spec.targets and required[0] == _resolve(spec.targets[0], root)
 
-    if spec.platform_linux_x64_only and sys.platform != "linux":
-        if all(path.exists() for path in required) and not force:
-            return {"status": "cached", "library": spec.id, "version": spec.source.version}
-        message = (
-            f"Skipping {spec.id}: ships a linux x86_64 binary only "
-            f"(detected sys.platform={sys.platform!r})."
-        )
-        return {"status": "skipped", "library": spec.id, "version": spec.source.version, "output": message}
+    platform_reason = _platform_skip_reason(spec)
+    if platform_reason:
+        return {"status": "not_applicable", "library": spec.id, "version": spec.source.version, "reason": platform_reason}
 
     if single_file:
         return _refresh_pinned_binary(spec, url, required[0], force=force)

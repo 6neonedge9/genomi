@@ -96,7 +96,7 @@ def conditional_fetch(
     """Download ``url`` to ``dest`` only when upstream is newer than recorded.
 
     Returns ``{"status", "validators", "reason"}`` where status is one of
-    ``up_to_date`` | ``downloaded``. A single conditional GET does double duty:
+    ``up_to_date`` | ``downloaded`` | ``cached``. A single conditional GET does double duty:
     a 304 means unchanged (no body transferred); a 200 means the body is the
     new content, streamed straight to ``dest``. When ``dest`` already exists
     but we have no recorded validators (first run after this ships), a HEAD
@@ -123,6 +123,21 @@ def conditional_fetch(
     if has_file and recorded.get("last_modified"):
         request.add_header("If-Modified-Since", recorded["last_modified"])
 
+    def _cached_source_unavailable(exc: BaseException, *, http_status: int | None = None) -> dict[str, Any]:
+        source_status: dict[str, Any] = {
+            "reachable": False,
+            "url": url,
+            "error": str(exc),
+        }
+        if http_status is not None:
+            source_status["http_status"] = http_status
+        return {
+            "status": "cached",
+            "validators": recorded,
+            "reason": "freshness_check_unavailable",
+            "source_status": source_status,
+        }
+
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             validators = _validators_from_headers(response.headers)
@@ -143,6 +158,12 @@ def conditional_fetch(
     except urllib.error.HTTPError as exc:
         if exc.code == 304:
             return {"status": "up_to_date", "validators": recorded, "reason": "not_modified"}
+        if has_file:
+            return _cached_source_unavailable(exc, http_status=exc.code)
+        raise
+    except (urllib.error.URLError, OSError) as exc:
+        if has_file:
+            return _cached_source_unavailable(exc)
         raise
 
 
@@ -187,7 +208,8 @@ def refresh_or_download(
     """Keep a "store the bytes as-is" library fresh, tracked in its manifest.
 
     - cached and neither force nor refresh -> ``cached`` (no network: runtime path).
-    - ``refresh`` and cached -> one conditional GET; ``up_to_date`` or ``updated``.
+    - ``refresh`` and cached -> one conditional GET; ``up_to_date``,
+      ``updated``, or ``cached`` when the freshness source is unavailable.
     - ``force`` or missing/mismatched cache -> unconditional ``downloaded``.
 
     The manifest stores the source validators so the next ``refresh`` can ask
@@ -237,8 +259,9 @@ def refresh_or_download(
             # Persist identity + (possibly newly-learned) validators so the next
             # refresh can ask "anything newer?" without transferring the body.
             return _persist(result["validators"], "up_to_date") | {"freshness": result["reason"]}
+        if result["status"] == "cached":
+            return _result("cached", freshness=result["reason"], source_status=result.get("source_status"))
         return _persist(result["validators"], "updated")
 
     # force, a missing file, or a stale manifest identity -> (re)download.
     return _persist(download(url, output, timeout=timeout, user_agent=user_agent), "downloaded")
-

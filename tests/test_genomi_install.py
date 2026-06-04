@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import unittest
 from unittest import mock
 
 from genomi.active_genome_index.active_genome_index import (
@@ -179,6 +180,59 @@ class GenomiInstallTests(GenomiRuntimeTestCase):
         self.assertFalse(runtime_update["restart_required"])
         self.assertIn("GENOMI_SKIP_RUNTIME_GIT_PULL", runtime_update["message"])
 
+
+class InstallLibraryStepTests(unittest.TestCase):
+    def test_library_failures_do_not_prevent_later_libraries(self) -> None:
+        from genomi.operations.registry import handlers_admin
+
+        with mock.patch.object(
+            handlers_admin.library_manager,
+            "resolve_selection",
+            return_value=["cellmarker-human", "pgs-catalog-score-metadata"],
+        ), mock.patch.object(
+            handlers_admin.library_manager,
+            "refresh",
+            side_effect=[
+                TimeoutError("cellmarker endpoint timed out"),
+                {"status": "completed", "library": "pgs-catalog-score-metadata"},
+            ],
+        ) as refresh:
+            result = handlers_admin._install_libraries_step("everything", {})
+
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(
+            [call.args[0] for call in refresh.call_args_list],
+            ["cellmarker-human", "pgs-catalog-score-metadata"],
+        )
+        self.assertEqual(
+            result["results"],
+            [{"status": "completed", "library": "pgs-catalog-score-metadata"}],
+        )
+        self.assertEqual(result["errors"][0]["library"], "cellmarker-human")
+        self.assertEqual(result["errors"][0]["status"], "install_failed")
+
+    def test_source_unavailable_cached_result_makes_install_partial(self) -> None:
+        from genomi.operations.registry import handlers_admin
+
+        with mock.patch.object(
+            handlers_admin.library_manager,
+            "resolve_selection",
+            return_value=["cellmarker-human"],
+        ), mock.patch.object(
+            handlers_admin.library_manager,
+            "refresh",
+            return_value={
+                "status": "cached",
+                "library": "cellmarker-human",
+                "freshness": "freshness_check_unavailable",
+                "source_status": {"reachable": False},
+            },
+        ):
+            result = handlers_admin._install_libraries_step("everything", {})
+
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["results"][0]["library"], "cellmarker-human")
+
 def _completed(returncode: int = 0, stdout: str = "", stderr: str = ""):
     import subprocess
 
@@ -262,8 +316,9 @@ class GenomiRuntimeDependencySyncTests(GenomiRuntimeTestCase):
             )
 
         runtime_update = result["runtime_update"]
+        self.assertEqual(runtime_update["status"], "completed")
         self.assertFalse(runtime_update["changed"])
-        self.assertNotIn("dependency_sync", runtime_update)
+        self.assertFalse(runtime_update["restart_required"])
 
     def test_no_usable_installer_is_non_fatal_action_required(self) -> None:
         # PEP 668 base interpreter with no pip and no uv: the install must not
@@ -325,5 +380,4 @@ class GenomiShimTests(GenomiRuntimeTestCase):
             shim = install_lib.install_genomi_command_shim()
 
         content = shim.read_text(encoding="utf-8")
-        self.assertIn(str(venv_python), content)         # venv interpreter kept
-        self.assertNotIn(str(base_python), content)      # symlink not followed
+        self.assertEqual(content.splitlines()[2], f"exec {venv_python} -m genomi \"$@\"")

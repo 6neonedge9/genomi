@@ -240,7 +240,7 @@ def _genomi_install(params: JsonObject) -> JsonObject:
     # retrieval indexes; rebuild them so list_resources / search_indexes return
     # a coherent view immediately after install.
     reindex_result: JsonObject | None = None
-    if install_result.get("status") == "completed":
+    if install_result.get("status") in {"completed", "partial"}:
         refreshed, errors = _refresh_public_retrieval_indexes()
         reindex_result = {
             "status": "completed" if refreshed and not errors else ("partial" if refreshed else "not_refreshed"),
@@ -255,7 +255,7 @@ def _genomi_install(params: JsonObject) -> JsonObject:
     reparse_result = _reparse_stale_genomes()
 
     return {
-        "status": "completed",
+        "status": "partial" if install_result.get("status") == "partial" else "completed",
         "genomi_home": str(genomi_data_root()),
         "libraries_requested": libraries,
         "install_scope": _genomi_install_scope(),
@@ -273,7 +273,9 @@ def _install_libraries_step(libraries: str, params: JsonObject) -> JsonObject:
     in-process. Each selected library is checked against its source and only the
     changed bytes are downloaded (missing libraries download in full; present
     ones are conditionally refreshed). Idempotent: present + unchanged is a
-    no-op. ``force`` re-downloads. Raises OperationError on any failure.
+    no-op. ``force`` re-downloads. Invalid selections raise OperationError;
+    per-library materialization failures are collected so one unavailable
+    source does not prevent later selected libraries from being attempted.
     """
     try:
         selected = library_manager.resolve_selection(libraries)
@@ -288,19 +290,32 @@ def _install_libraries_step(libraries: str, params: JsonObject) -> JsonObject:
             overrides[param_name] = value
 
     results: list[JsonObject] = []
+    errors: list[JsonObject] = []
     for library_id in selected:
         try:
             results.append(library_manager.refresh(library_id, force=force, **overrides))
         except Exception as exc:  # noqa: BLE001 — surface any materialization failure as an operation error
-            raise OperationError(
-                "install_failed", f"Genomi install failed for {library_id}: {exc}"
-            ) from exc
+            errors.append({
+                "library": library_id,
+                "status": "install_failed",
+                "error": str(exc),
+            })
 
-    return {
-        "status": "completed",
+    has_partial_result = any(_library_refresh_result_is_partial(result) for result in results)
+    status = "partial" if errors or has_partial_result else "completed"
+    payload: JsonObject = {
+        "status": status,
         "libraries": selected,
         "results": results,
     }
+    if errors:
+        payload["errors"] = errors
+    return payload
+
+
+def _library_refresh_result_is_partial(result: JsonObject) -> bool:
+    status = str(result.get("status") or "")
+    return status == "manual_source_required" or bool(result.get("source_status"))
 
 
 def _refresh_public_retrieval_indexes() -> tuple[list[JsonObject], list[JsonObject]]:

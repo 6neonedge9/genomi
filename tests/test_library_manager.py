@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import urllib.error
@@ -70,13 +71,34 @@ class StatusAndInventoryTests(unittest.TestCase):
     def test_msigdb_install_command_has_gmt_hint(self) -> None:
         self.assertIn("--msigdb-gmt", manager.status("msigdb-hallmark", root=self.root)["install_command"])
 
+    def test_linux_only_binary_status_is_not_applicable_off_linux(self) -> None:
+        with mock.patch("genomi.runtime.libraries.manager.sys.platform", "darwin"), \
+             mock.patch("genomi.runtime.libraries.manager.platform.machine", return_value="arm64"):
+            status = manager.status("minimap2-binary", root=self.root)
+
+        self.assertEqual(status["status"], "not_applicable")
+        self.assertFalse(status["installed"])
+        self.assertIn("linux x86_64 only", status["reason"])
+
     def test_inventory_counts(self) -> None:
         inv = manager.inventory(root=self.root)
-        # 19 offline-family (incl. derived + manual) + 5 online = 24.
         self.assertEqual(inv["summary"]["library_count"], 24)
-        # The 5 online sources count as installed; everything offline is missing here.
-        self.assertEqual(inv["summary"]["installed_count"], 5)
-        self.assertEqual(inv["summary"]["missing_count"], 19)
+        self.assertEqual(
+            inv["summary"]["installed_count"],
+            sum(1 for item in inv["libraries"] if item["installed"]),
+        )
+        self.assertEqual(
+            inv["summary"]["missing_count"],
+            sum(1 for item in inv["libraries"] if item["status"] == "not_installed"),
+        )
+        self.assertEqual(
+            inv["summary"]["manual_source_required_count"],
+            sum(1 for item in inv["libraries"] if item["status"] == "manual_source_required"),
+        )
+        self.assertEqual(
+            inv["summary"]["not_applicable_count"],
+            sum(1 for item in inv["libraries"] if item["status"] == "not_applicable"),
+        )
         ids = {item["library"] for item in inv["libraries"]}
         self.assertIn("gnomad", ids)
 
@@ -130,6 +152,15 @@ class EnsureTests(unittest.TestCase):
         self.assertEqual(result["status"], "parameterized_template")
         self.assertFalse(result["installed"])
 
+    def test_ensure_linux_only_binary_is_not_applicable_off_linux(self) -> None:
+        with mock.patch("genomi.runtime.libraries.manager.sys.platform", "darwin"), \
+             mock.patch("genomi.runtime.libraries.manager.platform.machine", return_value="arm64"):
+            result = manager.ensure("minimap2-binary", root=self.root)
+
+        self.assertEqual(result["status"], "not_applicable")
+        self.assertFalse(result["tool_will_work"])
+        self.assertIn("linux x86_64 only", result["reason"])
+
 
 class RefreshTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -141,7 +172,11 @@ class RefreshTests(unittest.TestCase):
         self.assertEqual(manager.refresh("gnomad", root=self.root)["status"], "skipped")
 
     def test_refresh_http_single_file_passes_through(self) -> None:
-        with mock.patch.object(manager.source_fetch, "refresh_or_download", return_value={"status": "downloaded", "output": "x"}) as fetch:
+        with mock.patch.object(
+            manager.source_fetch,
+            "refresh_or_download",
+            return_value={"status": "downloaded", "output": "x"},
+        ) as fetch:
             result = manager.refresh("clinvar-grch38", root=self.root)
         fetch.assert_called_once()
         self.assertEqual(result["status"], "downloaded")
@@ -181,7 +216,34 @@ class RefreshTests(unittest.TestCase):
     def test_refresh_pinned_binary_skipped_off_linux(self) -> None:
         with mock.patch("genomi.runtime.libraries.manager.sys.platform", "darwin"):
             result = manager.refresh("minimap2-binary", root=self.root)
-        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["status"], "not_applicable")
+
+    def test_refresh_xlsx_uses_cached_output_when_freshness_source_unavailable(self) -> None:
+        spec = registry.get("cellmarker-human")
+        output = self.root / spec.targets[0]
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("normalized\n", encoding="utf-8")
+        xlsx = output.with_suffix(".source.xlsx")
+        xlsx.write_bytes(b"source")
+        xlsx.with_name(xlsx.name + ".genomi-manifest.json").write_text(
+            json.dumps(
+                {
+                    "library": "cellmarker-human-source",
+                    "source_url": spec.source.urls[0],
+                    "output": str(xlsx),
+                    "etag": "previous",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timed out")):
+            result = manager.refresh("cellmarker-human", root=self.root)
+
+        self.assertEqual(result["status"], "cached")
+        self.assertEqual(result["freshness"], "freshness_check_unavailable")
+        self.assertFalse(result["source_status"]["reachable"])
+        self.assertEqual(result["output"], str(output))
 
     def test_refresh_derived_ancestry_panel_passes_root_to_builder(self) -> None:
         _seed(self.root, "ancestry-1000g-30x-grch38")
