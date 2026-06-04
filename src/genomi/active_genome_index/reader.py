@@ -210,6 +210,76 @@ class ActiveGenomeIndexReader:
 
         return stage_clinvar_match_records(self, connection)
 
+    def clinvar_match_records_cte_sql(
+        self,
+        *,
+        pass_only: bool,
+        max_records: int | None,
+        cross_build: bool = False,
+    ) -> str:
+        """Return the AGI-owned ClinVar selected-record CTE for staged rows."""
+        from .clinvar import selected_clinvar_match_records_cte_sql
+
+        return selected_clinvar_match_records_cte_sql(
+            pass_only=pass_only,
+            max_records=max_records,
+            cross_build=cross_build,
+        )
+
+    def count_selected_clinvar_non_pass_records(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        pass_only: bool,
+        max_records: int | None,
+    ) -> int:
+        """Count staged ClinVar candidate rows excluded by PASS-only filtering."""
+        from .clinvar import count_selected_clinvar_non_pass_records
+
+        return count_selected_clinvar_non_pass_records(
+            connection,
+            pass_only=pass_only,
+            max_records=max_records,
+        )
+
+    def selected_clinvar_chrom_style(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        pass_only: bool,
+        max_records: int | None,
+        cross_build: bool = False,
+    ) -> str:
+        """Classify chromosome naming for the staged AGI ClinVar rows."""
+        from .clinvar import selected_clinvar_chrom_style
+
+        return selected_clinvar_chrom_style(
+            connection,
+            pass_only=pass_only,
+            max_records=max_records,
+            cross_build=cross_build,
+        )
+
+    def populate_lifted_clinvar_match_records_table(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        source_build: str,
+        target_build: str,
+        pass_only: bool,
+        max_records: int | None,
+    ) -> tuple[int, int]:
+        """Lift staged AGI ClinVar rows into the cache build inside the caller connection."""
+        from .clinvar import populate_lifted_clinvar_match_records_table
+
+        return populate_lifted_clinvar_match_records_table(
+            connection,
+            source_build=source_build,
+            target_build=target_build,
+            pass_only=pass_only,
+            max_records=max_records,
+        )
+
     def dosage_for_variants(
         self,
         variants: list[dict[str, Any]],

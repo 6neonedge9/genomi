@@ -41,39 +41,6 @@ from .clinvar_match_provenance import (
     build_clinvar_match_payload,
 )
 
-_SELECTED_AGI_RECORD_COLUMN_NAMES = (
-    "record_rowid",
-    "chrom",
-    "chrom_sort",
-    "pos",
-    "rsid",
-    "ref",
-    "alt",
-    "qual",
-    "filter",
-    "info",
-    "sample_index",
-    "sample_name",
-    "format",
-    "genotype",
-    "depth",
-    "genotype_quality",
-    "record_kind",
-    "observed_alleles",
-    "clinvar_batch_id",
-    "clinvar_match_mode",
-    "clinvar_match_alt",
-)
-_AGI_RECORD_COLUMN_NAMES = _SELECTED_AGI_RECORD_COLUMN_NAMES[:-3]
-_SELECTED_AGI_RECORD_COLUMNS = ", ".join(_SELECTED_AGI_RECORD_COLUMN_NAMES)
-_AGI_RECORD_COLUMNS = ", ".join(_AGI_RECORD_COLUMN_NAMES)
-
-
-def _selected_agi_record_columns(alias: str | None = None) -> str:
-    if alias is None:
-        return _SELECTED_AGI_RECORD_COLUMNS
-    return ", ".join(f"{alias}.{column}" for column in _SELECTED_AGI_RECORD_COLUMN_NAMES)
-
 
 def match_clinvar_variants(
     vcf_path: str | Path,
@@ -366,7 +333,7 @@ def match_clinvar_variants_from_active_genome_index(
     with connect_evidence(evidence_db) as evidence_connection, output_path.open("w", encoding="utf-8") as handle:
         _ensure_schema(evidence_connection)
         staged = reader.stage_clinvar_match_records(evidence_connection)
-        skipped_non_pass = _count_selected_non_pass_records(
+        skipped_non_pass = reader.count_selected_clinvar_non_pass_records(
             evidence_connection,
             pass_only=pass_only,
             max_records=max_records,
@@ -374,7 +341,7 @@ def match_clinvar_variants_from_active_genome_index(
         selection_params = (max_records,) if max_records is not None else ()
         stats_row = evidence_connection.execute(
             f"""
-            {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records)}
+            {reader.clinvar_match_records_cte_sql(pass_only=pass_only, max_records=max_records)}
             select
                 (select count(*) from selected_agi_records) as scanned_records,
                 (select count(distinct clinvar_batch_id) from selected_records) as queried_alleles
@@ -385,7 +352,7 @@ def match_clinvar_variants_from_active_genome_index(
         queried_alleles = int(stats_row["queried_alleles"])
 
         if cross_build:
-            lifted_alleles, lift_dropped_alleles = _populate_lifted_selected_active_genome_index_records_table(
+            lifted_alleles, lift_dropped_alleles = reader.populate_lifted_clinvar_match_records_table(
                 evidence_connection,
                 source_build=genome_build,
                 target_build=cache_build,
@@ -394,6 +361,7 @@ def match_clinvar_variants_from_active_genome_index(
             )
 
         direct_stats = _write_clinvar_active_genome_index_direct_matches(
+            reader,
             evidence_connection,
             handle,
             pass_only=pass_only,
@@ -438,201 +406,8 @@ def match_clinvar_variants_from_active_genome_index(
     }
 
 
-def _selected_active_genome_index_records_cte_sql(
-    *,
-    pass_only: bool,
-    max_records: int | None,
-    cross_build: bool = False,
-) -> str:
-    if cross_build:
-        # Cross-build mode: chrom/pos in the CTE are already lifted into the
-        # cache's build by _populate_lifted_selected_active_genome_index_records_table; the
-        # original sample coordinates ride along as sample_chrom_original /
-        # sample_pos_original so the writer can keep audit honest.
-        return """
-            with selected_records as (
-                select """ + _SELECTED_AGI_RECORD_COLUMNS + """,
-                       sample_chrom_original, sample_pos_original
-                from temp.lifted_selected_records
-            )
-        """
-    agi_cte = _active_genome_index_agi_records_cte_sql(max_records=max_records)
-    sql = """
-            with """ + agi_cte + """,
-            selected_agi_records as (
-                select *
-                from agi_records
-                where 1 = 1
-        """
-    if pass_only:
-        sql += " and filter in ('PASS', '.')"
-    sql += """
-            ),
-            selected_records as (
-                select """ + _selected_agi_record_columns("a") + """
-                from temp.selected_active_genome_index_records as a
-                join selected_agi_records as s
-                  on s.record_rowid = a.record_rowid
-            )
-        """
-    return sql
-
-
-def _active_genome_index_agi_records_cte_sql(*, max_records: int | None) -> str:
-    sql = """
-            agi_records as (
-                select """ + _AGI_RECORD_COLUMNS + """
-                from temp.selected_active_genome_index_agi_records
-                where record_kind in ('variant_call', 'array_call')
-        """
-    if max_records is not None:
-        sql += " order by chrom_sort, pos, record_rowid, sample_index"
-        sql += " limit ?"
-    sql += ")"
-    return sql
-
-
-def _count_selected_non_pass_records(
-    connection: sqlite3.Connection,
-    *,
-    pass_only: bool,
-    max_records: int | None,
-) -> int:
-    if not pass_only:
-        return 0
-    selection_params = (max_records,) if max_records is not None else ()
-    row = connection.execute(
-        f"""
-        with {_active_genome_index_agi_records_cte_sql(max_records=max_records)}
-        select count(*) as skipped_non_pass
-        from agi_records
-        where filter not in ('PASS', '.')
-        """,
-        selection_params,
-    ).fetchone()
-    return int(row["skipped_non_pass"] or 0)
-
-
-def _populate_lifted_selected_active_genome_index_records_table(
-    connection: sqlite3.Connection,
-    *,
-    source_build: str,
-    target_build: str,
-    pass_only: bool,
-    max_records: int | None,
-) -> tuple[int, int]:
-    """Stage sample variants into a temp table with lifted coordinates.
-
-    The Active Genome Index SQL path joins sample variants against ClinVar rows
-    via (chrom, pos, ref). When the sample is on a different build than the
-    cache, lift the (chrom, pos) pairs in Python first and write the lifted
-    coordinates into ``temp.lifted_selected_records`` so the rest of the JOIN
-    plan can stay shape-identical. Each row also carries the original sample
-    coordinates as ``sample_chrom_original`` /
-    ``sample_pos_original`` so the match payload can disclose both the
-    sample's native coordinate and the lifted lookup coordinate.
-    """
-
-    from ...runtime.liftover import get_liftover  # local import keeps evidence layer light
-
-    lifter = get_liftover(source_build, target_build)
-    connection.executescript(
-        """
-        drop table if exists temp.lifted_selected_records;
-        create temp table lifted_selected_records (
-            record_rowid integer not null,
-            sample_chrom_original text not null,
-            sample_pos_original integer not null,
-            chrom text not null,
-            chrom_sort integer,
-            pos integer not null,
-            rsid text,
-            ref text,
-            alt text,
-            info text,
-            qual text,
-            filter text,
-            sample_index integer,
-            sample_name text,
-            format text,
-            genotype text,
-            depth integer,
-            genotype_quality integer,
-            record_kind text,
-            observed_alleles text,
-            clinvar_batch_id text not null,
-            clinvar_match_mode text not null,
-            clinvar_match_alt text not null
-        );
-        create index lifted_selected_records_locus_idx
-            on lifted_selected_records(chrom, pos);
-        """
-    )
-    selection_params = (max_records,) if max_records is not None else ()
-    source_rows = connection.execute(
-        f"""
-        {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records)}
-        select * from selected_records
-        """,
-        selection_params,
-    ).fetchall()
-
-    lifted_alleles = 0
-    dropped_alleles = 0
-    insert_buffer: list[tuple[Any, ...]] = []
-    for row in source_rows:
-        sample_chrom = row["chrom"]
-        sample_pos = int(row["pos"])
-        result = lifter.lift_position_full(sample_chrom, sample_pos)
-        if result is None or result[2] != "+":
-            dropped_alleles += 1
-            continue
-        lifted_chrom, lifted_pos, _strand = result
-        insert_buffer.append(
-            (
-                int(row["record_rowid"]),
-                sample_chrom,
-                sample_pos,
-                lifted_chrom,
-                int(row["chrom_sort"]) if row["chrom_sort"] is not None else None,
-                lifted_pos,
-                row["rsid"],
-                row["ref"],
-                row["alt"],
-                row["info"],
-                row["qual"],
-                row["filter"],
-                row["sample_index"],
-                row["sample_name"],
-                row["format"],
-                row["genotype"],
-                row["depth"],
-                row["genotype_quality"],
-                row["record_kind"],
-                row["observed_alleles"],
-                row["clinvar_batch_id"],
-                row["clinvar_match_mode"],
-                row["clinvar_match_alt"],
-            )
-        )
-        lifted_alleles += 1
-    if insert_buffer:
-        connection.executemany(
-            """
-            insert into temp.lifted_selected_records (
-                record_rowid, sample_chrom_original, sample_pos_original,
-                chrom, chrom_sort, pos, rsid, ref, alt, info, qual, filter,
-                sample_index, sample_name, format, genotype, depth, genotype_quality, record_kind, observed_alleles,
-                clinvar_batch_id, clinvar_match_mode, clinvar_match_alt
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            insert_buffer,
-        )
-    return lifted_alleles, dropped_alleles
-
-
 def _write_clinvar_active_genome_index_direct_matches(
+    reader: ActiveGenomeIndexReader,
     connection: sqlite3.Connection,
     handle: Any,
     *,
@@ -645,7 +420,7 @@ def _write_clinvar_active_genome_index_direct_matches(
     sample_build: str | None = None,
 ) -> dict[str, int]:
     source_selects: list[str] = []
-    sample_chrom_style = _selected_active_genome_index_chrom_style(
+    sample_chrom_style = reader.selected_clinvar_chrom_style(
         connection,
         pass_only=pass_only,
         max_records=max_records,
@@ -678,7 +453,7 @@ def _write_clinvar_active_genome_index_direct_matches(
         selection_params = (max_records,) if max_records is not None else ()
     rows = connection.execute(
         f"""
-        {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records, cross_build=cross_build)},
+        {reader.clinvar_match_records_cte_sql(pass_only=pass_only, max_records=max_records, cross_build=cross_build)},
         clinvar_joined as (
             {joined_sql}
         ),
@@ -724,29 +499,6 @@ def _clinvar_index_source_tables(connection: sqlite3.Connection) -> list[str]:
 
 def _table_has_rows(connection: sqlite3.Connection, table_name: str) -> bool:
     return connection.execute(f"select 1 from {table_name} limit 1").fetchone() is not None
-
-
-def _selected_active_genome_index_chrom_style(
-    connection: sqlite3.Connection,
-    *,
-    pass_only: bool,
-    max_records: int | None,
-    cross_build: bool = False,
-) -> str:
-    selection_params: tuple[Any, ...] = (
-        () if cross_build else ((max_records,) if max_records is not None else ())
-    )
-    row = connection.execute(
-        f"""
-        {_selected_active_genome_index_records_cte_sql(pass_only=pass_only, max_records=max_records, cross_build=cross_build)}
-        select
-            coalesce(sum(case when chrom like 'chr%' then 1 else 0 end), 0) as chr_rows,
-            count(*) as total_rows
-        from selected_records
-        """,
-        selection_params,
-    ).fetchone()
-    return _chrom_style_from_counts(int(row["chr_rows"]), int(row["total_rows"]))
 
 
 def _clinvar_table_chrom_style(connection: sqlite3.Connection, table_name: str, genome_build: str) -> str:
