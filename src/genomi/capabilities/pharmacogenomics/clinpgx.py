@@ -3,8 +3,6 @@ from __future__ import annotations
 import html
 import json
 import re
-import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -12,6 +10,7 @@ from typing import Any
 
 from ...evidence import envelope as _env
 from ...runtime.external import utc_now
+from ...runtime.http_json import build_api_url, fetch_json_with_trace
 from ...runtime.libraries import manager as library_manager
 
 _CLINPGX_LIBRARY = library_manager.get("clinpgx")
@@ -691,46 +690,19 @@ def _fetch_json(
     query: dict[str, str] | None = None,
     raw_calls: list[dict[str, Any]],
 ) -> Any:
-    url = _url(base_url, path, query=query)
-    call: dict[str, Any] = {"url": url, "status": None, "attempts": 0}
-    raw_calls.append(call)
-    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "genomi/0.1"})
-    for attempt in range(2):
-        call["attempts"] = attempt + 1
-        try:
-            with urllib.request.urlopen(request, timeout=CLINPGX_TIMEOUT_SECONDS) as response:
-                call["status"] = int(getattr(response, "status", 0) or 0)
-                call["content_type"] = response.headers.get("content-type")
-                body = response.read()
-            return json.loads(body.decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            call["status"] = exc.code
-            if exc.code == 404:
-                call["not_found"] = True
-                return {"data": []}
-            call["error"] = f"HTTP {exc.code}"
-            if 400 <= exc.code < 500:
-                return None
-        except urllib.error.URLError as exc:
-            call["error"] = f"URL error: {exc.reason}"
-        except TimeoutError as exc:
-            call["error"] = f"timeout: {exc}"
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            call["error"] = f"parse error: {exc}"
-            return None
-        except OSError as exc:
-            call["error"] = f"I/O error: {exc}"
-        if attempt == 0:
-            time.sleep(0.5)
-    return None
+    return fetch_json_with_trace(
+        base_url,
+        path,
+        query=query,
+        raw_calls=raw_calls,
+        timeout=CLINPGX_TIMEOUT_SECONDS,
+        not_found_payload={"data": []},
+        urlopen=urllib.request.urlopen,
+    )
 
 
 def _url(base_url: str, path: str, *, query: dict[str, str] | None = None) -> str:
-    encoded_path = "/".join(urllib.parse.quote(part, safe="/") for part in path.split("/"))
-    url = base_url.rstrip("/") + "/" + encoded_path.lstrip("/")
-    if query:
-        url += "?" + urllib.parse.urlencode({key: value for key, value in query.items() if value})
-    return url
+    return build_api_url(base_url, path, query=query)
 
 
 def _base_url(value: str | None) -> str:
