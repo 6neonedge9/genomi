@@ -1,18 +1,6 @@
-"""Active Genome Indexing and library-scoped static evidence materialization.
-
-This package preserves the public surface and import paths of the former
-``static_annotation.py`` module. Submodules are organized by topic, while this
-package re-exports the complete public API so that
-``from genomi.capabilities.clinvar.static_annotation import <name>`` and
-``static_annotation.<name>`` continue to resolve unchanged.
-"""
+"""ClinVar static annotation and AGI-backed evidence materialization."""
 
 from __future__ import annotations
-
-# Patchable static dependencies are bound at the package namespace so tests that
-# patch ``static_annotation.<name>`` affect the call sites that resolve them.
-from ....active_genome_index.export import export_variants
-from ....active_genome_index.normalize import normalize_vcf
 
 from ._helpers import (
     LONG_RUNNING_STATIC_REASON,
@@ -66,12 +54,10 @@ __all__ = [
     "WORKFLOW_AREA_NAME",
     "build_static_annotation",
     "default_static_outputs",
-    "export_variants",
     "fetch_static_population",
     "init_static_run",
     "match_static_clinvar",
     "match_static_clinvar_from_active_genome_index",
-    "normalize_vcf",
     "query_static_coverage",
     "query_static_region",
     "query_static_rsid",

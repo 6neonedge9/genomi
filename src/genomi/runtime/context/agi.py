@@ -408,7 +408,11 @@ def infer_agi_record(
         "agi_path": _path_str(agi_path or outputs.get("agi_path") or (default_agi_path(source_path, root=root) if is_vcf else run_output_path_for_source(source_path, "active-genome-index.sqlite", source_format=effective_format, root=root))),
         "matches": _path_str(matches or outputs.get("clinvar_matches") or (run_output_path(source_path, "clinvar.matches.jsonl", root=root) if is_vcf else None)),
         "candidate_inventory": _path_str(outputs.get("clinvar_scan") or (run_output_path(source_path, "clinvar.candidates.json", root=root) if is_vcf else None)),
-        "agi_comparable_variant_export": _path_str(result.get("comparable_vcf") or outputs.get("exported_primary_variants") or outputs.get("exported_variants")),
+        "agi_comparable_variant_export": _path_str(
+            result.get("agi_comparable_variant_export")
+            or outputs.get("exported_primary_variants")
+            or outputs.get("exported_variants")
+        ),
         "reference_fasta": _path_str(reference_fasta or result.get("reference_fasta")),
         "genotype_reference_fasta": _path_str(genotype_reference_fasta or result.get("genotype_reference_fasta")),
         "genome_build": genome_build or result.get("genome_build") or "auto",

@@ -47,7 +47,7 @@ def assess_sample_qc(
         scan_records=scan_records,
         input_label=vcf_path.name,
         sample_id_fallback=sample_slug_from_vcf(vcf_path),
-        extra_payload={"vcf": str(vcf_path)},
+        extra_payload={"agi_intake_source_path": str(vcf_path)},
     )
 
 
@@ -164,7 +164,7 @@ def assess_genotype_support(
         reference_fasta=reference_fasta,
         min_depth=min_depth,
         min_genotype_quality=min_genotype_quality,
-        extra_payload={"vcf": str(vcf_path)},
+        extra_payload={"agi_intake_source_path": str(vcf_path)},
     )
 
 
@@ -264,7 +264,7 @@ def assess_region_callability(
         min_depth=min_depth,
         min_covered_fraction=min_covered_fraction,
         limit=limit,
-        extra_payload={"vcf": str(vcf_path)},
+        extra_payload={"agi_intake_source_path": str(vcf_path)},
     )
 
 

@@ -49,6 +49,7 @@ class StaticRunTests(EvidenceImportTestBase):
             self.assertEqual(result["workflow_area"], "static")
             self.assertEqual(result["status"], "completed_with_warnings")
             self.assertEqual(result["static_profile"], "bounded")
+            self.assertEqual(result["agi_intake_source_path"], vcf.name)
             self.assertIn("export-variants", result["long_running_steps_deferred"])
             self.assertEqual(result["shared_sync"]["inserted"]["clinvar_variants"], 3)
             step_names = [step["name"] for step in result["steps"]]
@@ -176,7 +177,7 @@ class StaticRunTests(EvidenceImportTestBase):
                         side_effect=refresh_side_effect,
                     ) as ensure_reference,
                     patch("genomi.runtime.libraries.manager.status") as status,
-                    patch("genomi.capabilities.clinvar.static_annotation.normalize_vcf") as normalize,
+                    patch("genomi.capabilities.clinvar.static_annotation.build.normalize_vcf") as normalize,
                 ):
                     status.return_value = {
                         "library": "clinvar-grch38",
@@ -205,7 +206,7 @@ class StaticRunTests(EvidenceImportTestBase):
             self.assertTrue(normalize.call_args.kwargs["allow_malformed_tags"])
             self.assertEqual(result["reference_fasta"], str(reference))
             self.assertEqual(result["genotype_reference_fasta"], str(reference))
-            self.assertEqual(result["comparable_vcf"], str(normalized))
+            self.assertEqual(result["agi_comparable_variant_export"], str(normalized))
             step_names = [step["name"] for step in result["steps"]]
             self.assertIn("ensure-reference-fasta", step_names)
             self.assertIn("normalize", step_names)
@@ -220,8 +221,8 @@ class StaticRunTests(EvidenceImportTestBase):
             try:
                 with (
                     patch("genomi.runtime.libraries.manager.refresh") as refresh,
-                    patch("genomi.capabilities.clinvar.static_annotation.export_variants") as export,
-                    patch("genomi.capabilities.clinvar.static_annotation.normalize_vcf") as normalize,
+                    patch("genomi.capabilities.clinvar.static_annotation.build.export_variants") as export,
+                    patch("genomi.capabilities.clinvar.static_annotation.build.normalize_vcf") as normalize,
                 ):
                     result = build_static_annotation(
                         vcf.name,

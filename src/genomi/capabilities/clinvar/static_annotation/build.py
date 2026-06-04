@@ -11,7 +11,9 @@ from ....active_genome_index.active_genome_index import (
     open_reader,
     preflight,
 )
+from ....active_genome_index.export import export_variants
 from ....active_genome_index.genotype_qc import assess_sample_qc
+from ....active_genome_index.normalize import normalize_vcf
 from ....evidence import (
     build_clinvar_annotation_index,
     build_clinvar_gene_index,
@@ -72,14 +74,13 @@ def build_static_annotation(
     parallel_workers: int | None = None,
     allow_long_running_static: bool = False,
 ) -> dict[str, Any]:
-    """Run the deterministic static path with optional static source imports."""
+    """Run raw VCF intake into an AGI-backed static evidence workflow.
 
-    # Resolve patchable static dependencies from the package namespace so that
-    # tests patching ``static_annotation.<name>`` affect this call site.
-    from . import (
-        export_variants,
-        normalize_vcf,
-    )
+    ``vcf`` is the raw intake source for this legacy static workflow. After the
+    Active Genome Index is built, sample-level matching and QC read through the
+    AGI reader boundary; public ``clinvar_vcf`` and ``population_vcf`` inputs
+    remain true static-source VCF imports.
+    """
 
     vcf_path = Path(vcf)
     init = init_static_run(
@@ -203,7 +204,7 @@ def build_static_annotation(
                 "Auto reference FASTA acquisition is deferred in the bounded static profile; targeted genotype-support tools can fetch it when needed.",
             )
 
-    comparable_vcf: Path | None = None
+    agi_comparable_variant_export: Path | None = None
     if allow_long_running_static or resolved_reference_fasta is not None:
         steps.append(
             workflow_step(
@@ -218,23 +219,23 @@ def build_static_annotation(
                     force=force,
                 ),
                 "static",
-                reason="The exported comparable VCF can be normalized and matched against static databases.",
+                reason="The exported comparable variant records can be normalized and matched against static databases.",
                 commands=[
                     "genomi call genomi.parse_source --params '{\"source\":\"<vcf>\",\"reference_fasta\":\"<GRCh38.fa>\"}'",
                     "genomi call clinvar.match_variants --params '{\"agi_path\":\"<agi.sqlite>\"}'",
                 ],
             )
         )
-        comparable_vcf = exported_path
+        agi_comparable_variant_export = exported_path
     else:
         defer_long_running_step(
             "export-variants",
             "Whole-callset PASS variant export is deferred because Active Genome Index matching does not need a materialized VCF.",
         )
 
-    if resolved_reference_fasta is not None and comparable_vcf is not None:
+    if resolved_reference_fasta is not None and agi_comparable_variant_export is not None:
         normalized = normalize_vcf(
-            comparable_vcf,
+            agi_comparable_variant_export,
             resolved_reference_fasta,
             allow_malformed_tags=True,
             force=force,
@@ -251,7 +252,7 @@ def build_static_annotation(
                 ],
             )
         )
-        comparable_vcf = Path(normalized["output"])
+        agi_comparable_variant_export = Path(normalized["output"])
 
     if clinvar_vcf is None and not _has_clinvar_evidence(public_read_db_path, effective_genome_build):
         clinvar_library = library_name_for_clinvar(effective_genome_build)
@@ -474,12 +475,14 @@ def build_static_annotation(
         "static_profile": "long_running" if allow_long_running_static else "bounded",
         "long_running_steps_deferred": long_running_steps_deferred,
         "warnings": warnings,
-        "vcf": str(vcf_path),
+        "agi_intake_source_path": str(vcf_path),
         "genome_build": effective_genome_build,
         "evidence_db": str(db_path),
         "shared_evidence_db": str(shared_db_path),
         "shared_sync": shared_sync,
-        "comparable_vcf": str(comparable_vcf) if comparable_vcf is not None else None,
+        "agi_comparable_variant_export": (
+            str(agi_comparable_variant_export) if agi_comparable_variant_export is not None else None
+        ),
         "reference_fasta": str(resolved_reference_fasta) if resolved_reference_fasta else None,
         "genotype_reference_fasta": str(resolved_genotype_reference_fasta) if resolved_genotype_reference_fasta else None,
         "outputs": default_static_outputs(vcf_path),

@@ -178,9 +178,9 @@ def _remember_source_result(
 def _hide_intake_source_after_digitization(result: JsonObject) -> JsonObject:
     payload = dict(result)
     source_path = payload.pop("source", None)
-    comparable_variant_export = payload.pop("comparable_vcf", None)
-    if comparable_variant_export:
-        payload["comparable_variant_export"] = comparable_variant_export
+    agi_comparable_variant_export = payload.pop("agi_comparable_variant_export", None)
+    if agi_comparable_variant_export:
+        payload["agi_comparable_variant_export"] = agi_comparable_variant_export
     payload["intake_source"] = {
         "role": "ingestion_source_for_digitization",
         "hidden_after_digitization": True,

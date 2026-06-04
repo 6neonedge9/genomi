@@ -164,6 +164,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             summary = evidence_summary(db)
 
             self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["agi_intake_source_path"], str(TINY_VCF))
             self.assertEqual(result["input_type"], "callset_with_reference_blocks")
             self.assertTrue(result["has_reference_blocks"])
             self.assertTrue(result["absence_claims_allowed_by_default"])
@@ -186,6 +187,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
                 agi_path=index,
             )
             self.assertEqual(supported["support_status"], "supported")
+            self.assertEqual(supported["agi_intake_source_path"], str(TINY_VCF))
             self.assertIn("genotype_support_supported", supported["accepted_report_evidence_classes"])
 
             weak_vcf = Path(tmp) / "weak.vcf"
@@ -391,6 +393,7 @@ class EvidenceImportTests(EvidenceImportTestBase):
             )
 
             self.assertEqual(callable_result["callability_status"], "callable")
+            self.assertEqual(callable_result["agi_intake_source_path"], str(TINY_VCF))
             self.assertTrue(callable_result["can_support_negative_or_reference_claim"])
             self.assertIn(
                 "reference_inference_or_assay_completeness",

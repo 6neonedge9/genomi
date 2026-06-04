@@ -143,7 +143,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "sample",
-                        "vcf": str(vcf),
+                        "agi_intake_source_path": str(vcf),
                         "evidence_db": str(evidence_db),
                         "outputs": {"agi_path": str(index)},
                     },
@@ -183,7 +183,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "sample",
-                        "vcf": str(vcf),
+                        "agi_intake_source_path": str(vcf),
                         "evidence_db": str(evidence_db),
                         "outputs": {"agi_path": str(index)},
                     },
@@ -229,7 +229,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "sample",
-                        "vcf": str(vcf),
+                        "agi_intake_source_path": str(vcf),
                         "evidence_db": str(evidence_db),
                         "genome_build": "GRCh38",
                         "outputs": {"agi_path": str(index), "clinvar_matches": str(matches)},

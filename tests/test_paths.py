@@ -181,6 +181,7 @@ class GenomiDataPathTests(unittest.TestCase):
                 os.chdir(previous_cwd)
 
             target_db = tmp_path / result["evidence_db"]
+            self.assertEqual(result["agi_intake_source_path"], vcf.name)
             with mock.patch.dict(os.environ, {"GENOMI_HOME": str(tmp_path / ".genomi-data")}):
                 init_static_run(vcf.name, source_evidence_db=None, force=False)
             with sqlite3.connect(target_db) as connection:
@@ -192,6 +193,12 @@ class GenomiDataPathTests(unittest.TestCase):
                 ).fetchone()[0]
                 source_evidence_db = connection.execute(
                     "select value from metadata where key = 'source_evidence_db'"
+                ).fetchone()[0]
+                agi_intake_source_path = connection.execute(
+                    "select value from metadata where key = 'agi_intake_source_path'"
+                ).fetchone()[0]
+                agi_sample_slug = connection.execute(
+                    "select value from metadata where key = 'agi_sample_slug'"
                 ).fetchone()[0]
 
             with connect_evidence(target_db) as connection:
@@ -208,6 +215,8 @@ class GenomiDataPathTests(unittest.TestCase):
             self.assertEqual(research_rows, 1)
             self.assertEqual(private_rows, 0)
             self.assertEqual(source_evidence_db, f'"{source_db}"')
+            self.assertEqual(agi_intake_source_path, f'"{vcf.name}"')
+            self.assertEqual(agi_sample_slug, f'"{sample_slug_from_vcf(vcf)}"')
 
 
 if __name__ == "__main__":

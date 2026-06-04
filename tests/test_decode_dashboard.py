@@ -666,7 +666,7 @@ class RegistryGatingTests(unittest.TestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "sample",
-                        "vcf": str(vcf),
+                        "agi_intake_source_path": str(vcf),
                         "evidence_db": str(evidence_db),
                         "work_dir": str(wd_path),
                         "outputs": {"agi_path": str(index)},
@@ -724,7 +724,7 @@ class RegistryGatingTests(unittest.TestCase):
                     status="parsed",
                     operation_result={
                         "sample_slug": "sample",
-                        "vcf": str(vcf),
+                        "agi_intake_source_path": str(vcf),
                         "evidence_db": str(evidence_db),
                         "work_dir": str(wd_path),
                         "outputs": {"agi_path": str(index)},

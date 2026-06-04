@@ -85,6 +85,13 @@ def init_static_run(
     shared_evidence_db: str | Path | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
+    """Prepare a static run from a raw VCF intake source.
+
+    The VCF path is only the intake source used to derive the run layout and
+    default AGI location. Runtime context returned from this helper uses
+    AGI-scoped field names so downstream tools do not treat the source VCF as
+    the query substrate.
+    """
     vcf_path = Path(vcf)
     project_dir = run_project_dir(vcf_path)
     work_dir = run_work_dir(vcf_path)
@@ -127,7 +134,7 @@ def init_static_run(
         "workflow_area": WORKFLOW_AREA_ID,
         "status": "completed",
         "sample_slug": sample_slug_from_vcf(vcf_path),
-        "vcf": str(vcf_path),
+        "agi_intake_source_path": str(vcf_path),
         "project_dir": str(project_dir),
         "work_dir": str(work_dir),
         "evidence_dir": str(evidence_dir),
@@ -157,6 +164,7 @@ def _unlink_sqlite_db(path: Path) -> None:
 
 
 def default_static_outputs(vcf: str | Path) -> dict[str, str]:
+    """Default artifacts for a raw VCF intake source's AGI-backed static run."""
     vcf_path = Path(vcf)
     return {
         "agi_path": str(default_agi_path(vcf_path)),
@@ -533,7 +541,7 @@ def _copy_shared_metadata(source: sqlite3.Connection, target: sqlite3.Connection
 
 def _record_run_metadata(
     evidence_db: Path,
-    vcf_path: Path,
+    agi_intake_source_path: Path,
     *,
     source_evidence_db: str | Path | None,
     shared_evidence_db: str | Path | None,
@@ -541,12 +549,12 @@ def _record_run_metadata(
     init_evidence_db(evidence_db)
     metadata = {
         "workflow_model": "static-research-report",
-        "run_sample_slug": sample_slug_from_vcf(vcf_path),
-        "run_vcf_path": str(vcf_path),
-        "run_project_dir": str(run_project_dir(vcf_path)),
-        "run_work_dir": str(run_work_dir(vcf_path)),
-        "run_evidence_dir": str(run_evidence_dir(vcf_path)),
-        "run_reference_dir": str(run_reference_dir(vcf_path)),
+        "agi_sample_slug": sample_slug_from_vcf(agi_intake_source_path),
+        "agi_intake_source_path": str(agi_intake_source_path),
+        "agi_project_dir": str(run_project_dir(agi_intake_source_path)),
+        "agi_work_dir": str(run_work_dir(agi_intake_source_path)),
+        "agi_evidence_dir": str(run_evidence_dir(agi_intake_source_path)),
+        "agi_reference_dir": str(run_reference_dir(agi_intake_source_path)),
         "source_evidence_db": str(source_evidence_db) if source_evidence_db is not None else None,
         "shared_evidence_db": str(shared_evidence_db) if shared_evidence_db is not None else None,
     }
