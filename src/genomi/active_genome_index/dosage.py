@@ -5,7 +5,7 @@ import sqlite3
 from typing import Any
 
 from .array_genotypes import count_array_allele, is_array_genotype_record
-from .record_kinds import RECORD_KIND_ARRAY_NO_CALL
+from .record_kinds import RECORD_KIND_ARRAY_NO_CALL, RECORD_KIND_NO_CALL
 
 JsonObject = dict[str, Any]
 
@@ -209,6 +209,8 @@ def _dosage_from_record(record: JsonObject, variant: JsonObject) -> JsonObject:
         )
     if str(record.get("filter") or "") not in {"PASS", "."}:
         return _excluded(variant, "filter_fail", record=record)
+    if record.get("record_kind") == RECORD_KIND_NO_CALL:
+        return _missing(variant, "no_call", record=record)
     if not genotype or "." in genotype:
         return _missing(variant, "missing_genotype", record=record)
     effect = str(variant["effect_allele"]).upper()

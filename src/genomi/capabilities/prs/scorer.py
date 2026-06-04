@@ -113,7 +113,25 @@ def collect_score_context(
     operation: str = "prs.calculate_score",
 ) -> JsonObject:
     normalized_build = scoring_files.normalize_build(genome_build)
+    if not scoring_files.is_supported_build(normalized_build):
+        result = scoring_files.unsupported_genome_build_result(normalized_build)
+        _add_unsupported_genome_build_envelope(
+            result,
+            operation=operation,
+            pgs_id=pgs_id,
+            genome_build=normalized_build,
+        )
+        return result
     cache = scoring_files.resolve_score_cache(pgs_id=pgs_id, score_dir=score_dir, genome_build=normalized_build)
+    if cache.get("status") == "out_of_scope_for_input":
+        result = dict(cache)
+        _add_unsupported_genome_build_envelope(
+            result,
+            operation=operation,
+            pgs_id=pgs_id,
+            genome_build=str(result.get("genome_build") or normalized_build),
+        )
+        return result
     if cache.get("status") != "installed":
         result = dict(cache)
         result["personal_context"] = {"uses_personal_dna": True}
@@ -422,6 +440,35 @@ def _score_next_actions(sample_qc: JsonObject, score: JsonObject, score_result: 
         actions.append({"action": "use_more_complete_or_matching_genotype_source"})
     actions.append({"action": "review_score_metadata", "operation": "prs.fetch_score_metadata", "pgs_id": score.get("pgs_id")})
     return actions
+
+
+def _add_unsupported_genome_build_envelope(
+    result: JsonObject,
+    *,
+    operation: str,
+    pgs_id: str | None,
+    genome_build: str,
+) -> None:
+    result["personal_context"] = {"uses_personal_dna": True}
+    result["evidence_envelope"] = evidence_envelope.not_assessed(
+        operation=operation,
+        reason="PRS scoring-file workflows support GRCh37/hg19 and GRCh38/hg38 genome builds.",
+        query_scope={
+            "method": "published_polygenic_score",
+            "pgs_id": pgs_id,
+            "genome_build": genome_build,
+        },
+        personal_context={"uses_personal_dna": True},
+        coverage={
+            "libraries": [],
+            "consulted_sources": [],
+            "unavailable_sources": [],
+            "materialization": [],
+        },
+        observations={"supported_genome_builds": list(scoring_files.SUPPORTED_GENOME_BUILDS)},
+        next_actions=result.get("next_actions") or [],
+        guidance=["out_of_scope_for_input:choose_supported_genome_build"],
+    )
 
 
 def _score_import_required_envelope(operation: str, result: JsonObject, genome_build: str) -> JsonObject:

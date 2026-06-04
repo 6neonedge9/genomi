@@ -23,6 +23,7 @@ MANIFEST_NAME = "manifest.json"
 VARIANTS_DB_NAME = "variants.sqlite"
 SOURCE_FILE_NAME = "scoring_file.txt.gz"
 USER_AGENT = "Genomi PRS scoring-file importer/0.1"
+SUPPORTED_GENOME_BUILDS = ("GRCh37", "GRCh38")
 
 
 def import_scoring_file(
@@ -34,6 +35,8 @@ def import_scoring_file(
     force: bool = False,
 ) -> JsonObject:
     requested_build = normalize_build(genome_build)
+    if not is_supported_build(requested_build):
+        return unsupported_genome_build_result(requested_build)
     authoritative_build = requested_build
     clean_pgs_id = pgs_catalog.normalize_pgs_id(pgs_id)
     rest_metadata: JsonObject = {}
@@ -260,6 +263,14 @@ def validate_score_cache(
             "expected_pgs_id": clean_expected_id,
         }
     manifest_build = normalize_build(str(manifest.get("genome_build") or ""))
+    if not is_supported_build(manifest_build):
+        return {
+            "valid": False,
+            "reason": "unsupported_genome_build",
+            "manifest": manifest,
+            "genome_build": manifest_build,
+            "supported_genome_builds": list(SUPPORTED_GENOME_BUILDS),
+        }
     expected_build = normalize_build(expected_genome_build) if expected_genome_build else ""
     if expected_build and manifest_build != expected_build:
         return {
@@ -387,9 +398,9 @@ def list_imported_scores(root: str | Path | None = None) -> JsonObject:
     records: list[JsonObject] = []
     if base.exists():
         for manifest in sorted(base.glob("*/*/manifest.json")):
-            payload = read_manifest(manifest.parent)
-            if payload:
-                records.append(_cache_summary(manifest.parent, payload))
+            validation = validate_score_cache(manifest.parent)
+            if validation["valid"]:
+                records.append(_cache_summary(manifest.parent, validation["manifest"]))
     return {
         "status": "completed",
         "score_count": len(records),
@@ -405,6 +416,8 @@ def resolve_score_cache(
     genome_build: str = "GRCh38",
 ) -> JsonObject:
     normalized_build = normalize_build(genome_build)
+    if not is_supported_build(normalized_build):
+        return unsupported_genome_build_result(normalized_build)
     if score_dir:
         directory = Path(score_dir).expanduser()
     else:
@@ -423,6 +436,14 @@ def resolve_score_cache(
         ),
     )
     if not validation["valid"]:
+        if validation.get("reason") == "unsupported_genome_build":
+            result = unsupported_genome_build_result(str(validation.get("genome_build") or normalized_build))
+            result["score_dir"] = str(directory)
+            result["score_cache_status"] = {
+                "installed": False,
+                "validation": {key: value for key, value in validation.items() if key != "manifest"},
+            }
+            return result
         return _requires_score_import(pgs_id=pgs_id, genome_build=genome_build, score_dir=directory)
     manifest = validation["manifest"]
     return {
@@ -643,6 +664,29 @@ def normalize_build(genome_build: str) -> str:
     if lowered in {"grch37", "hg19", "37"}:
         return "GRCh37"
     return str(genome_build or "").strip() or "GRCh38"
+
+
+def is_supported_build(genome_build: str) -> bool:
+    return normalize_build(genome_build) in SUPPORTED_GENOME_BUILDS
+
+
+def unsupported_genome_build_result(genome_build: str) -> JsonObject:
+    normalized_build = normalize_build(genome_build)
+    return {
+        "status": "out_of_scope_for_input",
+        "coverage_status": "out_of_scope_for_input",
+        "genome_build": normalized_build,
+        "supported_genome_builds": list(SUPPORTED_GENOME_BUILDS),
+        "message": "PRS scoring-file workflows support GRCh37/hg19 and GRCh38/hg38 genome builds.",
+        "source_urls": source_context.source_urls(),
+        "limitations": source_context.limitations(),
+        "next_actions": [
+            {
+                "action": "choose_supported_genome_build",
+                "supported_genome_builds": list(SUPPORTED_GENOME_BUILDS),
+            }
+        ],
+    }
 
 
 def _requires_score_import(
