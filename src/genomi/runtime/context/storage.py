@@ -12,7 +12,6 @@ from ..paths import (
 from .normalize import (
     AGI_ACCESS_KEY,
     CONTEXT_FILE_NAME,
-    CONTEXT_VERSION,
     DEFAULT_CONTEXT_POLICY,
     GENOMI_CONTEXT_ENV,
     GENOMI_CONTEXT_POLICY_ENV,
@@ -85,7 +84,6 @@ def save_context(context: JsonObject, root: str | Path | None = None) -> JsonObj
     path = context_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     context = _normalize_context(context, root)
-    context["version"] = CONTEXT_VERSION
     context["updated_at"] = _now()
     path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return context
@@ -95,7 +93,6 @@ def save_registry(registry: JsonObject, root: str | Path | None = None) -> JsonO
     path = registry_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     registry = _normalize_registry(registry)
-    registry["version"] = CONTEXT_VERSION
     registry["updated_at"] = _now()
     path.write_text(json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return registry

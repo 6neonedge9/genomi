@@ -9,7 +9,6 @@ from typing import Any
 from ..paths import shared_evidence_db_path
 
 JsonObject = dict[str, Any]
-CONTEXT_VERSION = 1
 CONTEXT_FILE_NAME = "context.json"
 REGISTRY_FILE_NAME = "registry.json"
 SESSIONS_DIR_NAME = "sessions"
@@ -70,7 +69,6 @@ def _infer_agi_source_format(agi_intake_path: Path, source_format: object | None
 
 
 def _normalize_context(value: JsonObject, root: str | Path | None) -> JsonObject:
-    value.setdefault("version", CONTEXT_VERSION)
     active_agi_id = value.get("active_agi_id")
     value["active_agi_id"] = str(active_agi_id) if active_agi_id not in (None, "") else None
     active_user_id = value.get("active_user_id")
@@ -85,7 +83,6 @@ def _normalize_context(value: JsonObject, root: str | Path | None) -> JsonObject
 
 
 def _normalize_registry(value: JsonObject) -> JsonObject:
-    value.setdefault("version", CONTEXT_VERSION)
     agis = _agi_map(value.get("agis"))
     users = _user_map(value.get("users"))
     default_user_id = str(value.get("default_user_id") or "") or None
@@ -324,7 +321,6 @@ def _empty_agi_access_status(agi_id: object | None) -> JsonObject:
 def _empty_context(root: str | Path | None) -> JsonObject:
     now = _now()
     return {
-        "version": CONTEXT_VERSION,
         "active_agi_id": None,
         "active_user_id": None,
         AGI_ACCESS_KEY: {},
@@ -338,7 +334,6 @@ def _empty_context(root: str | Path | None) -> JsonObject:
 def _empty_registry() -> JsonObject:
     now = _now()
     return {
-        "version": CONTEXT_VERSION,
         "agis": {},
         "users": {},
         "default_user_id": None,
