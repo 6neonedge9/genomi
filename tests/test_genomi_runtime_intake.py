@@ -214,7 +214,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(readiness["status"], "completed")
                 self.assertEqual(readiness["missing_objects"], [])
                 stats = parsed["steps"][0]["result"]["stats"]
-                self.assertEqual(stats["variant_records"], 1)
+                self.assertEqual(stats["variant_records"], 0)
+                self.assertEqual(stats["array_call_records"], 1)
                 self.assertEqual(stats["reference_records"], 0)
                 self.assertEqual(stats["array_no_call_records"], 1)
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(parsed))
@@ -228,11 +229,16 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(no_call["filter"], "NO_CALL")
                 self.assertEqual(no_call["format"], "GT_ARRAY")
                 self.assertEqual(no_call["is_variant"], 0)
-                self.assertEqual(json.loads(no_call["info"])["record_kind"], "array_no_call")
+                self.assertEqual(no_call["record_kind"], "array_no_call")
+                self.assertIsNone(no_call["observed_alleles"])
+                self.assertEqual(no_call["info"], ".")
 
                 current = call_operation("genomi.describe_context")
                 self.assertTrue(current["has_active_genome_index"])
                 self.assertEqual(current["active_genome_index"]["source_format"], "23andme")
+                current_readiness = current["active_genome_index"]["active_genome_index_readiness"]
+                self.assertTrue(current_readiness["complete"])
+                self.assertEqual(current_readiness["status"], "completed")
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(current))
 
                 lookup = call_operation("variant.resolve", {"rsid": "rs123"})
@@ -240,7 +246,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "AG")
                 self.assertEqual(match["source_format"], "23andme")
-                self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(match["observed_alleles"], ["A", "G"])
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(lookup))
 
                 no_call_lookup = call_operation("variant.resolve", {"rsid": "rs999", "include_fail": True})
@@ -248,7 +255,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 no_call_match = no_call_lookup["sample_context"]["matches"][0]
                 self.assertEqual(no_call_match["filter"], "NO_CALL")
                 self.assertEqual(no_call_match["record_kind"], "array_no_call")
-                self.assertEqual(no_call_match["observation_semantics"]["kind"], "consumer_genotype_array_no_call")
+                self.assertEqual(no_call_match["observed_alleles"], [])
 
                 qc = call_operation("active_genome_index.classify_callset_qc", {"genome_build": "GRCh37", "scan_records": 10})
                 self.assertEqual(qc["status"], "completed", qc)
@@ -340,8 +347,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "AG")
                 self.assertEqual(match["source_format"], "ancestrydna")
-                self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
-                self.assertEqual(match["observation_semantics"]["source_format"], "ancestrydna")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(match["observed_alleles"], ["A", "G"])
                 self.assertNotIn(str(raw.resolve(strict=False)), json.dumps(lookup))
             finally:
                 os.chdir(previous)
@@ -405,7 +412,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
                 self.assertEqual(match["source_format"], "myheritage")
-                self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
                 os.chdir(previous)
 
@@ -461,7 +469,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
                 self.assertEqual(match["source_format"], "ftdna")
-                self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
                 os.chdir(previous)
 
@@ -516,7 +525,8 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 match = lookup["sample_context"]["matches"][0]
                 self.assertEqual(match["genotype"], "GG")
                 self.assertEqual(match["source_format"], "livingdna")
-                self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
+                self.assertEqual(match["record_kind"], "array_call")
+                self.assertEqual(match["observed_alleles"], ["G", "G"])
             finally:
                 os.chdir(previous)
 
@@ -656,7 +666,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
-    def test_fastq_parse_materializes_paired_reads_from_zip_archive(self) -> None:
+    def test_fastq_parse_materializes_paired_reads_from_zip_archive_when_r2_is_selected(self) -> None:
         from genomi.active_genome_index import source_intake
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -666,12 +676,18 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 archive = Path("fastq-pair.zip")
                 short_seq = "ACGT" * 37 + "AC"
                 r1_record = f"@r1\n{short_seq}\n+\n{'I' * len(short_seq)}\n".encode("utf-8")
-                r2_record = f"@r2\n{short_seq}\n+\n{'I' * len(short_seq)}\n".encode("utf-8")
+                r2_record = (
+                    f"@r2\n{short_seq}\n+\n{'I' * len(short_seq)}\n"
+                    f"@r2b\n{short_seq}\n+\n{'I' * len(short_seq)}\n"
+                ).encode("utf-8")
                 with zipfile.ZipFile(archive, "w") as bundle:
                     bundle.writestr("reads/sample_R1_001.fastq.gz", gzip.compress(r1_record))
                     bundle.writestr("reads/sample_R2_001.fastq.gz", gzip.compress(r2_record))
                 reference = Path("reference.fa")
                 reference.write_text(">chr1\n" + "A" * 200 + "\n", encoding="utf-8")
+                detection = source_intake.detect_source(archive)
+                self.assertEqual(detection.source_format, "fastq")
+                self.assertEqual(detection.member_name, "reads/sample_R2_001.fastq.gz")
 
                 with mock.patch(
                     "genomi.active_genome_index.source_intake.sequencing.align_fastq_to_bam",
@@ -784,13 +800,20 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 os.chdir(previous)
 
     def test_active_genome_index_parse_accepts_zipped_bam_member(self) -> None:
+        import pysam
+
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.getcwd()
             os.chdir(tmp)
             try:
                 archive = Path("alignment.zip")
+                bam = Path("sample.bam")
+                header = {"HD": {"VN": "1.6"}, "SQ": [{"SN": "1", "LN": 1000}]}
+                with pysam.AlignmentFile(str(bam), "wb", header=header):
+                    pass
+                original_bam_bytes = bam.read_bytes()
                 with zipfile.ZipFile(archive, "w") as bundle:
-                    bundle.writestr("nested/sample.bam", b"BAM\x01")
+                    bundle.write(bam, "nested/sample.bam")
                 reference = Path("reference.fa")
                 reference.write_text(">chr1\n" + "A" * 200 + "\n", encoding="utf-8")
 
@@ -805,7 +828,7 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
                 ) -> dict[str, object]:
                     del reference_fasta, force
                     seen_bam_paths.append(Path(bam_path))
-                    self.assertEqual(Path(bam_path).read_bytes(), b"BAM\x01")
+                    self.assertEqual(Path(bam_path).read_bytes(), original_bam_bytes)
                     Path(output_vcf).write_text(
                         "##fileformat=VCFv4.2\n"
                         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA12878\n"

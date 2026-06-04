@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import sqlite3
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -30,9 +31,11 @@ from ._agi_readiness import (
     active_genome_index_readiness,
     ensure_active_genome_index_complete,
 )
-from ._agi_schema import connect_existing_readonly
+from ._agi_schema import connect_existing_readonly, read_header_from_active_genome_index
 
 JsonObject = dict[str, Any]
+
+_SQLITE_ALIAS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class ActiveGenomeIndexNeed(Enum):
@@ -139,6 +142,75 @@ class ActiveGenomeIndexReader:
 
     def coverage(self, chrom: str, start: int, end: int, *, limit: int = 200) -> dict[str, Any]:
         return coverage_query(self._source_hint, chrom, start, end, self.active_genome_index_path, limit=limit)
+
+    def iter_pass_variant_rsid_batches(self, *, batch_size: int) -> Iterator[dict[str, list[dict[str, Any]]]]:
+        sample_by_rsid: dict[str, list[dict[str, Any]]] = {}
+        with self.connect() as connection:
+            for row in connection.execute(
+                """
+                select chrom, pos, rsid, ref, alt, filter, genotype, depth, genotype_quality
+                from records
+                where rsid is not null
+                  and rsid glob 'rs*'
+                  and is_variant = 1
+                  and filter = 'PASS'
+                order by rsid, chrom_sort, pos
+                """
+            ):
+                rsid = str(row["rsid"])
+                sample_by_rsid.setdefault(rsid, []).append(dict(row))
+                if len(sample_by_rsid) >= batch_size:
+                    yield sample_by_rsid
+                    sample_by_rsid = {}
+        if sample_by_rsid:
+            yield sample_by_rsid
+
+    def header(self) -> Any:
+        with self.connect() as connection:
+            return read_header_from_active_genome_index(connection)
+
+    def preflight_records(self, *, limit: int) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            return [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    select chrom, ref, alt, filter, is_variant, format, genotype, depth, genotype_quality
+                    from records
+                    order by chrom_sort, pos, offset, sample_index
+                    limit ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            ]
+
+    def attach_to(self, connection: sqlite3.Connection, alias: str) -> None:
+        """Attach this AGI to an existing SQLite connection for set-based joins."""
+        if self.need is not ActiveGenomeIndexNeed.NONE:
+            ensure_active_genome_index_complete(self.active_genome_index_path)
+        if not _SQLITE_ALIAS_RE.fullmatch(alias):
+            raise ValueError(f"invalid SQLite alias for Active Genome Index attachment: {alias!r}")
+        connection.execute(f"attach database ? as {alias}", (str(self.active_genome_index_path),))
+
+    def dosage_for_variants(
+        self,
+        variants: list[dict[str, Any]],
+        *,
+        skip_ambiguous_palindromic: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return per-variant sample dosages using AGI-owned read access.
+
+        The PRS harmonizer still owns score-allele math, but callers must enter
+        through the reader so capability code does not open the AGI directly.
+        """
+        from ..capabilities.prs import harmonize
+
+        with self.connect() as connection:
+            return harmonize.dosage_for_variants(
+                connection,
+                variants,
+                skip_ambiguous_palindromic=skip_ambiguous_palindromic,
+            )
 
     @contextlib.contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:

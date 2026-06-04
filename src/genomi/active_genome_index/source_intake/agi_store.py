@@ -25,8 +25,7 @@ from ..active_genome_index import connect as connect_active_genome_index
 from ..record_kinds import (
     ARRAY_FORMAT,
     ARRAY_NO_CALL_FILTER,
-    ARRAY_RECORD_KIND_VERSION,
-    array_record_info,
+    array_record_kind,
 )
 from .detection import SourceDetection
 
@@ -43,6 +42,8 @@ def _array_record_row(
     source_format: str,
 ) -> tuple[Any, ...]:
     genotype = row["genotype"]
+    record_kind = array_record_kind(is_called=is_called)
+    observed_alleles = list(genotype) if is_called else None
     return (
         row["chrom"],
         _chrom_sort(row["chrom"]),
@@ -52,12 +53,12 @@ def _array_record_row(
         0,
         sample_name,
         json.dumps([]),
-        json.dumps(array_record_info(source_format=source_format, is_called=is_called), sort_keys=True),
-        "N",
-        genotype if is_called else ".",
+        ".",
+        ".",
+        ".",
         None,
         "PASS" if is_called else ARRAY_NO_CALL_FILTER,
-        int(is_called),
+        0,
         ARRAY_FORMAT,
         genotype,
         genotype,
@@ -65,6 +66,8 @@ def _array_record_row(
         None,
         row_index,
         0,
+        record_kind,
+        json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
     )
 
 
@@ -113,7 +116,9 @@ def _reset_source_active_genome_index_schema(connection: sqlite3.Connection) -> 
             depth integer,
             genotype_quality integer,
             offset integer not null,
-            line_length integer not null
+            line_length integer not null,
+            record_kind text not null,
+            observed_alleles text
         );
 
         create table spans (
@@ -141,6 +146,7 @@ def _create_source_query_indexes(connection: sqlite3.Connection) -> None:
         create index records_variant_idx on records(chrom, pos, ref, alt) where is_variant = 1;
         create index records_export_idx on records(is_variant, filter, chrom_sort, pos) where is_variant = 1;
         create index records_offset_sample_idx on records(offset, sample_index);
+        create index records_record_kind_idx on records(record_kind, chrom, pos);
         create index spans_region_idx on spans(chrom, pos, end);
         """
     )
@@ -163,21 +169,12 @@ def _insert_source_active_genome_index_metadata(
         "source_member": detection.member_name,
         "genome_build": genome_build,
         "max_records": max_records,
-        "array_record_kind_version": ARRAY_RECORD_KIND_VERSION,
         "active_genome_index_build_status": ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS,
         "active_genome_index_complete": False,
         "active_genome_index_started_at": utc_now(),
         "active_genome_index_completed_at": None,
         "variants_complete": False,
         "reference_complete": None,
-        "record_semantics": {
-            "ref": "N placeholder for genotype-array sources",
-            "alt": "observed genotype string for genotype-array sources",
-            "depth": None,
-            "genotype_quality": None,
-            "record_kind": "array_call or array_no_call for genotype-array sources",
-            "reference_blocks": "not_available_for_consumer_genotype_array_sources",
-        },
     }
     connection.executemany(
         "insert into metadata(key, value) values(?, ?)",
@@ -226,9 +223,10 @@ def _insert_source_record_batch(connection: sqlite3.Connection, batch: Iterable[
         """
         insert into records(
             chrom, chrom_sort, pos, end, rsid, sample_index, sample_name, info_genes, info, ref, alt, qual, filter,
-            is_variant, format, sample, genotype, depth, genotype_quality, offset, line_length
+            is_variant, format, sample, genotype, depth, genotype_quality, offset, line_length,
+            record_kind, observed_alleles
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         list(batch),
     )
@@ -272,8 +270,6 @@ def _cached_array_active_genome_index_if_usable(
     if metadata.get("genome_build") != genome_build:
         return None
     if metadata.get("max_records") != max_records:
-        return None
-    if metadata.get("array_record_kind_version") != ARRAY_RECORD_KIND_VERSION:
         return None
     if metadata.get("active_genome_index_build_status") != ACTIVE_GENOME_INDEX_BUILD_STATUS_COMPLETED:
         return None

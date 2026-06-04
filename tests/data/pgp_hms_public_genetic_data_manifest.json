@@ -1,5 +1,4 @@
 {
-  "schema": "genomi-pgp-hms-public-genetic-data-manifest-v1",
   "source_url": "https://my.pgp-hms.org/public_genetic_data",
   "selector_data_types": [
     "All data types",

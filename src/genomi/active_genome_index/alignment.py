@@ -29,8 +29,8 @@ FASTQ_ALIGN_SCHEMA = "genomi-fastq-alignment-v1"
 _SHORT_READ_LENGTH_CEILING = 200
 _READ_LENGTH_SNIFF_COUNT = 200
 
-_FASTQ_R1_TOKEN = re.compile(
-    r"^(?P<stem>.+?)(?P<sep>[_.])(?P<marker>R?1)(?P<suffix>(?:[_.][^/]*)?\.(?:fastq|fq)(?:\.gz|\.bgz)?)$",
+_FASTQ_PAIR_TOKEN = re.compile(
+    r"^(?P<stem>.+?)(?P<sep>[_.])(?P<marker>R?[12])(?P<suffix>(?:[_.][^/]*)?\.(?:fastq|fq)(?:\.gz|\.bgz)?)$",
     re.IGNORECASE,
 )
 
@@ -103,12 +103,26 @@ def detect_paired_fastq(source_path: Path) -> tuple[Path, Path] | None:
 
 
 def paired_fastq_r2_name(r1_name: str) -> str | None:
-    match = _FASTQ_R1_TOKEN.match(Path(r1_name).name)
+    return _paired_fastq_name(r1_name, expected_marker={"R1", "1"}, target_marker="R2")
+
+
+def paired_fastq_r1_name(r2_name: str) -> str | None:
+    return _paired_fastq_name(r2_name, expected_marker={"R2", "2"}, target_marker="R1")
+
+
+def _paired_fastq_name(name: str, *, expected_marker: set[str], target_marker: str) -> str | None:
+    match = _FASTQ_PAIR_TOKEN.match(Path(name).name)
     if not match:
         return None
     marker = match.group("marker")
-    r2_marker = "R2" if marker.upper() == "R1" else "2"
-    return f"{match.group('stem')}{match.group('sep')}{r2_marker}{match.group('suffix')}"
+    marker_upper = marker.upper()
+    if marker_upper not in expected_marker:
+        return None
+    if marker_upper in {"R1", "R2"}:
+        replacement = target_marker
+    else:
+        replacement = target_marker[-1]
+    return f"{match.group('stem')}{match.group('sep')}{replacement}{match.group('suffix')}"
 
 
 def align_fastq_to_bam(

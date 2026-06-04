@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from .record_kinds import ARRAY_FORMAT, is_array_record_format
+from .record_kinds import RECORD_KIND_ARRAY_CALL, RECORD_KIND_ARRAY_NO_CALL
 
 JsonObject = dict[str, Any]
 
@@ -11,21 +12,18 @@ SUPPORTED_ARRAY_BASES = {"A", "C", "G", "T", "I", "D"}
 
 
 def is_array_genotype_record(record: JsonObject) -> bool:
-    return is_array_record_format(record.get("format"))
+    return record.get("record_kind") in {RECORD_KIND_ARRAY_CALL, RECORD_KIND_ARRAY_NO_CALL}
 
 
 def array_genotype_bases(record: JsonObject) -> list[str] | None:
-    if not is_array_genotype_record(record):
+    if record.get("record_kind") != RECORD_KIND_ARRAY_CALL:
         return None
     if str(record.get("filter") or "") not in {"PASS", "."}:
         return None
-    genotype = str(record.get("genotype") or record.get("sample") or "").strip().upper()
-    if genotype in ARRAY_NO_CALLS:
+    bases = _observed_alleles(record.get("observed_alleles"))
+    if not bases:
         return None
-    if any(separator in genotype for separator in ("/", "|", ",", ":", ";")):
-        return None
-    bases = list(genotype)
-    if not bases or any(base not in SUPPORTED_ARRAY_BASES for base in bases):
+    if any(base not in SUPPORTED_ARRAY_BASES for base in bases):
         return None
     return bases
 
@@ -82,3 +80,15 @@ def _single_array_allele(value: str | None) -> str | None:
     if len(allele) != 1 or allele not in SUPPORTED_ARRAY_BASES:
         return None
     return allele
+
+
+def _observed_alleles(value: Any) -> list[str]:
+    raw = value
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(base).strip().upper() for base in raw if str(base).strip()]

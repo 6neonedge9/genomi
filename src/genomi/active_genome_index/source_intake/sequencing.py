@@ -20,11 +20,12 @@ from ..alignment import (
     infer_genome_build_from_bam,
     materialize_bam_variant_vcf,
     normalize_alignment_genome_build,
+    paired_fastq_r1_name,
     paired_fastq_r2_name,
 )
 from .agi_store import SOURCE_PARSE_SCHEMA, JsonObject, _init_source_evidence_db
 from .detection import SourceDetection
-from .text_io import archive_member_names, open_genomic_binary
+from .text_io import archive_member_names, open_archive_member_raw, open_genomic_binary
 from .vcf import _parse_vcf_active_genome_index
 
 
@@ -188,13 +189,6 @@ def parse_bam_source(
         "reference_fasta": str(resolved_reference_fasta),
         "outputs": outputs,
         "steps": steps,
-        "semantics": [
-            "BAM is an aligned-read source, not a preinterpreted variant report.",
-            "Genomi derives a local VCF from reads with a matching reference FASTA, then builds an Active Genome Index for normal sample-specific tools.",
-            "The original BAM stays private intake after digitization; future inquiries should use the Active Genome Index.",
-            "Derived variant calls depend on alignment quality, reference build, and the variant caller settings recorded in the manifest.",
-            "Public evidence libraries are materialized lazily by focused tools after Active Genome Index creation.",
-        ],
     }
 
 
@@ -208,7 +202,13 @@ def _materialize_bam_intake_if_needed(
     if detection.member_name is None:
         return source_path
     output = work_dir / "source" / "selected-archive-member.bam"
-    return _materialize_archive_member(source_path, detection.member_name, output, force=force)
+    return _materialize_archive_member(
+        source_path,
+        detection.member_name,
+        output,
+        force=force,
+        preserve_container=True,
+    )
 
 
 def _resolve_fastq_pair(
@@ -227,14 +227,24 @@ def _resolve_fastq_pair(
             "Name the inputs `<sample>_R1_*.fastq.gz` and `<sample>_R2_*.fastq.gz` (or `_1` / `_2`)."
         )
 
-    r2_basename = paired_fastq_r2_name(detection.member_name)
-    if r2_basename is None:
-        raise ValueError(
-            f"Archive FASTQ member must be an R1 read with a recognized pair suffix: {detection.member_name}."
-        )
     r1_member = detection.member_name
-    r2_member = str(Path(r1_member).with_name(r2_basename))
     members = set(archive_member_names(source_path))
+    r2_basename = paired_fastq_r2_name(r1_member)
+    if r2_basename is None:
+        r1_basename = paired_fastq_r1_name(r1_member)
+        if r1_basename is None:
+            raise ValueError(
+                f"Archive FASTQ member must be an R1/R2 read with a recognized pair suffix: {detection.member_name}."
+            )
+        candidate_r1 = str(Path(r1_member).with_name(r1_basename))
+        if candidate_r1 not in members:
+            raise ValueError(
+                f"FASTQ archive must contain an R1 member paired with {r1_member}; expected {candidate_r1}."
+            )
+        r2_member = r1_member
+        r1_member = candidate_r1
+    else:
+        r2_member = str(Path(r1_member).with_name(r2_basename))
     if r2_member not in members:
         raise ValueError(
             f"FASTQ archive must contain an R2 member paired with {r1_member}; expected {r2_member}."
@@ -248,12 +258,20 @@ def _resolve_fastq_pair(
     )
 
 
-def _materialize_archive_member(source_path: Path, member_name: str, output_path: Path, *, force: bool) -> Path:
+def _materialize_archive_member(
+    source_path: Path,
+    member_name: str,
+    output_path: Path,
+    *,
+    force: bool,
+    preserve_container: bool = False,
+) -> Path:
     if output_path.exists() and not force:
         return output_path
     output_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = output_path.with_suffix(output_path.suffix + ".tmp")
-    with open_genomic_binary(source_path, member_name=member_name) as source, tmp.open("wb") as output:
+    opener = open_archive_member_raw if preserve_container else open_genomic_binary
+    with opener(source_path, member_name=member_name) as source, tmp.open("wb") as output:
         shutil.copyfileobj(source, output)
     tmp.replace(output_path)
     return output_path
@@ -447,11 +465,4 @@ def parse_fastq_source(
         "reference_fasta": str(resolved_reference_fasta),
         "outputs": outputs,
         "steps": steps,
-        "semantics": [
-            "FASTQ is a raw read source; Genomi aligns it to a matching reference FASTA before any sample-specific lookup.",
-            "The chosen aligner (minimap2 vs bwa-mem2) is recorded alongside the median sniffed read length so the call is auditable.",
-            "The intermediate BAM follows the same `aligned_reads` semantics as a user-uploaded BAM.",
-            "Derived variant calls depend on aligner choice, reference build, and variant-caller defaults; all are recorded in the manifest.",
-            "Public evidence libraries are materialized lazily by focused tools after Active Genome Index creation.",
-        ],
     }

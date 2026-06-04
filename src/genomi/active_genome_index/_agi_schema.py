@@ -14,6 +14,12 @@ from .vcf import VcfHeader
 from .vcf import VcfRecord
 from .vcf import _is_symbolic_non_ref_alt
 from .vcf import _optional_int
+from .record_kinds import (
+    RECORD_KIND_NO_CALL,
+    RECORD_KIND_REFERENCE_BLOCK,
+    RECORD_KIND_VARIANT_CALL,
+    _is_no_call_genotype,
+)
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +33,7 @@ import sqlite3
 import time
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS = "in_progress"
 
@@ -53,6 +59,7 @@ REQUIRED_QUERY_OBJECTS = {
     ("index", "records_variant_idx"),
     ("index", "records_export_idx"),
     ("index", "records_offset_sample_idx"),
+    ("index", "records_record_kind_idx"),
     ("index", "spans_region_idx"),
 }
 
@@ -221,7 +228,9 @@ def _reset_schema(connection: sqlite3.Connection) -> None:
             -- `line_length` is the decompressed record-line length and is
             -- informational only — random access uses BGZFile.seek(offset).
             offset integer not null,
-            line_length integer not null
+            line_length integer not null,
+            record_kind text not null,
+            observed_alleles text
         );
 
         create table spans (
@@ -253,6 +262,7 @@ def _create_query_indexes(connection: sqlite3.Connection) -> None:
         create index records_variant_idx on records(chrom, pos, ref, alt) where is_variant = 1;
         create index records_export_idx on records(is_variant, filter, chrom_sort, pos) where is_variant = 1;
         create index records_offset_sample_idx on records(offset, sample_index);
+        create index records_record_kind_idx on records(record_kind, chrom, pos);
         create index spans_region_idx on spans(chrom, pos, end);
         """
     )
@@ -434,6 +444,14 @@ def _record_row(record: VcfRecord) -> tuple[Any, ...]:
     genotype, depth, genotype_quality = _sample_metrics(record.format, record.sample)
     end, info_genes = _info_end_and_genes(record.info, record.pos, record.ref)
     alts = [] if record.alt in ("", ".") else record.alt.split(",")
+    is_variant = _record_is_variant(record.alt, alts, genotype)
+    no_call = _is_no_call_genotype(genotype)
+    record_kind = (
+        RECORD_KIND_NO_CALL
+        if no_call
+        else (RECORD_KIND_VARIANT_CALL if is_variant else RECORD_KIND_REFERENCE_BLOCK)
+    )
+    observed_alleles = _observed_alleles_for_vcf(record.ref, alts, genotype)
     # Reference blocks — the bulk of a WGS gVCF — carry no genes, so skip the
     # json.dumps round-trip for the empty list with a shared literal.
     info_genes_json = _EMPTY_INFO_GENES_JSON if not info_genes else json.dumps(info_genes)
@@ -451,7 +469,7 @@ def _record_row(record: VcfRecord) -> tuple[Any, ...]:
         record.alt,
         None if record.qual == "." else record.qual,
         record.filter,
-        int(_record_is_variant(record.alt, alts, genotype)),
+        int(is_variant),
         record.format,
         record.sample,
         genotype,
@@ -459,7 +477,24 @@ def _record_row(record: VcfRecord) -> tuple[Any, ...]:
         genotype_quality,
         record.offset,
         record.line_length,
+        record_kind,
+        json.dumps(observed_alleles, sort_keys=True) if observed_alleles is not None else None,
     )
+
+
+def _observed_alleles_for_vcf(ref: str, alts: list[str], genotype: str | None) -> list[str] | None:
+    if _is_no_call_genotype(genotype):
+        return None
+    alleles: list[str] = []
+    for token in str(genotype or "").replace("|", "/").split("/"):
+        if token == "0":
+            alleles.append(ref)
+            continue
+        try:
+            alleles.append(alts[int(token) - 1])
+        except (IndexError, ValueError):
+            return None
+    return alleles or None
 
 def _sample_metrics(format_field: str, sample_field: str) -> tuple[str | None, int | None, int | None]:
     if not format_field or not sample_field:
@@ -562,9 +597,10 @@ def _insert_record_batch(connection: sqlite3.Connection, batch: Iterable[tuple[A
         """
         insert into records(
             chrom, chrom_sort, pos, end, rsid, sample_index, sample_name, info_genes, info, ref, alt, qual, filter,
-            is_variant, format, sample, genotype, depth, genotype_quality, offset, line_length
+            is_variant, format, sample, genotype, depth, genotype_quality, offset, line_length,
+            record_kind, observed_alleles
         )
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

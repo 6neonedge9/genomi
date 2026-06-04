@@ -179,6 +179,30 @@ def archive_member_names(path: Path) -> list[str]:
     return [name for name, _size in _archive_entries(path)]
 
 
+@contextmanager
+def open_archive_member_raw(source_path: Path, member_name: str) -> Iterator[BinaryIO]:
+    """Yield an archive member exactly as stored, without peeling member compression.
+
+    This is for binary containers such as BAM/CRAM where BGZF/gzip bytes are
+    part of the file format. Text payload callers should continue using
+    ``open_genomic_binary`` so ``.txt.gz`` / ``.fastq.gz`` members are decoded.
+    """
+    if _looks_like_zip(source_path):
+        with zipfile.ZipFile(source_path) as archive:
+            with archive.open(member_name) as raw:
+                yield raw  # type: ignore[misc]
+        return
+    if _looks_like_tar(source_path):
+        with tarfile.open(source_path) as archive:
+            extracted = archive.extractfile(member_name)
+            if extracted is None:
+                raise ValueError(f"tar member is not a regular file: {member_name} in {source_path}")
+            with extracted:
+                yield extracted  # type: ignore[misc]
+        return
+    raise ValueError(f"source is not an archive: {source_path}")
+
+
 def _open_bare_compressed(path: Path, compression: str | None) -> BinaryIO:
     if compression == "gzip":
         try:

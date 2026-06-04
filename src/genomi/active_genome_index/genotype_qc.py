@@ -263,7 +263,7 @@ def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any
             f"""
             select
               count(*) as total_records,
-              sum(case when is_variant = 1 then 1 else 0 end) as variant_records,
+              sum(case when record_kind = 'variant_call' then 1 else 0 end) as variant_records,
               sum(case when {reference_block_predicate} then 1 else 0 end) as reference_records,
               sum(case when filter in ('PASS', '.') then 1 else 0 end) as pass_records,
               sum(case when filter not in ('PASS', '.') then 1 else 0 end) as fail_records,
@@ -275,6 +275,7 @@ def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any
               sum(case when {array_no_call_predicate}
                     or genotype is null or genotype in ('./.', '.|.', '.') or genotype like './%' or genotype like '%/.'
                     or genotype like '.|%' or genotype like '%|.' then 1 else 0 end) as no_call_records,
+              sum(case when record_kind = 'array_call' then 1 else 0 end) as array_call_records,
               sum(case when {array_no_call_predicate} then 1 else 0 end) as array_no_call_records
             from records
             """,
@@ -310,6 +311,7 @@ def _active_genome_index_counts(active_genome_index_path: Path) -> dict[str, Any
             "genotype_quality_present_records",
             "low_genotype_quality_records",
             "no_call_records",
+            "array_call_records",
             "array_no_call_records",
         )
     } | {"filter_counts": filter_counts, "genotype_counts": genotype_counts}

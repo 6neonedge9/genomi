@@ -562,11 +562,12 @@ class ActiveGenomeIndexContractFixtureMixin:
                 self.assertEqual(payload["match_kind"], "consumer_array_allele_inference")
                 self.assertEqual(payload["source_format"], expected_format)
                 self.assertEqual(sample["source_format"], expected_format)
-                self.assertEqual(sample["source_record_ref"], "N")
-                self.assertEqual(sample["source_record_alt"], genotype)
+                self.assertEqual(sample["source_record_ref"], ".")
+                self.assertEqual(sample["source_record_alt"], ".")
                 self.assertEqual(sample["source_record_format"], "GT_ARRAY")
-                self.assertEqual(payload["match_provenance"]["source_record"]["ref"], "N")
-                self.assertEqual(payload["match_provenance"]["source_record"]["alt"], genotype)
+                self.assertEqual(payload["match_provenance"]["source_record"]["ref"], ".")
+                self.assertEqual(payload["match_provenance"]["source_record"]["alt"], ".")
+                self.assertEqual(payload["match_provenance"]["source_record"]["genotype"], genotype)
 
     def _tiny_prs_thresholds(self):
         return mock.patch.multiple(

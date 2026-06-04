@@ -6,6 +6,7 @@ from dataclasses import fields
 from pathlib import Path
 
 import genomi.active_genome_index.source_intake as source_intake
+from genomi.active_genome_index import record_kinds
 from genomi.active_genome_index.source_intake import arrays, detection, text_io
 from genomi.active_genome_index.source_intake.arrays import SUPPORTED_CONSUMER_ARRAY_FORMATS
 from genomi.evidence import envelope
@@ -22,7 +23,7 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
 
     def test_manifest_records_public_pgp_hms_data_type_inventory(self) -> None:
         manifest = self._manifest()
-        self.assertEqual(manifest["schema"], "genomi-pgp-hms-public-genetic-data-manifest-v1")
+        self.assertEqual(manifest["source_url"], "https://my.pgp-hms.org/public_genetic_data")
         self.assertEqual(manifest["observed_public_row_count"], 3964)
         self.assertEqual(manifest["observed_data_type_label_count"], 259)
         selector_types = set(manifest["selector_data_types"])
@@ -83,14 +84,7 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
 
     def test_no_stale_compatibility_symbols_in_current_contract_surface(self) -> None:
         self.assertEqual([field.name for field in fields(arrays._ConsumerArraySpec)], ["row_iterator"])
-        consumer_contract = arrays._consumer_array_observation_contract(
-            source_format="23andme",
-            genome_build="GRCh37",
-        )
-        self.assertNotIn("audience", consumer_contract)
-        self.assertNotIn("provider", consumer_contract)
-        self.assertNotIn("supports", consumer_contract)
-        self.assertNotIn("does_not_support", consumer_contract)
+        self.assertFalse(hasattr(arrays, "_consumer_array_observation_contract"))
 
         forbidden_symbols = {
             source_intake: {
@@ -112,6 +106,7 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
                 "_populate_23andme_records",
                 "_populate_ancestrydna_records",
             },
+            record_kinds: {"is_array_record_format"},
             detection: {"_detect_23andme", "_detect_ancestrydna", "_require_array_format"},
             text_io: {"_first_zip_text_member"},
             envelope: {"attach_envelope"},

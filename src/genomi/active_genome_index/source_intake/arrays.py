@@ -43,7 +43,7 @@ from .text_io import _clean_array_chrom, _effective_array_build, _open_text_sour
 def _array_record_stats(*, total: int, called: int, no_call: int, rsid_count: int) -> JsonObject:
     return {
         "total_records": total,
-        "variant_records": called,
+        "variant_records": 0,
         "reference_records": 0,
         "pass_records": called,
         "fail_records": no_call,
@@ -183,19 +183,6 @@ _CONSUMER_ARRAY_SPECS: dict[str, _ConsumerArraySpec] = {
 SUPPORTED_CONSUMER_ARRAY_FORMATS = frozenset(_CONSUMER_ARRAY_SPECS)
 
 
-def _consumer_array_observation_contract(*, source_format: str, genome_build: str) -> JsonObject:
-    return {
-        "schema": "genomi-consumer-array-observation-contract-v1",
-        "source_format": source_format,
-        "source_kind": "consumer_genotype_array",
-        "genome_build": genome_build,
-        "record_kinds": ["array_call", "array_no_call"],
-        "genotype_encoding": "plus_strand_observed_letters",
-        "coordinate_matching": "requires_public_ref_alt_for_allele_dosage",
-        "unsupported_evidence": ["depth", "genotype_quality", "phasing", "reference_blocks", "negative_absence_claims"],
-    }
-
-
 def parse_consumer_array_source(
     source: str | Path,
     *,
@@ -269,10 +256,6 @@ def parse_consumer_array_source(
         "reference_dir": str(reference_dir),
         "outputs": {"active_genome_index_path": str(active_genome_index_path)},
         "steps": steps,
-        "source_observation_contract": _consumer_array_observation_contract(
-            source_format=fmt,
-            genome_build=effective_build,
-        ),
     }
 
 

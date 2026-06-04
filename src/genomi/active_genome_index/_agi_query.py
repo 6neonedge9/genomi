@@ -9,7 +9,7 @@ import json
 import sqlite3
 from ._agi_readiness import ensure_active_genome_index_complete
 from ._agi_schema import connect_existing_readonly, default_active_genome_index_path
-from .record_kinds import infer_record_kind
+from .record_kinds import is_reference_block_record
 
 
 def query_rsid(vcf_path: str | Path, rsid: str, active_genome_index_path: str | Path | None = None, *, limit: int = 50) -> list[dict[str, Any]]:
@@ -103,7 +103,7 @@ def coverage_query(
     records = query_region(vcf_path, chrom, start, end, active_genome_index_path, variants_only=False, limit=limit)
     covered_segments: list[tuple[int, int]] = []
     for record in records:
-        if record["filter"] != "PASS":
+        if record["filter"] != "PASS" or not is_reference_block_record(record):
             continue
         segment_start = max(start, int(record["pos"]))
         segment_end = min(end, int(record["end"]))
@@ -328,31 +328,26 @@ def _records_from_active_genome_index_offsets(active_genome_index_path: str | Pa
     return records
 
 def _index_record_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    ref = None if row["ref"] == "." else row["ref"]
     alt = None if row["alt"] == "." else row["alt"]
     info_genes = _json_list(row["info_genes"]) if _row_has_key(row, "info_genes") else []
     info_raw = row["info"] if _row_has_key(row, "info") else ""
     format_raw = row["format"] if _row_has_key(row, "format") else ""
     sample_raw = row["sample"] if _row_has_key(row, "sample") else ""
-    record_kind = infer_record_kind(
-        format_value=format_raw,
-        is_variant=bool(row["is_variant"]),
-        filter_value=row["filter"],
-        info_raw=info_raw,
-        genotype_value=row["genotype"],
-    )
     payload: dict[str, Any] = {
         "chrom": row["chrom"],
         "pos": int(row["pos"]),
         "end": int(row["end"]),
         "id": row["rsid"],
         "rsid": row["rsid"],
-        "ref": row["ref"],
+        "ref": ref,
         "alt": alt,
         "alts": [value for value in str(alt or "").split(",") if value],
         "qual": None if row["qual"] == "." else row["qual"],
         "filter": row["filter"],
         "is_variant": bool(row["is_variant"]),
-        "record_kind": record_kind,
+        "record_kind": str(row["record_kind"]),
+        "observed_alleles": _json_list(row["observed_alleles"]),
         "sample_name": row["sample_name"] if _row_has_key(row, "sample_name") else None,
         "sample_index": _row_sample_index(row),
         "genotype": row["genotype"],
@@ -379,11 +374,12 @@ def _json_list(value: Any) -> list[str]:
         return []
     try:
         parsed = json.loads(str(value))
-    except json.JSONDecodeError:
+    except (TypeError, json.JSONDecodeError):
         return []
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed]
+
 
 def _row_sample_index(row: sqlite3.Row) -> int:
     try:

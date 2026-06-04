@@ -38,7 +38,7 @@ class SourceContractCase:
         if self.is_consumer_array:
             return {
                 "total_records": len(LOCUS_MODEL),
-                "variant_records": len(LOCUS_MODEL),
+                "variant_records": 0,
                 "reference_records": 0,
                 "pass_records": len(LOCUS_MODEL),
                 "fail_records": 0,
@@ -342,9 +342,11 @@ class ActiveGenomeIndexDownstreamContractTests(
                 self.assertEqual(match["source_format"], contract.expected_format)
                 self.assertEqual(match["source_kind"], contract.expected_source_kind)
                 if contract.is_consumer_array:
-                    self.assertEqual(match["observation_semantics"]["kind"], "consumer_genotype_array_call")
-                    self.assertEqual(match["ref"], "N")
-                    self.assertEqual(match["alt"], locus["bases"])
+                    self.assertEqual(match["record_kind"], "array_call")
+                    self.assertEqual(match["is_variant"], 0)
+                    self.assertIsNone(match["ref"])
+                    self.assertIsNone(match["alt"])
+                    self.assertEqual(match["observed_alleles"], list(locus["bases"]))
                 else:
                     self.assertEqual(match["ref"], locus["ref"])
                     self.assertEqual(match["alt"], locus["alt"])
@@ -476,7 +478,8 @@ class ActiveGenomeIndexDownstreamContractTests(
                 candidates_by_pos[200]["match_provenance"]["primary_match_basis"],
                 "consumer_array_allele_inference",
             )
-            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_ref"], "N")
+            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_ref"], ".")
+            self.assertEqual(candidates_by_pos[200]["variant"]["source_record_alt"], ".")
             self.assertEqual(candidates_by_pos[200]["variant"]["source_record_format"], "GT_ARRAY")
 
     def _assert_genotype_support_contracts(self, contract: SourceContractCase) -> None:
