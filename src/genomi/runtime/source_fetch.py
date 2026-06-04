@@ -21,6 +21,7 @@ from typing import Any
 from .external import file_metadata, read_manifest, utc_now, write_manifest
 
 DEFAULT_TIMEOUT_SECONDS = 120
+DEFAULT_FRESHNESS_TIMEOUT_SECONDS = 10
 _HEAD_TIMEOUT_SECONDS = 30
 _VALIDATOR_KEYS = ("etag", "last_modified")
 
@@ -204,6 +205,7 @@ def refresh_or_download(
     base_payload: dict[str, Any] | None = None,
     user_agent: str | None = None,
     timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    freshness_timeout: int = DEFAULT_FRESHNESS_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Keep a "store the bytes as-is" library fresh, tracked in its manifest.
 
@@ -253,7 +255,11 @@ def refresh_or_download(
 
     if refresh and not force and file_exists and manifest_ok:
         result = conditional_fetch(
-            url, output, recorded=recorded_validators(manifest), timeout=timeout, user_agent=user_agent
+            url,
+            output,
+            recorded=recorded_validators(manifest),
+            timeout=freshness_timeout,
+            user_agent=user_agent,
         )
         if result["status"] == "up_to_date":
             # Persist identity + (possibly newly-learned) validators so the next
