@@ -301,7 +301,8 @@ def compare_phenotype_annotation_gene_evidence(
 def source_prior_evidence_response(source_prior: str, result: dict[str, Any]) -> dict[str, Any]:
     panel = _evidence_prior_panel(source_prior, _result_genes(result), result)
     top_ranked = next((row for row in panel.get("ranking") or [] if row.get("rank") == 1), None)
-    return {
+    envelope = result.get("evidence_envelope") if isinstance(result.get("evidence_envelope"), dict) else None
+    response = {
         "status": result.get("status"),
         "agent_decision_required": True,
         "source_prior": source_prior,
@@ -331,6 +332,9 @@ def source_prior_evidence_response(source_prior: str, result: dict[str, Any]) ->
             "candidate_records_found": _candidate_records_found(result),
         },
     }
+    if envelope is not None:
+        response["evidence_envelope"] = envelope
+    return response
 
 
 def _component_results(

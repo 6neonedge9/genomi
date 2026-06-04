@@ -158,7 +158,7 @@ def prepare_risk_investigation(
     }
     personal_context = _env._personal_context(
         uses_personal_dna=context_scope == "active_genome_index_selected",
-        source=str(matches_path) if matches_path else None,
+        source="clinvar_candidate_inventory" if matches_path else None,
     )
     risk_envelope = _build_risk_envelope(
         view=view,

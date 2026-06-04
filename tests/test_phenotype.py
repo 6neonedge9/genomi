@@ -481,6 +481,9 @@ class PhenotypePrioritizationTests(unittest.TestCase):
         self.assertEqual(result["source_prior"], "expert_phenotype_annotation")
         self.assertEqual(result["ranking"][0]["candidate"], "PNKP")
         self.assertEqual(result["evidence_records"][0]["candidate"], "PNKP")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
+        self.assertEqual(result["evidence_envelope"]["operation"], "phenotype.compare_gene_hpo_evidence")
+        self.assertEqual(result["evidence_envelope"]["observations"]["top_observed_candidate"], "PNKP")
 
     def test_phenotype_gene_operation_reports_missing_hpo_install_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict("os.environ", {"GENOMI_HOME": tmp}):

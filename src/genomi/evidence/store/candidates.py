@@ -282,7 +282,7 @@ def extract_clinvar_candidates(
         payload,
         candidate_evidence,
         operation="clinvar.scan_candidates",
-        personal_context=_env._personal_context(uses_personal_dna=True, source=str(matches_path) if matches_path else None),
+        personal_context=_env._personal_context(uses_personal_dna=True, source="clinvar_matches"),
     )
     if output is not None and manifest_path is not None:
         output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

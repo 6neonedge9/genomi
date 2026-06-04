@@ -117,6 +117,7 @@ class RiskInvestigationTests(unittest.TestCase):
         self.assertFalse(env["negative_inference"]["allowed"])
         self.assertIn("library_coverage", env["negative_inference"]["requires"])
         self.assertTrue(env["personal_context"]["uses_personal_dna"])
+        self.assertEqual(env["personal_context"]["source"], "clinvar_candidate_inventory")
         # Guidance is centrally rendered.
         self.assertIn("not_observed_in_consulted_scope:do_not_imply_clinical_negative", env["guidance"])
         self.assertIn("negative_inference_disallowed:do_not_state_clinical_negative", env["guidance"])

@@ -543,6 +543,9 @@ class GwasCatalogTests(unittest.TestCase):
         self.assertEqual(result["source_prior"], "gwas_catalog_association")
         self.assertEqual(result["ranking"][0]["candidate"], "PCSK9")
         self.assertEqual(result["evidence_records"][0]["candidate"], "PCSK9")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
+        self.assertEqual(result["evidence_envelope"]["operation"], "gwas.compare_gene_associations")
+        self.assertEqual(result["evidence_envelope"]["observations"]["top_observed_candidate"], "PCSK9")
 
     def test_gwas_gene_operation_defaults_to_gene_field_intent(self) -> None:
         result = call_operation(

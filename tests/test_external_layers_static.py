@@ -371,6 +371,7 @@ class CandidateInventoryTests(EvidenceImportTestBase):
             self.assertEqual(view["coverage"]["candidate_count"], len(result["candidate_matrix"]))
             self.assertEqual(view["candidate_matrix"], result["candidate_matrix"])
             self.assertEqual(result["top_observed_candidate"], result["candidate_matrix"][0]["candidate_id"])
+            self.assertEqual(result["evidence_envelope"]["personal_context"]["source"], "clinvar_matches")
             self.assertTrue(view["agent_decision_required"])
             self.assertEqual(result["candidate_inventory"][0]["variant"]["pos"], 10257)
             self.assertIn("clinvar_vus", result["candidate_inventory"][0]["tags"])
