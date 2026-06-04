@@ -338,6 +338,7 @@ def _index_record_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         is_variant=bool(row["is_variant"]),
         filter_value=row["filter"],
         info_raw=info_raw,
+        genotype_value=row["genotype"],
     )
     payload: dict[str, Any] = {
         "chrom": row["chrom"],

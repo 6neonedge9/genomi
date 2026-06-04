@@ -6,7 +6,7 @@ from typing import Any
 
 from .array_genotypes import called_genotype_tokens, count_array_allele, is_array_genotype_record
 from .active_genome_index import query_region
-from .record_kinds import is_reference_block_record
+from .record_kinds import RECORD_KIND_NO_CALL, is_reference_block_record
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,16 @@ def resolve_locus_genotype_from_records(
             ),
         )
 
+    no_call_records = [
+        record
+        for record in records
+        if record.get("record_kind") == RECORD_KIND_NO_CALL
+        and int(record.get("pos") or 0) <= int(pos) <= int(record.get("end") or 0)
+    ]
+    if no_call_records:
+        record = _best_record(no_call_records)
+        return _classify_no_call_record(record, records=records)
+
     reference_blocks = [
         record
         for record in records
@@ -168,6 +178,26 @@ def resolve_locus_genotype_from_records(
             "allele_bases": [],
             "reference_call_supported": False,
         },
+    )
+
+
+def _classify_no_call_record(record: dict[str, Any], *, records: list[dict[str, Any]]) -> dict[str, Any]:
+    return _support_payload(
+        "no_call",
+        "genotype_support_no_call",
+        "A sample record covers this locus, but the genotype is missing or no-called.",
+        record=record,
+        alt_allele_count=None,
+        matched_records=records,
+        site_observation=_site_observation(
+            record,
+            matched_by="no_call",
+            allele_bases=[],
+            alt_allele_count=None,
+            reference_call_supported=False,
+            status="no_call",
+            limitation="No-called genotypes cannot support observed alternate, absence, or reference claims.",
+        ),
     )
 
 

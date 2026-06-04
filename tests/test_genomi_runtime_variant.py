@@ -119,6 +119,72 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_vcf_no_call_alt_row_is_not_reference_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                vcf = Path("sample.vcf")
+                vcf.write_text(
+                    "##fileformat=VCFv4.2\n"
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA12878\n"
+                    "1\t700\trsnocall\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t./.:30:99\n",
+                    encoding="utf-8",
+                )
+                index = Path("active-genome-index.sqlite")
+                create_active_genome_index(vcf, index, reuse_existing=False)
+                db = Path("evidence.sqlite")
+                call_operation(
+                    "active_genome_index.assign_user_genome",
+                    {
+                        "nickname": "No call sample",
+                        "source": str(vcf),
+                        "active_genome_index_path": str(index),
+                        "db": str(db),
+                        "genome_build": "GRCh37",
+                    },
+                )
+
+                qc = call_operation("active_genome_index.classify_callset_qc", {"genome_build": "GRCh37", "scan_records": 10})
+                self.assertEqual(qc["summary"]["variant_records"], 0)
+                self.assertEqual(qc["summary"]["reference_records"], 0)
+                self.assertEqual(qc["summary"]["no_call_records"], 1)
+                self.assertFalse(qc["has_reference_blocks"])
+                self.assertFalse(qc["absence_claims_allowed_by_default"])
+
+                lookup = call_operation("variant.resolve", {"rsid": "rsnocall", "genome_build": "GRCh37"})
+                self.assertEqual(lookup["sample_context"]["count"], 1)
+                match = lookup["sample_context"]["matches"][0]
+                self.assertEqual(match["record_kind"], "no_call")
+                self.assertNotIn("reference_block_wild_type", match)
+                self.assertNotIn("interpretation", match)
+
+                support = call_operation(
+                    "active_genome_index.classify_genotype_support",
+                    {
+                        "chrom": "1",
+                        "pos": 700,
+                        "ref": "A",
+                        "alt": "G",
+                        "db": str(db),
+                        "genome_build": "GRCh37",
+                    },
+                )
+                self.assertEqual(support["support_status"], "no_call")
+                observation = support["sample_observation"]
+                self.assertEqual(observation["record_type"], "no_call")
+                self.assertFalse(observation["reference_call_supported"])
+                self.assertIsNone(observation["alt_allele_count"])
+
+                callability = call_operation(
+                    "active_genome_index.classify_region_callability",
+                    {"region": "1:700-700", "genome_build": "GRCh37"},
+                )
+                self.assertEqual(callability["callability_status"], "unknown_no_reference_blocks")
+                self.assertFalse(callability["can_support_negative_or_reference_claim"])
+            finally:
+                os.chdir(previous)
+
     def test_variant_lookup_questions_cover_missing_target_and_context(self) -> None:
         no_target = call_operation("variant.resolve", {})
 

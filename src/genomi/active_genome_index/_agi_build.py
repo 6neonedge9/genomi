@@ -13,7 +13,8 @@ import json
 import os
 import sqlite3
 from ._agi_readiness import ActiveGenomeIndexSchemaTooNew, _active_genome_index_readiness_from_connection
-from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _mark_active_genome_index_variants_ready, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_active_genome_index_path
+from ._agi_schema import ActiveGenomeIndexStats, SCHEMA_VERSION, _ReferenceRunCoalescer, _ROW_GENOTYPE, _ROW_IS_VARIANT, _active_genome_index_build_lock, _byte_ranges, _create_query_indexes, _insert_metadata, _insert_record_batch, _insert_stat_rows, _is_plain_vcf, _mark_active_genome_index_build_completed, _mark_active_genome_index_variants_ready, _multiprocessing_context, _record_row, _reset_schema, _shard_path, connect, connect_existing, connect_existing_readonly, default_active_genome_index_path
+from .record_kinds import _is_no_call_genotype
 from ..runtime.sqlite_support import enable_wal
 
 
@@ -494,15 +495,7 @@ def _populate_records_from_byte_range(
             parts = text.split("\t")
             sample_count = sample_count_from_parts(parts, sample_names)
             reference_only = alt_is_reference_only(parts[4]) if len(parts) > 4 else True
-            if reference_only and not store_reference:
-                if count_stats:
-                    filt = parts[6] if len(parts) > 6 else "."
-                    total += sample_count
-                    reference += sample_count
-                    if filt == "PASS":
-                        pass_count += sample_count
-                    elif filt == "FAIL":
-                        fail_count += sample_count
+            if reference_only and not (store_reference or count_stats):
                 continue
             for sample_index in range(sample_count):
                 if count_stats:
@@ -515,11 +508,12 @@ def _populate_records_from_byte_range(
                     line_length=len(raw),
                 )
                 row = _record_row(record)
-                is_variant = bool(row[13])
+                is_variant = bool(row[_ROW_IS_VARIANT])
+                is_no_call = _is_no_call_genotype(row[_ROW_GENOTYPE])
                 if count_stats:
                     if is_variant:
                         variant += 1
-                    else:
+                    elif not is_no_call:
                         reference += 1
                     if record.filter == "PASS":
                         pass_count += 1
@@ -627,16 +621,17 @@ def _populate_records(
     for record in iter_sample_records(vcf_path, limit=max_records):
         total += 1
         row = _record_row(record)
-        is_variant = bool(row[13])
+        is_variant = bool(row[_ROW_IS_VARIANT])
+        is_no_call = _is_no_call_genotype(row[_ROW_GENOTYPE])
         if is_variant:
             variant += 1
-        else:
+        elif not is_no_call:
             reference += 1
         if record.filter == "PASS":
             pass_count += 1
         elif record.filter == "FAIL":
             fail_count += 1
-        if not include_reference and not is_variant:
+        if not include_reference and not (is_variant or is_no_call):
             continue
         # Coalesce contiguous reference blocks of the same FILTER + GQ tier
         # into a single stored row. Fine-grained gVCFs emit short (sometimes
@@ -644,7 +639,7 @@ def _populate_records(
         # blows the index up to tens of GB. A merged row spans pos..end exactly
         # like the large reference blocks gVCFs already produce, so every
         # downstream reader treats it identically — no schema or reader change.
-        if is_variant:
+        if is_variant or is_no_call:
             for flushed in coalescer.flush():
                 _emit(flushed)
             _emit(row)

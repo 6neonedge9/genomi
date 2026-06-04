@@ -11,6 +11,7 @@ ARRAY_RECORD_KIND_VERSION = 1
 
 RECORD_KIND_VARIANT_CALL = "variant_call"
 RECORD_KIND_REFERENCE_BLOCK = "reference_block"
+RECORD_KIND_NO_CALL = "no_call"
 RECORD_KIND_ARRAY_CALL = "array_call"
 RECORD_KIND_ARRAY_NO_CALL = "array_no_call"
 
@@ -37,7 +38,13 @@ def is_array_record_format(value: Any) -> bool:
 
 def reference_block_sql(alias: str | None = None) -> str:
     prefix = f"{alias}." if alias else ""
-    return f"{prefix}is_variant = 0 and coalesce({prefix}format, '') != '{ARRAY_FORMAT}'"
+    genotype = f"coalesce({prefix}genotype, '')"
+    return (
+        f"{prefix}is_variant = 0 "
+        f"and coalesce({prefix}format, '') != '{ARRAY_FORMAT}' "
+        f"and {genotype} != '' "
+        f"and {genotype} not like '%.%'"
+    )
 
 
 def array_no_call_sql(alias: str | None = None) -> str:
@@ -51,8 +58,11 @@ def infer_record_kind(
     is_variant: bool,
     filter_value: Any,
     info_raw: Any = None,
+    genotype_value: Any = None,
 ) -> str:
     if not is_array_record_format(format_value):
+        if _is_no_call_genotype(genotype_value):
+            return RECORD_KIND_NO_CALL
         return RECORD_KIND_VARIANT_CALL if is_variant else RECORD_KIND_REFERENCE_BLOCK
     info_kind = _array_record_kind_from_info(info_raw)
     if info_kind in {RECORD_KIND_ARRAY_CALL, RECORD_KIND_ARRAY_NO_CALL}:
@@ -64,7 +74,18 @@ def is_reference_block_record(record: JsonObject) -> bool:
     kind = record.get("record_kind")
     if kind:
         return kind == RECORD_KIND_REFERENCE_BLOCK
-    return not bool(record.get("is_variant")) and not is_array_record_format(record.get("format"))
+    return (
+        not bool(record.get("is_variant"))
+        and not is_array_record_format(record.get("format"))
+        and not _is_no_call_genotype(record.get("genotype"))
+    )
+
+
+def _is_no_call_genotype(value: Any) -> bool:
+    genotype = str(value or "").strip()
+    if not genotype:
+        return True
+    return "." in genotype
 
 
 def _array_record_kind_from_info(info_raw: Any) -> str | None:

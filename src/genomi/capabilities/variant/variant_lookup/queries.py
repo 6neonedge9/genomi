@@ -48,10 +48,9 @@ def _query_active_genome_index(
                     )
                 if not rows:
                     # Allele not observed as a variant call. For gVCF inputs the
-                    # site may be covered by a reference block (homozygous-reference
-                    # over an interval). Surface that as wild-type evidence rather
-                    # than letting the caller infer "no_match" and fall back to
-                    # raw VCF grep.
+                    # site may be covered by a reference block. Keep that as raw
+                    # sample context only; genotype_support/callability owns any
+                    # negative or homozygous-reference claim.
                     for chrom_value in _chrom_aliases(str(target["chrom"])):
                         sql = _record_select_sql(
                             f"chrom = ? and pos <= ? and end >= ? and ({reference_block_sql()})"
@@ -67,12 +66,6 @@ def _query_active_genome_index(
                             include_fail=include_fail,
                             limit=limit,
                         )
-                        for row in ref_rows:
-                            row["reference_block_wild_type"] = True
-                            row["interpretation"] = (
-                                "Position is covered by a homozygous-reference gVCF block; "
-                                "the requested ALT allele is not present in the sample."
-                            )
                         rows.extend(ref_rows)
                 return _dedupe_records(rows, ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"))
             if target_type == "locus":
@@ -363,6 +356,7 @@ def _index_record(row: sqlite3.Row) -> JsonObject:
         is_variant=bool(item.get("is_variant")),
         filter_value=item.get("filter"),
         info_raw=item.pop("_info_raw", None),
+        genotype_value=item.get("genotype"),
     )
     genes_raw = item.get("info_genes")
     if genes_raw:
