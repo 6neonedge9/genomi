@@ -105,9 +105,6 @@
       "use_hpo_annotations": {
         "$ref": "#/schema_fragments/properties/boolean_default_true"
       },
-      "download_hpo_annotations": {
-        "$ref": "#/schema_fragments/properties/boolean_default_false"
-      },
       "include_known_active_genome_indexes": {
         "$ref": "#/schema_fragments/properties/boolean_default_false"
       },
@@ -181,9 +178,6 @@
           },
           "use_hpo_annotations": {
             "$ref": "#/schema_fragments/properties/use_hpo_annotations"
-          },
-          "download_hpo_annotations": {
-            "$ref": "#/schema_fragments/properties/download_hpo_annotations"
           }
         }
       },

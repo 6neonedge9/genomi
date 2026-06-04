@@ -27,7 +27,6 @@ def compare_candidate_payload(params: dict[str, Any]) -> dict[str, Any]:
         target_source_records=data.pop("target_source_records", None),
         search_stored_research=data.pop("search_stored_research", True),
         use_hpo_annotations=data.pop("use_hpo_annotations", True),
-        download_hpo_annotations=data.pop("download_hpo_annotations", False),
         hpo_gene_file=data.pop("hpo_gene_file", None),
         include_gwas=data.pop("include_gwas", True),
         gwas_api_url=data.pop("gwas_api_url", "https://www.ebi.ac.uk/gwas/rest/api/v2"),

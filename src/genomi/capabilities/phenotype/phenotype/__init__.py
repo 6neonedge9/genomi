@@ -54,8 +54,6 @@ from ._base import (
 )
 from .annotations import (
     _classification_priority,
-    _default_hpo_disease_file,
-    _default_hpo_gene_file,
     _gencc_disease_identifiers,
     _gencc_primary_gene_disease_associations,
     _group_associations_by_gene,
@@ -76,8 +74,8 @@ from .annotations import (
     _primary_gene_disease_index,
     _primary_gene_disease_response,
     _resolve_gencc_file,
+    _resolve_hpo_disease_file,
     _resolve_hpo_gene_file,
-    _resolve_public_annotation_file,
     _split_pmids,
     retrieve_primary_gene_disease_associations,
 )

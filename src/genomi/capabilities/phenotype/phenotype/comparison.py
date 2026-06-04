@@ -120,10 +120,8 @@ def compare_disease_phenotype_evidence(
     source_records: Iterable[dict[str, Any]] | None = None,
     search_stored_research: bool = True,
     use_hpo_annotations: bool = True,
-    download_hpo_annotations: bool = True,
     hpo_disease_file: str | Path | None = None,
     use_primary_gene_disease: bool = True,
-    download_primary_gene_disease: bool = True,
     gencc_file: str | Path | None = None,
     limit: int = 25,
     semantic_context: object = None,
@@ -139,10 +137,8 @@ def compare_disease_phenotype_evidence(
     hpo_context = _hpo_disease_annotation_context(
         query,
         use_hpo_annotations=use_hpo_annotations,
-        download_hpo_annotations=download_hpo_annotations,
         hpo_disease_file=hpo_disease_file,
         use_primary_gene_disease=use_primary_gene_disease,
-        download_primary_gene_disease=download_primary_gene_disease,
         gencc_file=gencc_file,
         limit=limit,
     )
@@ -206,7 +202,6 @@ def compare_gene_hpo_evidence(
     source_records: Iterable[dict[str, Any]] | None = None,
     search_stored_research: bool = True,
     use_hpo_annotations: bool = True,
-    download_hpo_annotations: bool = True,
     hpo_gene_file: str | Path | None = None,
     limit: int = 25,
     semantic_context: object = None,
@@ -222,7 +217,6 @@ def compare_gene_hpo_evidence(
     hpo_context = _hpo_gene_annotation_context(
         query,
         use_hpo_annotations=use_hpo_annotations,
-        download_hpo_annotations=download_hpo_annotations,
         hpo_gene_file=hpo_gene_file,
         limit=limit,
     )

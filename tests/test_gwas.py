@@ -52,7 +52,6 @@ class GwasCatalogTests(unittest.TestCase):
         result = compare_candidate_payload({
                 "phenotype": "LDL cholesterol",
                 "genes": ["PCSK9"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
             })
@@ -71,7 +70,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "phenotype": "LDL cholesterol",
                 "genes": ["APOB", "PCSK9"],
                 "include_gwas": True,
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
             })
@@ -90,7 +88,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "phenotype": "LDL cholesterol",
                 "drug": "example drug",
                 "genes": ["APOB", "PCSK9"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
                 "target_source_records": [
@@ -123,7 +120,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Use the GWAS Catalog mapped gene evidence for this trait.",
                 "phenotype": "LDL cholesterol",
                 "genes": ["APOB", "PCSK9"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
             })
@@ -138,7 +134,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Use variant-to-gene colocalization evidence for this risk locus.",
                 "phenotype": "asthma",
                 "genes": ["SLC39A8", "ORMDL3"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "use_opentargets": False,
                 "include_gwas": False,
@@ -183,7 +178,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Given candidate genes at a trait-associated risk locus for asthma, name the causal gene.",
                 "phenotype": "asthma",
                 "genes": ["ADRB2", "ORMDL3"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "use_opentargets": False,
                 "include_gwas": False,
@@ -216,7 +210,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Given candidate genes at a trait-associated risk locus for asthma, name the causal gene.",
                 "phenotype": "asthma",
                 "genes": ["ADRB2", "ORMDL3"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "use_opentargets": False,
                 "gwas_source_records": [_association("rs1", "asthma", 2e-9, "rs1-A", "ADRB2", "GCST11", "111")],
@@ -455,7 +448,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Given candidate genes at a GWAS locus for LDL cholesterol, identify the causal gene.",
                 "phenotype": "LDL cholesterol",
                 "genes": ["PCSK9", "SLC18A1"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "use_opentargets": False,
                 "include_gwas": False,
@@ -484,7 +476,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Use GWAS Catalog mapped gene evidence for this trait.",
                 "phenotype": "LDL cholesterol",
                 "genes": ["PCSK9"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [
                     _association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111"),
@@ -508,7 +499,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "hpo_ids": ["HP:0001251"],
                 "genes": ["PNKP", "SPG7"],
                 "use_hpo_annotations": False,
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
             })
 
@@ -524,7 +514,6 @@ class GwasCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "requires phenotype, HPO IDs, drug, drug_class, or mechanism"):
             compare_candidate_payload({
                     "genes": ["APOB", "PCSK9"],
-                    "download_hpo_annotations": False,
                     "search_stored_research": False,
                 })
 
@@ -609,7 +598,6 @@ class GwasCatalogTests(unittest.TestCase):
                 "task_text": "Use GWAS Catalog reported gene evidence for this trait.",
                 "phenotype": "breast cancer",
                 "genes": ["ESR1", "CCDC170"],
-                "download_hpo_annotations": False,
                 "search_stored_research": False,
                 "gwas_source_records": [mapped, reported],
             })

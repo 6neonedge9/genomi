@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import csv
 import re
-import urllib.error
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from ....runtime.libraries import manager as library_manager
-from ....runtime.paths import genomi_data_root
 
 from ._base import (
     HPO_DISEASE_ANNOTATION_URL,
@@ -33,7 +31,6 @@ def retrieve_primary_gene_disease_associations(
     *,
     genes: Iterable[str],
     gencc_file: str | Path | None = None,
-    download_gencc: bool = True,
     classifications: Iterable[str] | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
@@ -41,27 +38,9 @@ def retrieve_primary_gene_disease_associations(
     if not normalized_genes:
         raise ValueError("phenotype.retrieve_gene_disease_associations requires genes")
     allowed_classifications = _normalize_classifications(classifications or PRIMARY_GENE_DISEASE_CLASSIFICATIONS)
-    try:
-        gencc_path = _resolve_gencc_file(
-            gencc_file=gencc_file,
-            download_gencc=download_gencc,
-        )
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        return _primary_gene_disease_response(
-            genes=normalized_genes,
-            classifications=allowed_classifications,
-            status="source_unavailable",
-            coverage_state="out_of_scope_for_input",
-            associations=[],
-            source_file=None,
-            source_coverage={
-                "sources_consulted_and_empty": [],
-                "sources_consulted_but_unavailable": [{"source": "GenCC submissions TSV", "error": str(exc)}],
-                "sources_not_integrated": ["OMIM gene map", "Orphanet gene-disease primary association export"],
-            },
-        )
+    gencc_path = _resolve_gencc_file(gencc_file=gencc_file)
     if gencc_path is None:
-        if gencc_file is None and not download_gencc:
+        if gencc_file is None:
             request = library_manager.missing_request(
                 "gencc",
                 intent=f"primary gene-disease associations for {', '.join(normalized_genes[:5])}",
@@ -130,7 +109,6 @@ def _hpo_gene_annotation_context(
     query: dict[str, Any],
     *,
     use_hpo_annotations: bool,
-    download_hpo_annotations: bool,
     hpo_gene_file: str | Path | None,
     limit: int,
 ) -> dict[str, Any]:
@@ -138,21 +116,15 @@ def _hpo_gene_annotation_context(
         return {"status": "not_requested", "source_records": [], "error": None}
     if not query.get("hpo_ids"):
         return {"status": "not_applicable_no_hpo_ids", "source_records": [], "error": None}
-    if hpo_gene_file is None and not download_hpo_annotations and not _default_hpo_gene_file().exists():
-        return _library_install_annotation_context(
-            "hpo",
-            intent=f"HPO phenotype-to-gene matching for {', '.join(query.get('genes') or [])}",
-            operation="phenotype.compare_gene_hpo_evidence",
-            queried_hpo_ids=query.get("hpo_ids") or [],
-        )
-    try:
-        annotation_path = _resolve_hpo_gene_file(
-            hpo_gene_file=hpo_gene_file,
-            download_hpo_annotations=download_hpo_annotations,
-        )
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        return {"status": "unavailable", "source_records": [], "error": str(exc)}
+    annotation_path = _resolve_hpo_gene_file(hpo_gene_file=hpo_gene_file)
     if annotation_path is None:
+        if hpo_gene_file is None:
+            return _library_install_annotation_context(
+                "hpo",
+                intent=f"HPO phenotype-to-gene matching for {', '.join(query.get('genes') or [])}",
+                operation="phenotype.compare_gene_hpo_evidence",
+                queried_hpo_ids=query.get("hpo_ids") or [],
+            )
         return {"status": "missing_local_annotation_file", "source_records": [], "error": None}
     try:
         records = _hpo_records_for_query(annotation_path, query, limit=max(1, int(limit or 25)))
@@ -172,10 +144,8 @@ def _hpo_disease_annotation_context(
     query: dict[str, Any],
     *,
     use_hpo_annotations: bool,
-    download_hpo_annotations: bool,
     hpo_disease_file: str | Path | None,
     use_primary_gene_disease: bool,
-    download_primary_gene_disease: bool,
     gencc_file: str | Path | None,
     limit: int,
 ) -> dict[str, Any]:
@@ -183,29 +153,21 @@ def _hpo_disease_annotation_context(
         return {"status": "not_requested", "source_records": [], "error": None}
     if not query.get("hpo_ids"):
         return {"status": "not_applicable_no_hpo_ids", "source_records": [], "error": None}
-    if hpo_disease_file is None and not download_hpo_annotations and not _default_hpo_disease_file().exists():
-        return _library_install_annotation_context(
-            "hpo",
-            intent="HPO disease phenotype matching for supplied diseases or gene-derived disease candidates",
-            operation="phenotype.compare_disease_evidence",
-            queried_hpo_ids=query.get("hpo_ids") or [],
-        )
-    try:
-        disease_path = _resolve_public_annotation_file(
-            annotation_file=hpo_disease_file,
-            cache_name="phenotype.hpoa",
-            download_annotations=download_hpo_annotations,
-        )
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
-        return {"status": "unavailable", "source_records": [], "error": str(exc)}
+    disease_path = _resolve_hpo_disease_file(hpo_disease_file=hpo_disease_file)
     if disease_path is None:
+        if hpo_disease_file is None:
+            return _library_install_annotation_context(
+                "hpo",
+                intent="HPO disease phenotype matching for supplied diseases or gene-derived disease candidates",
+                operation="phenotype.compare_disease_evidence",
+                queried_hpo_ids=query.get("hpo_ids") or [],
+            )
         return {"status": "missing_local_disease_annotation_file", "source_records": [], "error": None}
     try:
         needs_primary_gene_disease = bool(query.get("genes")) and not bool(query.get("candidate_diseases"))
         primary_context = _primary_gene_disease_context(
             query.get("genes") or [],
             use_primary_gene_disease=use_primary_gene_disease,
-            download_primary_gene_disease=download_primary_gene_disease,
             gencc_file=gencc_file,
             limit=max(1, int(limit or 25)),
         ) if needs_primary_gene_disease else {
@@ -256,21 +218,23 @@ def _hpo_disease_annotation_context(
 def _resolve_hpo_gene_file(
     *,
     hpo_gene_file: str | Path | None,
-    download_hpo_annotations: bool,
 ) -> Path | None:
-    return _resolve_public_annotation_file(
+    return _resolve_managed_annotation_file(
         annotation_file=hpo_gene_file,
-        cache_name="phenotype_to_genes.txt",
-        download_annotations=download_hpo_annotations,
+        library="hpo",
+        required_path_index=0,
     )
 
 
-def _default_hpo_gene_file() -> Path:
-    return genomi_data_root() / "resources" / "hpo" / "phenotype_to_genes.txt"
-
-
-def _default_hpo_disease_file() -> Path:
-    return genomi_data_root() / "resources" / "hpo" / "phenotype.hpoa"
+def _resolve_hpo_disease_file(
+    *,
+    hpo_disease_file: str | Path | None,
+) -> Path | None:
+    return _resolve_managed_annotation_file(
+        annotation_file=hpo_disease_file,
+        library="hpo",
+        required_path_index=1,
+    )
 
 
 def _library_install_annotation_context(
@@ -295,53 +259,34 @@ def _library_install_annotation_context(
     }
 
 
-def _materialize_annotation(
-    *,
-    cache_path: Path,
-    library: str,
-    download: bool,
-) -> Path | None:
-    """Resolve a registry-managed annotation cache. A present file is returned
-    with no network round-trip (the runtime hot path); when ``download`` is set
-    (the installer / explicit fetch), the central manager is the single code
-    path that fetches it — agents reach uninstalled libraries via the install
-    request, not a silent download."""
-    if cache_path.exists():
-        return cache_path
-    if not download:
-        return None
-    library_manager.refresh(library)
-    return cache_path if cache_path.exists() else None
-
-
-def _resolve_public_annotation_file(
+def _resolve_managed_annotation_file(
     *,
     annotation_file: str | Path | None,
-    cache_name: str,
-    download_annotations: bool,
+    library: str,
+    required_path_index: int,
 ) -> Path | None:
     if annotation_file:
         path = Path(annotation_file).expanduser()
         return path if path.exists() else None
-    return _materialize_annotation(
-        cache_path=genomi_data_root() / "resources" / "hpo" / cache_name,
-        library="hpo",
-        download=download_annotations,
-    )
+    state = library_manager.ensure(library)
+    if state.get("status") != "available":
+        return None
+    required_paths = state.get("required_paths") or []
+    try:
+        path = Path(str(required_paths[required_path_index]))
+    except IndexError:
+        return None
+    return path if path.exists() else None
 
 
 def _resolve_gencc_file(
     *,
     gencc_file: str | Path | None,
-    download_gencc: bool,
 ) -> Path | None:
-    if gencc_file:
-        path = Path(gencc_file).expanduser()
-        return path if path.exists() else None
-    return _materialize_annotation(
-        cache_path=genomi_data_root() / "resources" / "gencc" / "gencc-submissions.tsv",
+    return _resolve_managed_annotation_file(
+        annotation_file=gencc_file,
         library="gencc",
-        download=download_gencc,
+        required_path_index=0,
     )
 
 
@@ -349,7 +294,6 @@ def _primary_gene_disease_context(
     genes: Iterable[str],
     *,
     use_primary_gene_disease: bool,
-    download_primary_gene_disease: bool,
     gencc_file: str | Path | None,
     limit: int,
 ) -> dict[str, Any]:
@@ -367,7 +311,6 @@ def _primary_gene_disease_context(
     return retrieve_primary_gene_disease_associations(
         genes=genes,
         gencc_file=gencc_file,
-        download_gencc=download_primary_gene_disease,
         limit=limit,
     )
 

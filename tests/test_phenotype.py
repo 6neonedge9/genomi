@@ -144,7 +144,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
                 search_stored_research=False,
                 hpo_disease_file=disease_file,
                 gencc_file=gencc_file,
-                download_primary_gene_disease=False,
             )
 
         self.assertEqual(result["status"], "direct_source_supported")
@@ -181,7 +180,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
                 search_stored_research=False,
                 hpo_disease_file=disease_file,
                 gencc_file=gencc_file,
-                download_primary_gene_disease=False,
                 limit=10,
             )
 
@@ -207,7 +205,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
             result = retrieve_primary_gene_disease_associations(
                 genes=["GENE1"],
                 gencc_file=gencc_file,
-                download_gencc=False,
             )
 
         self.assertEqual(result["status"], "completed")
@@ -228,7 +225,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
                 "phenotype.retrieve_gene_disease_associations",
                 {
                     "gencc_file": str(gencc_file),
-                    "download_gencc": False,
                     "semantic_context": {
                         "raw_query": "what diseases are linked to gene one",
                         "host_entities": [{"text": "GENE1", "type": "gene"}],
@@ -244,7 +240,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict("os.environ", {"GENOMI_HOME": tmp}):
             result = retrieve_primary_gene_disease_associations(
                 genes=["GENE1"],
-                download_gencc=False,
             )
 
         self.assertEqual(result["status"], "requires_library_install")
@@ -280,7 +275,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
                 search_stored_research=False,
                 hpo_disease_file=disease_file,
                 gencc_file=gencc_file,
-                download_primary_gene_disease=False,
                 limit=10,
             )
 
@@ -309,7 +303,6 @@ class PhenotypePrioritizationTests(unittest.TestCase):
                 candidate_diseases=["Supplied disease"],
                 search_stored_research=False,
                 hpo_disease_file=disease_file,
-                download_primary_gene_disease=False,
             )
 
         self.assertEqual(result["top_observed"]["candidate_id"], "Supplied disease")

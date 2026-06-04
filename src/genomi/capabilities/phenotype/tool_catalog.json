@@ -214,9 +214,6 @@
           "gencc_file": {
             "$ref": "#/schema_fragments/properties/local_path"
           },
-          "download_gencc": {
-            "$ref": "#/schema_fragments/properties/boolean_default_false"
-          },
           "classifications": {
             "$ref": "#/schema_fragments/properties/string_array"
           },
@@ -300,9 +297,6 @@
           },
           "use_primary_gene_disease": {
             "$ref": "#/schema_fragments/properties/boolean_default_true"
-          },
-          "download_primary_gene_disease": {
-            "$ref": "#/schema_fragments/properties/boolean_default_false"
           },
           "gencc_file": {
             "$ref": "#/schema_fragments/properties/local_path"
