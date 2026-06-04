@@ -1,6 +1,5 @@
 ---
 name: genomic-inquiry
-version: 1.0.0
 description: |
   Default entry for natural-language DNA questions. The host agent resolves
   intent, reads focused skills, calls narrow evidence tools, and adapts after

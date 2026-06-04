@@ -1,6 +1,5 @@
 ---
 name: analytical-grounding
-version: 1.0.0
 description: |
   Retrieve canonical pathway members, cell-type marker records, and genomic
   interval feature overlaps from declared analytical sources.

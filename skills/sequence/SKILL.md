@@ -1,6 +1,5 @@
 ---
 name: sequence
-version: 1.0.0
 description: |
   Deterministic sequence utilities for translation, ORFs, restriction sites,
   Kozak context, primer checks, and local FASTA record matching.

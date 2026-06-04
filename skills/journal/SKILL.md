@@ -1,6 +1,5 @@
 ---
 name: journal
-version: 1.0.0
 description: |
   Maintain agent-authored investigation memory over Genomi evidence links,
   reviewed source findings, decisions, contradictions, and unresolved questions.

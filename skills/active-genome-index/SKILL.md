@@ -1,6 +1,5 @@
 ---
 name: active-genome-index
-version: 1.0.0
 description: |
   Register, parse, and digitize private genome source files into a local Active Genome Index and
   supporting evidence stores. Use when the session explicitly supplies a VCF/gVCF, BAM, 23andMe raw

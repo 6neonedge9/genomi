@@ -1,6 +1,5 @@
 ---
 name: gwas-catalog
-version: 1.0.0
 description: |
   Compare candidate rsIDs against GWAS Catalog phenotype associations.
   Use association evidence with source and ancestry limitations.

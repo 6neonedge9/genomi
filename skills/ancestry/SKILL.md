@@ -1,6 +1,5 @@
 ---
 name: ancestry
-version: 1.0.0
 description: |
   Use local ancestry reference-panel tools for 1000 Genomes GRCh37/GRCh38 PCA
   projection, marker overlap QC, and qualitative reference-neighbor context.

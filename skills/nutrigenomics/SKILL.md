@@ -1,6 +1,5 @@
 ---
 name: nutrigenomics
-version: 1.0.0
 description: |
   Curated single-marker evidence for declared nutrient-metabolism,
   food-tolerance, and taste-perception domains. Refuses diet prescriptions,

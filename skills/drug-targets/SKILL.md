@@ -1,6 +1,5 @@
 ---
 name: drug-targets
-version: 1.0.0
 description: |
   Causal drug-target and mechanism gene prioritization from public source
   records, drugs, drug classes, mechanisms, and candidate gene lists.

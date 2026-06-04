@@ -1,6 +1,5 @@
 ---
 name: journal-source-research
-version: 1.0.0
 description: |
   Journal sub-skill for focused public/source evidence review and reviewed
   finding write-back before interpretation or answer synthesis.

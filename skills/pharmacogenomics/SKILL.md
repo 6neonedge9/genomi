@@ -1,6 +1,5 @@
 ---
 name: pharmacogenomics
-version: 1.0.0
 description: |
   Answer drug-response, medication, PharmGKB-style, PGxDB, ATC, DrugBank,
   gene-drug, and variant-drug questions using public PGx evidence plus local

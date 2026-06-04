@@ -1,6 +1,5 @@
 ---
 name: variant-evidence
-version: 1.0.0
 description: |
   Answer specific rsID, allele, gene, region, genotype, and absence/callability
   questions using explicit session context or public evidence.

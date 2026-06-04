@@ -1,6 +1,5 @@
 ---
 name: functional-genomics
-version: 1.0.0
 description: |
   Candidate gene evidence from perturbation, dependency, resistance,
   sensitivity, viability, or assay-context records.

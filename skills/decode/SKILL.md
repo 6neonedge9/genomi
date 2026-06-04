@@ -1,6 +1,5 @@
 ---
 name: genomi-decode
-version: 1.0.0
 description: |
   Activate this skill for "/genomi decode", "decode my genome", "decode my
   DNA", "show me the dashboard", "the Genomi dashboard", "full report",

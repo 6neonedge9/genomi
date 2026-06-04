@@ -1,6 +1,5 @@
 ---
 name: clinvar
-version: 1.0.0
 description: |
   Build and inspect ClinVar exact-match evidence and candidate inventories.
   Use for clinical labels, VUS/conflict, carrier context, and drug-response rows.

@@ -1,6 +1,5 @@
 ---
 name: rare-disease-cancer
-version: 1.0.0
 description: |
   Plan rare disease, hereditary disease, and cancer risk source investigation
   from public targets or selected active genome evidence.
