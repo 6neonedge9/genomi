@@ -33,6 +33,7 @@ AGI_RECORD_FIELDS = frozenset(
         "agi_source_format",
         "agi_source_kind",
         "agi_source_member",
+        "agi_source_provider",
         "project_dir",
         "work_dir",
         "evidence_dir",

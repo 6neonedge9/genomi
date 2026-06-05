@@ -112,7 +112,6 @@ from .evidence_matrix import (  # noqa: F401
 from .source_state import (  # noqa: F401
     _component_has_evidence,
     _evidence_components,
-    _evidence_envelope,
     _evidence_state,
     _medication_review_status,
     _source_availability,
@@ -120,7 +119,6 @@ from .source_state import (  # noqa: F401
     _unanswered_answer_components,
 )
 from .interaction import (  # noqa: F401
-    _build_pgx_envelope,
     _clinical_context,
     _known_sample_fact_count,
     _pgx_candidate_evidence_view,

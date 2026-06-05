@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from genomi.capabilities.phenotype.gene_identification import compare_candidate_evidence
+from genomi.capabilities.gwas.gwas import GWAS_CATALOG_V2_API_URL
+from genomi.capabilities.phenotype.gene_identification import (
+    OPENTARGETS_GRAPHQL_API_URL,
+    compare_candidate_evidence,
+)
 
 
 def compare_candidate_payload(params: dict[str, Any]) -> dict[str, Any]:
@@ -29,9 +33,9 @@ def compare_candidate_payload(params: dict[str, Any]) -> dict[str, Any]:
         use_hpo_annotations=data.pop("use_hpo_annotations", True),
         hpo_gene_file=data.pop("hpo_gene_file", None),
         include_gwas=data.pop("include_gwas", True),
-        gwas_api_url=data.pop("gwas_api_url", "https://www.ebi.ac.uk/gwas/rest/api/v2"),
+        gwas_api_url=data.pop("gwas_api_url", GWAS_CATALOG_V2_API_URL),
         association_limit=data.pop("association_limit", 200),
         use_opentargets=data.pop("use_opentargets", True),
-        opentargets_api_url=data.pop("opentargets_api_url", "https://api.platform.opentargets.org/api/v4/graphql"),
+        opentargets_api_url=data.pop("opentargets_api_url", OPENTARGETS_GRAPHQL_API_URL),
         limit=data.pop("limit", 25),
     )

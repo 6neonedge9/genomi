@@ -100,6 +100,7 @@ def _parse_vcf_active_genome_index(
             reuse_existing=not force,
             defer_reference=two_phase,
             source_format=detection.source_format,
+            provider=detection.provider,
         )
         # The canonical the index adopted as its source of record
         # (metadata.vcf_path) must outlive this call: a deferred reference pass

@@ -43,11 +43,11 @@ def _retrieve_hpa_cell_type_markers(
         fetch_json=fetch_json,
         fetch_bytes=fetch_bytes,
     )
-    coverage_status = result.get("coverage_status") or "out_of_scope_for_input"
-    if coverage_status != "data_returned":
+    coverage_state = result.get("coverage_state") or "out_of_scope_for_input"
+    if coverage_state != "data_returned":
         return _cell_marker_empty(
             status=result.get("status") or "no_canonical_markers",
-            coverage_status=coverage_status,
+            coverage_state=coverage_state,
             query=query,
             empty_reason=result.get("empty_reason") or "HPA returned no cell-type marker records.",
             resolved_cell_types=result.get("resolved_entities") or [],
@@ -58,7 +58,7 @@ def _retrieve_hpa_cell_type_markers(
     markers = [_marker_from_hpa_record(record, resolved) for record in result.get("gene_relationship_records") or [] if isinstance(record, dict)]
     return _cell_marker_response(
         status="canonical_markers_found" if markers else "no_canonical_markers",
-        coverage_status="data_returned" if markers else "in_scope_empty",
+        coverage_state="data_returned" if markers else "in_scope_empty",
         query=query,
         cell_type={
             "id": _clean_text(resolved.get("entity_id")),
@@ -116,7 +116,7 @@ def _retrieve_table_cell_type_markers(
     if markers:
         return _cell_marker_response(
             status="canonical_markers_found",
-            coverage_status="data_returned",
+            coverage_state="data_returned",
             query=query,
             cell_type={
                 "id": target,
@@ -135,7 +135,7 @@ def _retrieve_table_cell_type_markers(
         )
     return _cell_marker_empty(
         status="cell_type_not_found" if candidates else "no_canonical_markers",
-        coverage_status="out_of_scope_for_input" if candidates else "in_scope_empty",
+        coverage_state="out_of_scope_for_input" if candidates else "in_scope_empty",
         query=query,
         empty_reason=(
             "The marker table contained similar cell-type names but no exact controlled cell-type match."

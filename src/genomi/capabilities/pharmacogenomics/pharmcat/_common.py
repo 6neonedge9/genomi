@@ -6,21 +6,33 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ....runtime.libraries import manager as library_manager
+
 JsonObject = dict[str, Any]
+_PHARMCAT_LIBRARY = library_manager.get("pharmcat")
+_PHARMCAT_SOURCE_URLS = _PHARMCAT_LIBRARY.source.urls
+PHARMCAT_HOME_URL = _PHARMCAT_SOURCE_URLS[0]
+PHARMCAT_GENES_DRUGS_URL = _PHARMCAT_SOURCE_URLS[1]
+PHARMCAT_CYP2D6_URL = _PHARMCAT_SOURCE_URLS[2]
+PHARMCAT_OUTSIDE_CALL_URL = _PHARMCAT_SOURCE_URLS[3]
+PHARMCAT_HLA_URL = _PHARMCAT_SOURCE_URLS[4]
+PHARMCAT_FAQ_URL = _PHARMCAT_SOURCE_URLS[5]
+PHARMCAT_PIPELINE_URL = _PHARMCAT_SOURCE_URLS[6]
+PHARMCAT_VCF_REQUIREMENTS_URL = _PHARMCAT_SOURCE_URLS[7]
 PHARMCAT_DOCS = [
     {
         "title": "PharmCAT",
-        "url": "https://pharmcat.clinpgx.org/",
+        "url": PHARMCAT_HOME_URL,
         "type": "tool_home",
     },
     {
         "title": "Running the PharmCAT Pipeline",
-        "url": "https://pharmcat.clinpgx.org/using/Running-PharmCAT-Pipeline/",
+        "url": PHARMCAT_PIPELINE_URL,
         "type": "pipeline_documentation",
     },
     {
         "title": "PharmCAT VCF Requirements",
-        "url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+        "url": PHARMCAT_VCF_REQUIREMENTS_URL,
         "type": "input_requirements",
     },
 ]

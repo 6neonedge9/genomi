@@ -18,6 +18,7 @@ from ..operations import (
     operation_discovery_payload,
 )
 from ..runtime.handoff import evidence_context
+from ..runtime.libraries import manager as library_manager
 from . import mcp
 from .presentation import present_result
 
@@ -232,7 +233,7 @@ def _add_static(subparsers: argparse._SubParsersAction[argparse.ArgumentParser])
     pop.add_argument("alt")
     pop.add_argument("--dataset", default="gnomad_r4")
     pop.add_argument("--genome-build", default="GRCh38")
-    pop.add_argument("--api-url", default="https://gnomad.broadinstitute.org/api")
+    pop.add_argument("--api-url", default=library_manager.api_base("gnomad"))
     pop.add_argument("--force", action="store_true")
     pop.set_defaults(func=_cmd_static_fetch_population)
 

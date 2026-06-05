@@ -559,9 +559,10 @@ class GwasCatalogTests(unittest.TestCase):
             ],
         )
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "wrong_evidence_regime")
         self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
+        self.assertEqual(result["evidence_envelope"]["answer_readiness"], "cannot_answer_yet")
         self.assertIsNone(result["top_observed_candidate"])
         self.assertEqual(result["routing_hint"]["recommended_operation"], "phenotype.retrieve_trait_gene_records")
         self.assertIn("causal-gene oracle", result["decision_policy"]["rule"])

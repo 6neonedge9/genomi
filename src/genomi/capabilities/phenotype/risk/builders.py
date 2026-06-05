@@ -622,15 +622,8 @@ def _warnings(
     active_candidates: dict[str, Any],
     *,
     context_scope: str,
-    missing_matches_path: Path | None = None,
 ) -> list[str]:
     warnings = []
-    if missing_matches_path is not None:
-        warnings.append(
-            "Active-index ClinVar match file not materialized yet at "
-            f"{missing_matches_path}; ran in public-only mode. "
-            "Run clinvar.scan_candidates on the Active Genome Index to enable personal-evidence ranking."
-        )
     if context_scope == "public_only":
         warnings.append("Public-source planning only; run ClinVar candidate scanning on the Active Genome Index if user-specific ranking is needed.")
     if int((stored_research.get("summary") or {}).get("record_count") or 0) == 0:

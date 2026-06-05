@@ -8,14 +8,19 @@ from collections.abc import Iterable
 from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
+from ....runtime.libraries import manager as library_manager
+from ....runtime.libraries import registry as library_registry
 
-BIOGRID_ORCS_API_BASE = "https://orcsws.thebiogrid.org"
+BIOGRID_ORCS_LIBRARY_ID = "biogrid-orcs"
+DEPMAP_LIBRARY_ID = "depmap"
+BIOGRID_ORCS_API_BASE = library_manager.api_base(BIOGRID_ORCS_LIBRARY_ID)
+BIOGRID_ORCS_HOME_URL = library_manager.source_url(BIOGRID_ORCS_LIBRARY_ID)
 BIOGRID_ORCS_ACCESS_KEY_ENV = "BIOGRID_ORCS_ACCESS_KEY"
 DEPMAP_CRISPR_GENE_EFFECT_URL_ENV = "DEPMAP_CRISPR_GENE_EFFECT_URL"
 DEPMAP_MODEL_URL_ENV = "DEPMAP_MODEL_URL"
 SUPPORTED_NATIVE_SCREEN_SOURCES = {
-    "biogrid_orcs": "BioGRID ORCS perturbation screen and score endpoints.",
-    "depmap": "DepMap public CRISPR gene effect release tables.",
+    "biogrid_orcs": library_registry.get(BIOGRID_ORCS_LIBRARY_ID).helps,
+    "depmap": library_registry.get(DEPMAP_LIBRARY_ID).helps,
 }
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SCREEN_SOURCE_TOKENS = {

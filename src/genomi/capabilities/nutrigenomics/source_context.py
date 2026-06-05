@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...runtime.libraries import manager as library_manager
+
 CAPABILITY_ID = "nutrigenomics"
 CAPABILITY_TITLE = "Nutrigenomic Single-Marker Evidence"
 
@@ -110,7 +112,7 @@ def source_urls() -> dict[str, str]:
     return {
         "clinvar": "https://www.ncbi.nlm.nih.gov/clinvar/",
         "clingen": "https://search.clinicalgenome.org/",
-        "gwas_catalog": "https://www.ebi.ac.uk/gwas/",
+        "gwas_catalog": library_manager.source_url("gwas-catalog"),
         "medlineplus_genetics": "https://medlineplus.gov/genetics/",
         "gene_reviews": "https://www.ncbi.nlm.nih.gov/books/NBK1116/",
         "cdc_mthfr_guidance": "https://www.cdc.gov/folic-acid/data-research/mthfr/index.html",
@@ -174,5 +176,5 @@ def build_source_context() -> dict[str, Any]:
         "out_of_scope_by_construction": list(OUT_OF_SCOPE_BY_CONSTRUCTION),
         "limitations": limitations(),
         "boundary_note": BOUNDARY_NOTE,
-        "coverage_status": "data_returned",
+        "coverage_state": "data_returned",
     }

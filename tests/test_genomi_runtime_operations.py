@@ -19,7 +19,7 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
         result = call_operation("region.retrieve_features", {"region": "1:100-200"})
 
         self.assertEqual(result["status"], "unsupported_assembly")
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
 
     def test_resources_check_libraries_reports_missing_install_command(self) -> None:
         result = call_operation("genomi.check_libraries", {"libraries": ["clinvar-grch38"]})
@@ -117,6 +117,55 @@ class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):
                 )
 
         self.assertEqual(raised.exception.code, "active_genome_index_approval_required")
+
+    def test_risk_investigation_reports_missing_active_matches_materialization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                vcf = Path("sample.vcf")
+                index = Path("sample.active-genome-index.sqlite")
+                evidence_db = Path("evidence.sqlite")
+                matches = Path("clinvar.matches.jsonl")
+                vcf.write_text(
+                    "##fileformat=VCFv4.2\n"
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
+                    "1\t10257\trsRisk\tA\tC\t50\tPASS\t.\tGT\t0/1\n",
+                    encoding="utf-8",
+                )
+                index.write_text("placeholder Active Genome Index", encoding="utf-8")
+                init_evidence_db(evidence_db)
+                runtime_context.set_active_agi_from_source(
+                    vcf,
+                    status="parsed",
+                    operation_result={
+                        "sample_slug": "sample",
+                        "agi_intake_source_path": str(vcf),
+                        "evidence_db": str(evidence_db),
+                        "genome_build": "GRCh38",
+                        "outputs": {"agi_path": str(index), "clinvar_matches": str(matches)},
+                    },
+                )
+                self.approve_access()
+
+                result = call_operation(
+                    "phenotype.plan_risk_investigation",
+                    {
+                        "question": "rare disease review for GENE2",
+                        "gene": "GENE2",
+                        "include_active_genome_index": True,
+                    },
+                )
+
+                self.assertEqual(result["status"], "materialization_incomplete")
+                self.assertEqual(result["context_scope"], "active_genome_index_selected")
+                self.assertEqual(result["coverage_state"], "materialization_incomplete")
+                self.assertEqual(result["evidence_envelope"]["finding_state"], "materialization_incomplete")
+                self.assertEqual(result["evidence_envelope"]["answer_readiness"], "needs_materialization")
+                self.assertEqual(result["next_actions"][0]["operation"], "clinvar.scan_candidates")
+                self.assertEqual(result["stored_research"]["status"], "not_searched")
+            finally:
+                os.chdir(previous)
 
     def test_public_only_pgx_operations_keep_shared_evidence_out_of_private_db_slot(self) -> None:
         expected_shared = str(self.genomi_home / "shared-evidence.sqlite")

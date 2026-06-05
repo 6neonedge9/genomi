@@ -35,7 +35,7 @@
           },
           "api_url": {
             "type": "string",
-            "default": "https://www.ebi.ac.uk/gwas/rest/api/v2"
+            "default": "https://www.ebi.ac.uk/gwas/rest/api"
           },
           "semantic_context": {
             "$ref": "#/schema_fragments/properties/semantic_context"

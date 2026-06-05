@@ -94,7 +94,6 @@ def acquire_perturbation_source_records(
     verified = [record for record in records if record["verification"]["status"] in {"verified", "partially_verified"}]
     direct_ready = [record for record in records if record["verification"]["direct_perturbation_support"]]
     return {
-        "ok": True,
         "status": _acquisition_status(records, direct_ready, verified),
         "query": query,
         "summary": {
@@ -184,7 +183,6 @@ def extract_screen_table_evidence_records(
         limit=limit,
     )
     return {
-        "ok": True,
         "status": acquisition["status"],
         "table": {
             "path": str(table_path),
@@ -194,7 +192,10 @@ def extract_screen_table_evidence_records(
             "skipped_row_count": max(0, len(rows) - len(records)),
         },
         "query": acquisition["query"],
-        "summary": acquisition["summary"],
+        "summary": {
+            **acquisition["summary"],
+            "record_count": len(acquisition["source_records"]),
+        },
         "source_records": acquisition["source_records"],
         "verified_source_records": acquisition["verified_source_records"],
         "direct_perturbation_source_records": acquisition["direct_perturbation_source_records"],

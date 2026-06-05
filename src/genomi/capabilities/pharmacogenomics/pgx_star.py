@@ -53,7 +53,6 @@ def call_star_alleles(
     gene_symbol = str(gene or "").strip().upper()
     if not gene_symbol:
         return {
-            "ok": False,
             "status": "needs_pharmacogene",
             "gene": None,
             "implemented_marker_definition_genes": implemented_marker_definition_genes(),
@@ -62,7 +61,6 @@ def call_star_alleles(
     definition = STAR_DEFINITIONS.get(gene_symbol)
     if definition is None:
         return {
-            "ok": False,
             "status": "unsupported_gene",
             "gene": gene_symbol,
             "implemented_marker_definition_genes": implemented_marker_definition_genes(),
@@ -70,7 +68,6 @@ def call_star_alleles(
     if not include_active_genome_index and not include_known_active_genome_indexes and db is None:
         marker_calls = [_marker_without_sample_context({**marker, "gene": gene_symbol}) for marker in definition["markers"]]
         return {
-            "ok": False,
             "status": "no_sample_context",
             "gene": gene_symbol,
             "genome_build": genome_build,
@@ -106,7 +103,6 @@ def call_star_alleles(
 
     diplotype = _infer_cyp2c19(marker_calls, definition)
     return {
-        "ok": True,
         "status": "completed",
         "gene": gene_symbol,
         "genome_build": genome_build,

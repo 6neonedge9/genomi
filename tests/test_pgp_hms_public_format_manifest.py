@@ -117,6 +117,9 @@ class PGPHMSPublicFormatManifestTests(ActiveGenomeIndexContractFixtureMixin, uni
             ):
                 source_path = writer(root / case_id)
                 observed_names.extend(self._archive_and_file_names(source_path))
+            source_path = self._write_fastq_pair_sources(root / "PGP_PUBLIC_SA_L001_R1_001.fastq")
+            observed_names.extend(self._archive_and_file_names(source_path))
+            observed_names.extend(path.name for path in root.glob("PGP_PUBLIC_SA_L001_R2_001.fastq"))
             source_path = self._write_fastq_sources(root / "PGP_PUBLIC_SA_L001_R1_001.fastq.gz")
             observed_names.extend(self._archive_and_file_names(source_path))
             observed_names.extend(path.name for path in root.glob("PGP_PUBLIC_SA_L001_R2_001.fastq.gz"))

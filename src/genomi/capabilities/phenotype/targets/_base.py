@@ -9,8 +9,9 @@ from collections.abc import Iterable
 from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
+from ....runtime.libraries import manager as library_manager
 
-OPENTARGETS_GRAPHQL_API_URL = "https://api.platform.opentargets.org/api/v4/graphql"
+OPENTARGETS_GRAPHQL_API_URL = library_manager.api_base("opentargets")
 OPENTARGETS_DISEASE_SEARCH_LIMIT = 3
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 LOW_INFORMATION_TOKENS = {

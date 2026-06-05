@@ -4,6 +4,7 @@ import json
 
 from ._common import (
     JsonObject,
+    PHARMCAT_HOME_URL,
     _artifact_source_summary,
     _as_dicts,
     _as_list,
@@ -45,7 +46,7 @@ def _record_payloads_from_report(report_json: JsonObject, *, captured_by: str = 
                 },
                 "source": _without_none({
                     "title": f"PharmCAT {record.get('source_group')} sample recommendation",
-                    "url": record.get("source_url") or "https://pharmcat.clinpgx.org/",
+                    "url": record.get("source_url") or PHARMCAT_HOME_URL,
                     "type": "sample_pharmacogenomic_recommendation",
                     "artifact": _artifact_source_summary(report_json),
                     "artifact_metadata": report_json.get("metadata") if isinstance(report_json.get("metadata"), dict) else None,
@@ -74,7 +75,7 @@ def _record_payloads_from_match(match_json: JsonObject, *, captured_by: str = "g
                 "target": {"type": "gene", "gene": gene},
                 "source": _without_none({
                     "title": "PharmCAT named allele matcher JSON artifact",
-                    "url": "https://pharmcat.clinpgx.org/",
+                    "url": PHARMCAT_HOME_URL,
                     "type": "sample_pharmacogenomic_call",
                     "artifact": _artifact_source_summary(match_json),
                     "artifact_metadata": match_json.get("metadata") if isinstance(match_json.get("metadata"), dict) else None,
@@ -105,7 +106,7 @@ def _record_payloads_from_phenotype(phenotype_json: JsonObject, *, captured_by: 
                 "target": {"type": "gene", "gene": gene},
                 "source": _without_none({
                     "title": "PharmCAT phenotyper JSON artifact",
-                    "url": "https://pharmcat.clinpgx.org/",
+                    "url": PHARMCAT_HOME_URL,
                     "type": "sample_pharmacogenomic_call",
                     "artifact": _artifact_source_summary(phenotype_json),
                     "artifact_metadata": phenotype_json.get("metadata") if isinstance(phenotype_json.get("metadata"), dict) else None,
@@ -267,7 +268,7 @@ def _record_payloads_from_calls(calls: JsonObject, *, captured_by: str = "genomi
                 "target": {"type": "gene", "gene": gene},
                 "source": _without_none({
                     "title": "PharmCAT sample PGx call artifact",
-                    "url": "https://pharmcat.clinpgx.org/",
+                    "url": PHARMCAT_HOME_URL,
                     "type": "sample_pharmacogenomic_call",
                     "artifact": _artifact_source_summary(calls),
                 }),

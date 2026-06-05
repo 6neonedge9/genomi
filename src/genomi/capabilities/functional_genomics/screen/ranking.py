@@ -112,7 +112,6 @@ def compare_screen_experiment_evidence(
         source_coverage=source_coverage,
     )
     payload = {
-        "ok": True,
         "status": status,
         "query": query,
         "summary": {

@@ -166,6 +166,7 @@ def _insert_source_active_genome_index_metadata(
         "source_format": detection.source_format,
         "source_kind": detection.source_kind,
         "source_member": detection.member_name,
+        "provider": detection.provider,
         "genome_build": genome_build,
         "max_records": max_records,
         "active_genome_index_build_status": ACTIVE_GENOME_INDEX_BUILD_STATUS_IN_PROGRESS,
@@ -276,6 +277,8 @@ def _cached_array_active_genome_index_if_usable(
     if metadata.get("source_format") != source_format:
         return None
     if metadata.get("source_member") != detection.member_name:
+        return None
+    if metadata.get("provider") != detection.provider:
         return None
     if metadata.get("genome_build") != genome_build:
         return None

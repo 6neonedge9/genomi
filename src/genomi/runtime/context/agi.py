@@ -506,6 +506,7 @@ def infer_agi_record(
         "agi_source_format": effective_format,
         "agi_source_kind": result.get("source_kind"),
         "agi_source_member": result.get("source_member"),
+        "agi_source_provider": result.get("provider"),
         "project_dir": _path_str(
             result.get("project_dir")
             or run_project_dir_for_source(agi_intake_path, source_format=effective_format, root=root)
@@ -571,13 +572,13 @@ def describe_agi_record(run: JsonObject | None) -> JsonObject | None:
     payload = {**run, "availability": availability, "digitized": digitized}
     if active_genome_index_state is not None:
         payload["active_genome_index_readiness"] = active_genome_index_state
-    if digitized:
-        agi_intake_source_path = payload.pop("agi_intake_source_path", None)
-        payload["availability"] = {
-            key: value
-            for key, value in availability.items()
-            if key != "agi_intake_source_path"
-        }
+    agi_intake_source_path = payload.pop("agi_intake_source_path", None)
+    payload["availability"] = {
+        key: value
+        for key, value in availability.items()
+        if key != "agi_intake_source_path"
+    }
+    if agi_intake_source_path:
         payload["intake_source"] = {
             "role": "ingestion_source_for_digitization",
             "hidden_after_digitization": True,
@@ -644,8 +645,6 @@ def _active_genome_index_state(run: JsonObject) -> JsonObject | None:
     if not agi_path:
         return None
     path = Path(str(agi_path))
-    if not path.exists():
-        return None
     return active_genome_index_readiness(path)
 
 

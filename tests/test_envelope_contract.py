@@ -60,7 +60,6 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
                     name,
                     {
                         "status": "completed",
-                        "ok": True,
                         "summary": {"record_count": 3},
                     },
                 )
@@ -77,7 +76,7 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
             with self.subTest(op=name):
                 result = self._call_with_stub(
                     name,
-                    {"status": "no_matching_records", "ok": True, "summary": {"record_count": 0}},
+                    {"status": "no_matching_records", "summary": {"record_count": 0}},
                 )
                 envelope = result["evidence_envelope"]
                 env.validate(envelope)
@@ -90,7 +89,7 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
             with self.subTest(op=name):
                 result = self._call_with_stub(
                     name,
-                    {"status": "source_unavailable", "ok": False},
+                    {"status": "source_unavailable"},
                 )
                 envelope = result["evidence_envelope"]
                 env.validate(envelope)
@@ -104,7 +103,6 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
                 result = self._call_with_stub(
                     name,
                     {
-                        "ok": False,
                         "status": "invalid_params",
                         "message": "missing required input",
                         "summary": {},
@@ -128,7 +126,7 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
         )
         result = self._call_with_stub(
             name,
-            {"status": "completed", "ok": True, "evidence_envelope": custom, "summary": {"record_count": 0}},
+            {"status": "completed", "evidence_envelope": custom, "summary": {"record_count": 0}},
         )
         self.assertEqual(result["evidence_envelope"], custom)
 
@@ -136,12 +134,12 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
         # genomi.list_resources is metadata-only and not in the evidence allowlist.
         result = self._call_with_stub(
             "genomi.list_resources",
-            {"ok": True, "status": "completed", "summary": {"record_count": 7}},
+            {"status": "completed", "summary": {"record_count": 7}},
         )
         self.assertNotIn("evidence_envelope", result)
 
     def test_nested_evidence_counts_yield_evidence_present(self) -> None:
-        # variant.gather_gene_context returns no top-level status/ok/count; its
+        # variant.gather_gene_context returns no top-level status or count; its
         # counts live nested inside per-source summaries. The classifier must
         # look one level down so partial-but-useful gene context is not stamped
         # not_assessed/cannot_answer_yet.
@@ -158,6 +156,39 @@ class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):
         env.validate(envelope)
         self.assertEqual(envelope["finding_state"], env.EVIDENCE_PRESENT)
         self.assertEqual(envelope["answer_readiness"], env.SCOPED_ANSWER_ONLY)
+
+    def test_data_returned_with_capability_specific_counts_yields_evidence_present(self) -> None:
+        result = self._call_with_stub(
+            "pathway.retrieve_members",
+            {
+                "status": "pathway_members_found",
+                "coverage_state": "data_returned",
+                "coverage": {"returned_member_count": 2},
+                "members": [{"gene_symbol": "OTC"}, {"gene_symbol": "CPS1"}],
+            },
+        )
+        envelope = result["evidence_envelope"]
+        env.validate(envelope)
+        self.assertEqual(envelope["finding_state"], env.EVIDENCE_PRESENT)
+        self.assertEqual(envelope["answer_readiness"], env.SCOPED_ANSWER_ONLY)
+        self.assertEqual(envelope["observations"]["coverage_state"], "data_returned")
+        self.assertEqual(envelope["observations"]["returned_member_count"], 2)
+
+    def test_metadata_only_found_status_does_not_assert_evidence(self) -> None:
+        result = self._call_with_stub(
+            "functional_genomics.query_geo",
+            {
+                "status": "geo_metadata_found",
+                "coverage_state": "metadata_only",
+                "summary": {"record_count": 0, "geo_hit_count": 1},
+                "geo_hits": [{"accession": "GSE12345"}],
+            },
+        )
+        envelope = result["evidence_envelope"]
+        env.validate(envelope)
+        self.assertEqual(envelope["finding_state"], env.NOT_ASSESSED)
+        self.assertEqual(envelope["answer_readiness"], env.CANNOT_ANSWER_YET)
+        self.assertEqual(envelope["observations"]["coverage_state"], "metadata_only")
 
     def test_nested_zero_counts_do_not_assert_evidence(self) -> None:
         # When every nested summary is empty, the op must not claim evidence.

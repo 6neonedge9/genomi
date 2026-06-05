@@ -143,7 +143,7 @@
                   {sources.map((src, i) => (
                     <div key={i} className="source-item">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: '#e5e5e5', fontSize: 13, fontWeight: 600 }}>{src.name || src.label || src.source || src.library || src.library_id || src.id || 'unknown source'}</span>
+                        <span style={{ color: '#e5e5e5', fontSize: 13, fontWeight: 600 }}>{src.name || 'unknown source'}</span>
                         <span className="badge" style={{ background: '#10b98118', color: '#10b981', borderColor: '#10b98130' }}>{src.status || 'ok'}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, color: '#555', fontSize: 11 }}>

@@ -58,8 +58,11 @@ def import_pharmcat_artifacts(
     ]
     status = "completed" if _has_imported_pharmcat_evidence(artifacts) else "no_pharmcat_artifacts"
     return {
-        "ok": status == "completed",
         "status": status,
+        "summary": {
+            "record_count": len(record_payloads),
+            "artifact_count": int((artifacts.get("file_count") or 0) if isinstance(artifacts, dict) else 0),
+        },
         "artifacts": _hide_private_paths(artifacts),
         "record_research_payloads": record_payloads,
         "interpretation_readiness": _readiness(0 if status == "completed" else 1, artifacts),

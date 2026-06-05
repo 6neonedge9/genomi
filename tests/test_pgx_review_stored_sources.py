@@ -294,7 +294,8 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
                 encoding="utf-8",
             )
             imported = import_pharmcat_artifacts(report_json=report)
-            self.assertTrue(imported["ok"])
+            self.assertEqual(imported["status"], "completed")
+            self.assertEqual(imported["summary"]["record_count"], 1)
             self.assertEqual(imported["record_research_payloads"][0]["captured_by"], "genomi call pharmacogenomics.import_pharmcat_artifacts")
             artifact_hash = imported["record_research_payloads"][0]["source"]["artifact"]["content_sha256"]
             record_reviewed_research(
@@ -466,8 +467,6 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
             patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
         ):
             result = review_medication_interaction(drug="clopidogrel", gene="CYP2C19")
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_public_pgx_evidence")
         self.assertEqual(result["public_evidence"]["source_evidence_count"], 0)
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
@@ -515,8 +514,6 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
                 patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
             ):
                 result = review_medication_interaction(drug="clopidogrel", db=private_db)
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_public_pgx_evidence")
         self.assertEqual(result["public_evidence"]["stored_research"]["record_count"], 1)
         self.assertEqual(result["public_evidence"]["stored_source_evidence_count"], 0)
@@ -590,8 +587,6 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
             patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
         ):
             result = review_medication_interaction(drug="clopidogrel", gene="CYP2C19")
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_public_pgx_evidence")
         self.assertEqual(result["public_evidence"]["source_evidence_count"], 0)
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
@@ -686,14 +681,12 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
             patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
         ):
             result = review_medication_interaction(drug="clopidogrel")
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "source_unavailable")
         availability = result["public_evidence"]["source_availability"]
         self.assertEqual(availability["status"], "source_unavailable_no_evidence")
         self.assertEqual(availability["unavailable_source_count"], 2)
-        self.assertEqual(result["pgx_evidence_scope"]["status"], "source_unavailable")
-        self.assertEqual(result["pgx_evidence_scope"]["checked"]["source_unavailable_count"], 2)
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
+        self.assertEqual(len(result["evidence_envelope"]["coverage"]["unavailable_sources"]), 2)
         self.assertEqual(result["traceability"]["source_availability"], availability)
         unanswered = {item["component"]: item for item in result["unanswered_answer_components"]}
         self.assertIn("public_pgx_evidence", unanswered)
@@ -731,11 +724,55 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
         self.assertEqual(availability["status"], "source_evidence_available_with_warnings")
         self.assertEqual(availability["unavailable_source_count"], 0)
         self.assertEqual(availability["warning_source_count"], 1)
-        self.assertEqual(result["pgx_evidence_scope"]["status"], "bounded_evidence_with_source_warnings")
-        self.assertEqual(result["pgx_evidence_scope"]["checked"]["source_availability_status"], "source_evidence_available_with_warnings")
-        self.assertEqual(result["pgx_evidence_scope"]["checked"]["source_warning_count"], 1)
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
+        self.assertEqual(result["evidence_envelope"]["observations"]["source_evidence_count"], 2)
         by_source = {source["source_id"]: source for source in availability["sources"]}
         self.assertEqual(by_source["pgxdb"]["availability"], "evidence_available_with_warnings")
+
+    def test_review_envelope_uses_source_availability_for_library_coverage(self) -> None:
+        clinpgx_result = {
+            "source": {"source_id": "clinpgx"},
+            "status": "no_matching_clinpgx_records",
+            "summary": {"guideline_annotation_count": 0, "clinical_annotation_count": 0, "label_annotation_count": 0},
+            "sample_follow_up_targets": {"rsids": [], "genes": []},
+            "clinical_verification": {"requires_before_personal_actionability": []},
+            "raw_calls": [{"url": "https://api.pharmgkb.org/v1/data/chemical", "status": 200}],
+            "record_research_payloads": [],
+        }
+        pgxdb_result = {
+            "source": {"source_id": "pgxdb"},
+            "status": "no_matching_pgxdb_records",
+            "summary": {"pgx_record_count": 0, "gene_drug_record_count": 0, "variant_context_record_count": 0},
+            "pgx_records": [],
+            "gene_drug_records": [],
+            "variant_context_records": [],
+            "raw_calls": [{"url": "https://pgx-db.org/rest-api/atc/atc_code/CS/", "status": 200}],
+            "record_research_payloads": [],
+        }
+        fda_result = {
+            "source": {"source_id": "fda_pgx"},
+            "status": "source_unavailable",
+            "summary": {"biomarker_labeling_count": 0, "association_count": 0},
+            "rows": [],
+            "raw_calls": [{"url": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations", "status": None, "error": "timeout"}],
+            "warnings": [{"url": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations", "status": None, "error": "timeout"}],
+            "record_research_payloads": [],
+        }
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.clinpgx.lookup_clinpgx", return_value=clinpgx_result),
+            patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
+            patch("genomi.capabilities.pharmacogenomics.fda_pgx.lookup_fda_pgx", return_value=fda_result),
+        ):
+            result = review_medication_interaction(drug="clopidogrel")
+
+        envelope = result["evidence_envelope"]
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(envelope["finding_state"], "not_assessed")
+        self.assertEqual(envelope["coverage"]["consulted_sources"], ["clinpgx", "pgxdb"])
+        self.assertEqual(envelope["coverage"]["unavailable_sources"], ["fda_pgx"])
+        envelope_libraries = {item["library"]: item["state"] for item in envelope["coverage"]["libraries"]}
+        self.assertEqual(envelope_libraries, {"clinpgx": "installed", "pgxdb": "installed", "fda-pgx": "failed"})
 
     def test_medication_review_is_agent_tool(self) -> None:
         tools = {tool["name"]: tool for tool in list_operations(capability="pharmacogenomics")}

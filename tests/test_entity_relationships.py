@@ -15,7 +15,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["status"], "gene_relationships_found")
         self.assertTrue(result["agent_decision_required"])
         self.assertNotIn("answer", result)
@@ -37,7 +37,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_id"], "R-HSA-70635")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"OTC", "CPS1"})
         self.assertEqual(result["gene_relationship_records"][0]["relationship_type"], "pathway_participant")
@@ -50,7 +50,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_text=_fake_entity_fetch_text,
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "entity_type_required")
         self.assertTrue(result["resolution_candidates"])
         self.assertEqual(result["source_coverage"]["sources_consulted"], [])
@@ -64,7 +64,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_text=_fake_entity_fetch_text,
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "unsupported_source")
         self.assertNotIn("gene_relationship_records", result)
 
@@ -78,7 +78,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_text=_fake_entity_fetch_text,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_id"], "cpd:C00022")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"PDHA1", "PDHB"})
         self.assertEqual(result["gene_relationship_records"][0]["relationship_type"], "enzyme_associated_with")
@@ -95,7 +95,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_bytes=_fake_entity_fetch_bytes,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_type"], "tissue")
         self.assertEqual(result["resolved_entities"][0]["name"], "liver")
         self.assertEqual([record["gene"] for record in result["gene_relationship_records"]], ["A1BG", "A1CF"])
@@ -115,7 +115,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_bytes=_fake_entity_fetch_bytes,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_type"], "cell_type")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"ABCB4", "ABCC2"})
         self.assertEqual(result["gene_relationship_records"][0]["relationship_type"], "cell_type_enriched_expression")
@@ -130,7 +130,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_bytes=_fake_entity_fetch_bytes,
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "entity_not_found")
         self.assertNotIn("gene_relationship_records", result)
 
@@ -143,7 +143,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_type"], "drug")
         self.assertEqual(result["resolved_entities"][0]["entity_id"], "CHEMBL25")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"PTGS1", "PTGS2"})
@@ -161,7 +161,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"PTGS1", "PTGS2"})
 
     def test_chembl_drug_id_infers_drug_type_without_entity_type(self) -> None:
@@ -172,7 +172,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["resolved_entities"][0]["entity_type"], "drug")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"PTGS1", "PTGS2"})
 
@@ -184,7 +184,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_json=_fake_entity_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual({record["gene"] for record in result["gene_relationship_records"]}, {"CDK1", "CCNB1"})
         self.assertEqual({record["evidence_class"] for record in result["gene_relationship_records"]}, {"experimental"})
         self.assertEqual(result["query"]["evidence_classes"], ["experimental"])
@@ -200,7 +200,7 @@ class EntityRelationshipTests(unittest.TestCase):
             fetch_text=_fake_entity_fetch_text,
         )
 
-        self.assertEqual(result["coverage_status"], "in_scope_empty")
+        self.assertEqual(result["coverage_state"], "in_scope_empty")
         self.assertNotIn("gene_relationship_records", result)
         self.assertNotIn("records_by_gene", result)
         self.assertNotIn("relationship_summary", result)

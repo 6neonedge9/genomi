@@ -464,8 +464,6 @@ def _ensure_envelope(name: str, result: object) -> object:
 
 def _result_needs_guidance(result: dict[str, object]) -> bool:
     status = str(result.get("status") or "").lower()
-    if result.get("ok") is False:
-        return True
     if status in {
         "in_progress",
         "requires_library_install",

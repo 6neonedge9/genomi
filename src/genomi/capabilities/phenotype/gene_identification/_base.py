@@ -6,7 +6,9 @@ import urllib.request
 from collections.abc import Iterable
 from typing import Any
 
-OPENTARGETS_GRAPHQL_API_URL = "https://api.platform.opentargets.org/api/v4/graphql"
+from ....runtime.libraries import manager as library_manager
+
+OPENTARGETS_GRAPHQL_API_URL = library_manager.api_base("opentargets")
 OPENTARGETS_TRAIT_TARGET_LIMIT = 100
 
 GWAS_PRIOR = "gwas_catalog_association"

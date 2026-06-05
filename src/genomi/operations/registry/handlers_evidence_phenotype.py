@@ -6,6 +6,7 @@ from ...capabilities.phenotype import gene_identification, phenotype, targets
 from ...capabilities.research import intent_research
 from ...evidence import research_scope_choices
 from ...retrieval import semantic as retrieval_semantic
+from ...runtime.libraries import manager as library_manager
 from ...runtime.paths import shared_evidence_db_path
 from .agi_access import require_session_access
 from .coerce import (
@@ -37,7 +38,7 @@ def _population_fetch(params: JsonObject) -> JsonObject:
         sync_shared=_bool(resolved, "sync_shared", True),
         dataset=_str(resolved, "dataset", "gnomad_r4"),
         genome_build=_str(resolved, "genome_build", "GRCh38"),
-        api_url=_str(resolved, "api_url", "https://gnomad.broadinstitute.org/api"),
+        api_url=_str(resolved, "api_url", library_manager.api_base("gnomad")),
         force=_bool(resolved, "force"),
     )
 
@@ -129,8 +130,8 @@ def _pathway_retrieve_member_genes(params: JsonObject) -> JsonObject:
         source=params.get("source"),
         species=params.get("species"),
         limit=_int(params, "limit", 500),
-        reactome_api_base=_str(params, "reactome_api_base", analytical_grounding.REACTOME_CONTENT_SERVICE_BASE),
-        kegg_api_base=_str(params, "kegg_api_base", analytical_grounding.KEGG_REST_API_BASE),
+        reactome_api_base=_str(params, "reactome_api_base", library_manager.api_base("reactome")),
+        kegg_api_base=_str(params, "kegg_api_base", library_manager.api_base("kegg")),
         msigdb_gmt=_optional_path(params, "msigdb_gmt"),
         msigdb_gmt_url=params.get("msigdb_gmt_url"),
         msigdb_version=params.get("msigdb_version"),
@@ -147,8 +148,8 @@ def _cell_type_retrieve_canonical_markers(params: JsonObject) -> JsonObject:
         species=params.get("species"),
         marker_table=_optional_path(params, "marker_table"),
         limit=_int(params, "limit", 100),
-        hpa_api_base=_str(params, "hpa_api_base", analytical_grounding.HPA_API_BASE),
-        hpa_download_base=_str(params, "hpa_download_base", analytical_grounding.HPA_TSV_DOWNLOAD_BASE),
+        hpa_api_base=_str(params, "hpa_api_base", library_manager.api_base("hpa")),
+        hpa_download_base=_str(params, "hpa_download_base", library_manager.source_url("hpa")),
         semantic_context=params.get("semantic_context"),
     )
 

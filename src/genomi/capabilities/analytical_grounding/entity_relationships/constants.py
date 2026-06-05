@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import re
 
-QUICKGO_API_BASE = "https://www.ebi.ac.uk/QuickGO/services"
-REACTOME_CONTENT_SERVICE_BASE = "https://reactome.org/ContentService"
-KEGG_REST_API_BASE = "https://rest.kegg.jp"
-HPA_API_BASE = "https://www.proteinatlas.org/api"
-HPA_TSV_DOWNLOAD_BASE = "https://www.proteinatlas.org/download/tsv"
-CHEMBL_API_BASE = "https://www.ebi.ac.uk/chembl/api/data"
+from ....runtime.libraries import manager as library_manager
+
+QUICKGO_API_BASE = library_manager.api_base("quickgo")
+REACTOME_CONTENT_SERVICE_BASE = library_manager.api_base("reactome")
+KEGG_REST_API_BASE = library_manager.api_base("kegg")
+HPA_API_BASE = library_manager.api_base("hpa")
+HPA_TSV_DOWNLOAD_BASE = library_manager.source_url("hpa")
+CHEMBL_API_BASE = library_manager.api_base("chembl")
 DEFAULT_TAXON_ID = "9606"
 DEFAULT_SPECIES = "Homo sapiens"
 

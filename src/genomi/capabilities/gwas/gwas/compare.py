@@ -150,6 +150,14 @@ def compare_gwas_variant_evidence(
         "rule": "Exact GWAS Catalog trait/source matches outrank nearby trait or pathway plausibility. P-value is a tie-breaker within the same evidence lane.",
     }
     warnings = _selection_warnings(selected_candidate, candidate_matrix)
+    status = "completed"
+    coverage_state = "data_returned"
+    if errors and len(errors) == len(rsids) and not ranked:
+        status = "source_unavailable"
+        coverage_state = "source_unavailable"
+    elif not ranked:
+        status = "no_matching_gwas_associations"
+        coverage_state = "in_scope_empty"
     view = evidence_view(
         task_profile=GWAS_VARIANT_PRIORITIZATION,
         query={
@@ -161,14 +169,9 @@ def compare_gwas_variant_evidence(
         top_observed_candidate=selected_candidate,
         evidence_policy=decision_policy,
         warnings=warnings,
+        coverage_state=coverage_state,
     )
-    status = "completed"
-    if errors and len(errors) == len(rsids) and not ranked:
-        status = "source_unavailable"
-    elif not ranked:
-        status = "no_matching_gwas_associations"
     result = {
-        "ok": status != "source_unavailable",
         "status": status,
         "source": {
             "id": "gwas_catalog",
@@ -319,6 +322,14 @@ def compare_gwas_gene_evidence(
         "rule": "This is GWAS Catalog gene-field evidence. Mapped-gene support is not causal-gene assignment; phenotype.retrieve_trait_gene_records retrieves native trait-to-gene evidence from integrated public sources.",
     }
     warnings = _gene_selection_warnings(selected, matrix)
+    status = "completed"
+    coverage_state = "data_returned"
+    if errors and not any(row["score"] > 0 for row in matrix):
+        status = "source_unavailable"
+        coverage_state = "source_unavailable"
+    elif not any(row["score"] > 0 for row in matrix):
+        status = "no_matching_gwas_gene_associations"
+        coverage_state = "in_scope_empty"
     view = evidence_view(
         task_profile=GWAS_GENE_PRIORITIZATION,
         query={
@@ -330,14 +341,9 @@ def compare_gwas_gene_evidence(
         top_observed_candidate=selected,
         evidence_policy=decision_policy,
         warnings=warnings,
+        coverage_state=coverage_state,
     )
-    status = "completed"
-    if errors and not any(row["score"] > 0 for row in matrix):
-        status = "source_unavailable"
-    elif not any(row["score"] > 0 for row in matrix):
-        status = "no_matching_gwas_gene_associations"
     result = {
-        "ok": status != "source_unavailable",
         "status": status,
         "source": {
             "id": "gwas_catalog",
@@ -411,7 +417,6 @@ def _wrong_gwas_gene_evidence_regime(
         evidence_state="wrong_evidence_regime",
     )
     result = {
-        "ok": False,
         "status": "wrong_evidence_regime",
         "coverage_state": "out_of_scope_for_input",
         "source": {

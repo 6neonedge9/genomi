@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 import urllib.error
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -164,7 +164,15 @@ def import_scoring_file(
             rest_metadata=rest_metadata,
         )
         _write_json_atomic(manifest_path(staging_dir), manifest)
-        if _publish_cache(staging_dir, out_dir, force=force) == "already_exists":
+        if (
+            library_manager.publish_prs_scoring_file_cache(
+                staging_dir,
+                out_dir,
+                force=force,
+                existing_cache_valid=_publish_target_is_valid(staging_dir),
+            )
+            == "already_exists"
+        ):
             return _already_imported(out_dir, requested_genome_build=requested_build, source_choice=source_choice)
         staging_dir = None
     finally:
@@ -339,9 +347,7 @@ def _score_variants_row_count(db_path: Path) -> int:
 
 
 def _new_staging_dir(genome_build: str) -> Path:
-    parent = library_manager.prs_scoring_file_dir("placeholder", genome_build).parents[1]
-    parent.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix=".import-", dir=parent))
+    return library_manager.prs_scoring_file_staging_dir(genome_build)
 
 
 def _write_json_atomic(path: Path, payload: JsonObject) -> None:
@@ -357,44 +363,25 @@ def _write_json_atomic(path: Path, payload: JsonObject) -> None:
             tmp.unlink()
 
 
-def _publish_cache(staging_dir: Path, target_dir: Path, *, force: bool) -> str:
-    target_dir.parent.mkdir(parents=True, exist_ok=True)
-    if target_dir.exists():
-        staging_manifest = read_manifest(staging_dir)
-        expected_pgs_id = str(staging_manifest.get("pgs_id") or "") or None
-        expected_build = str(staging_manifest.get("genome_build") or "") or None
-        if (
+def _publish_target_is_valid(staging_dir: Path) -> Callable[[Path], bool]:
+    staging_manifest = read_manifest(staging_dir)
+    expected_pgs_id = str(staging_manifest.get("pgs_id") or "") or None
+    expected_build = str(staging_manifest.get("genome_build") or "") or None
+
+    def is_valid(target_dir: Path) -> bool:
+        return bool(
             validate_score_cache(
                 target_dir,
                 expected_pgs_id=expected_pgs_id,
                 expected_genome_build=expected_build,
             )["valid"]
-            and not force
-        ):
-            return "already_exists"
-        _replace_cache_directory(staging_dir, target_dir)
-        return "published"
-    staging_dir.replace(target_dir)
-    return "published"
+        )
 
-
-def _replace_cache_directory(staging_dir: Path, target_dir: Path) -> None:
-    backup_dir = Path(tempfile.mkdtemp(prefix=f".{target_dir.name}.old-", dir=target_dir.parent))
-    backup_dir.rmdir()
-    target_dir.replace(backup_dir)
-    try:
-        staging_dir.replace(target_dir)
-    except Exception:
-        if target_dir.exists():
-            shutil.rmtree(target_dir, ignore_errors=True)
-        backup_dir.replace(target_dir)
-        raise
-    else:
-        shutil.rmtree(backup_dir, ignore_errors=True)
+    return is_valid
 
 
 def list_imported_scores(root: str | Path | None = None) -> JsonObject:
-    base = library_manager.prs_scoring_file_dir("placeholder", "GRCh38", root=root).parents[1]
+    base = library_manager.prs_scoring_file_root(root=root)
     records: list[JsonObject] = []
     if base.exists():
         for manifest in sorted(base.glob("*/*/manifest.json")):
@@ -674,7 +661,7 @@ def unsupported_genome_build_result(genome_build: str) -> JsonObject:
     normalized_build = normalize_build(genome_build)
     return {
         "status": "out_of_scope_for_input",
-        "coverage_status": "out_of_scope_for_input",
+        "coverage_state": "out_of_scope_for_input",
         "genome_build": normalized_build,
         "supported_genome_builds": list(SUPPORTED_GENOME_BUILDS),
         "message": "PRS scoring-file workflows support GRCh37/hg19 and GRCh38/hg38 genome builds.",

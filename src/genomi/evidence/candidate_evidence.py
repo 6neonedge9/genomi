@@ -370,7 +370,7 @@ def envelope_from_evidence_view(
             observations=observations,
             answer_readiness=_env.SCOPED_ANSWER_ONLY,
         )
-    if coverage_state == "in_scope_empty" or not rankings:
+    if coverage_state == "in_scope_empty":
         return _env.empty_consulted_scope(
             operation=operation,
             query_scope=query_scope,

@@ -670,11 +670,12 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
     """
 
     status = str(result.get("status") or "").lower()
-    ok = result.get("ok")
+    coverage_state = str(result.get("coverage_state") or "").lower()
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    coverage_payload = result.get("coverage") if isinstance(result.get("coverage"), dict) else {}
     observations = {
         "status": status or None,
-        "ok": ok,
+        "coverage_state": coverage_state or None,
     }
     # try to surface a record / candidate / match count
     count_keys = (
@@ -685,16 +686,42 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
         "association_count",
         "total_records",
         "total_match_records",
+        "returned_record_count",
+        "returned_member_count",
+        "returned_marker_count",
+        "returned_feature_count",
+        "returned_variant_count",
+        "observation_count",
+        "source_evidence_count",
+        "count",
     )
     for key in count_keys:
         if isinstance(summary, dict) and key in summary:
             observations[key] = summary[key]
+        elif key in coverage_payload:
+            observations[key] = coverage_payload[key]
         elif key in result:
             observations[key] = result[key]
+    list_evidence_keys = (
+        "records",
+        "results",
+        "candidates",
+        "matches",
+        "associations",
+        "members",
+        "markers",
+        "features",
+        "variants",
+        "rankings",
+    )
+    for key in list_evidence_keys:
+        value = result.get(key)
+        if isinstance(value, list) and value:
+            observations[f"{key}_count"] = len(value)
     # Some operations (e.g. variant.gather_gene_context) carry their evidence
     # counts nested inside per-source summary objects — clinvar_gene.total_records,
     # sample_matches.total_records, research_evidence.record_count — rather than at
-    # the top level, and emit no top-level `status`/`ok`. Without looking one level
+    # the top level, and emit no top-level status or count. Without looking one level
     # down, a result that gathered genuinely useful gene context would fall through
     # to not_assessed/cannot_answer_yet. When no top-level count is present, surface
     # any positive nested count so partial-but-useful evidence is recognized.
@@ -705,6 +732,10 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             for key in count_keys:
                 if key in child and _as_count(child[key]) > 0:
                     observations[f"{child_key}.{key}"] = child[key]
+            for key in list_evidence_keys:
+                value = child.get(key)
+                if isinstance(value, list) and value:
+                    observations[f"{child_key}.{key}_count"] = len(value)
 
     query_scope = dict(result.get("query") or result.get("target") or {})
     coverage = _coverage(consulted_sources=[], unavailable_sources=[])
@@ -729,7 +760,7 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             observations=observations,
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
     if status == "in_progress":
         return envelope(
@@ -746,7 +777,7 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             ),
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
     if status in {"source_unavailable", "source_unavailable_no_evidence", "error", "unavailable", "failed"}:
         return not_assessed(
@@ -757,7 +788,7 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             observations=observations,
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
     if status.startswith(("invalid", "missing", "wrong", "blocked", "needs", "requires", "not_")):
         return not_assessed(
@@ -768,34 +799,35 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             observations=observations,
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
-    if ok is False:
+    if coverage_state == "metadata_only":
         return not_assessed(
             operation=operation,
-            reason="Operation returned ok=false.",
+            reason="Operation returned source metadata only; no evidence records were available to interpret.",
             query_scope=query_scope,
             coverage=coverage,
             observations=observations,
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
 
     positive_count = 0
     for key, value in observations.items():
-        if key in {"status", "ok"}:
+        if key == "status":
             continue
         positive_count += _as_count(value)
 
-    if positive_count > 0:
+    data_returned = coverage_state == "data_returned" or status.endswith("_found")
+    if positive_count > 0 or data_returned:
         return evidence_present(
             operation=operation,
             query_scope=query_scope,
             coverage=coverage,
             observations=observations,
             answer_readiness=SCOPED_ANSWER_ONLY,
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
 
     # zero-count fall-through
@@ -807,7 +839,7 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
             observations=observations,
             next_actions=_status_next_actions(status, result),
             notes=_string_notes(result),
-            guidance=_status_guidance(status, ok),
+            guidance=_status_guidance(status),
         )
     return not_assessed(
         operation=operation,
@@ -817,7 +849,7 @@ def derive_default_envelope(operation: str, result: dict[str, Any]) -> dict[str,
         observations=observations,
         next_actions=_status_next_actions(status, result),
         notes=_string_notes(result),
-        guidance=_status_guidance(status, ok),
+        guidance=_status_guidance(status),
     )
 
 
@@ -848,7 +880,7 @@ def _string_notes(result: dict[str, Any]) -> list[str]:
     return notes
 
 
-def _status_guidance(status: str, ok: Any = None) -> list[str]:
+def _status_guidance(status: str) -> list[str]:
     if status == "in_progress":
         return ["in_progress:poll_runtime_check_background_job"]
     if status in {"requires_library_install", "needs_library_install"}:
@@ -870,8 +902,6 @@ def _status_guidance(status: str, ok: Any = None) -> list[str]:
             "not_observed_in_consulted_scope:do_not_imply_global_negative",
             "negative_inference_disallowed:do_not_state_clinical_negative",
         ]
-    if ok is False:
-        return ["operation_not_ok:inspect_status_and_next_actions"]
     return []
 
 

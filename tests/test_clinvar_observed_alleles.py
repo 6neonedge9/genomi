@@ -4,6 +4,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexNeed, create_active_genome_index, open_reader
@@ -24,9 +25,33 @@ from genomi.evidence.store.clinvar_match_provenance import (
     build_clinvar_match_payload,
     match_basis_from_record,
 )
+from genomi.evidence.store import clinvar_import as clinvar_import_module
 
 
 class ClinvarObservedAlleleTests(unittest.TestCase):
+    def test_force_clinvar_rebuild_checkpoints_wal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            clinvar_vcf = self._write_clinvar_vcf(Path(tmp) / "clinvar.vcf")
+            import_clinvar_vcf(clinvar_vcf, db, source_version="fixture")
+
+            with mock.patch.object(
+                clinvar_import_module,
+                "_checkpoint_truncate_wal",
+                wraps=clinvar_import_module._checkpoint_truncate_wal,
+            ) as checkpoint:
+                result = import_clinvar_vcf(
+                    clinvar_vcf,
+                    db,
+                    source_version="fixture",
+                    force=True,
+                )
+
+            wal_path = Path(str(db) + "-wal")
+            self.assertEqual(result["status"], "completed")
+            self.assertGreaterEqual(checkpoint.call_count, 2)
+            self.assertFalse(wal_path.exists() and wal_path.stat().st_size > 0)
+
     def test_match_basis_is_required_for_match_payloads(self) -> None:
         with self.assertRaisesRegex(ValueError, "match_basis is required"):
             build_clinvar_match_payload(

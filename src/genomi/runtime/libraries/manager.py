@@ -16,12 +16,15 @@ load-bearing: ``evidence/envelope.py`` reads ``missing_library`` /
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 import json
 import os
 import platform
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +89,21 @@ def install_command(library_ids: list[str] | tuple[str, ...]) -> str:
     return f"genomi install --libraries {','.join(library_ids)}"
 
 
+def api_base(library_id: str) -> str:
+    spec = registry.get(library_id)
+    if not spec.source.api_base:
+        raise ValueError(f"{library_id} does not declare an API base")
+    return spec.source.api_base
+
+
+def source_url(library_id: str, index: int = 0) -> str:
+    spec = registry.get(library_id)
+    try:
+        return spec.source.urls[index]
+    except IndexError as exc:
+        raise ValueError(f"{library_id} does not declare source URL {index}") from exc
+
+
 def _install_command_for_spec(spec: LibrarySpec) -> str:
     command = install_command(_install_libraries(spec))
     if spec.id == "msigdb-hallmark":
@@ -109,6 +127,50 @@ def parameterized_library_id(template_id: str, key: str) -> str:
 def prs_scoring_file_dir(score_id: str, genome_build: str = "GRCh38", *, root: str | Path | None = None) -> Path:
     registry.get("prs-scoring-file")
     return prs_score_dir(score_id, genome_build, root=root)
+
+
+def prs_scoring_file_root(genome_build: str = "GRCh38", *, root: str | Path | None = None) -> Path:
+    return prs_scoring_file_dir("placeholder", genome_build, root=root).parents[1]
+
+
+def prs_scoring_file_staging_dir(genome_build: str, *, root: str | Path | None = None) -> Path:
+    parent = prs_scoring_file_root(genome_build, root=root)
+    parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=".import-", dir=parent))
+
+
+def publish_prs_scoring_file_cache(
+    staging_dir: str | Path,
+    target_dir: str | Path,
+    *,
+    force: bool,
+    existing_cache_valid: Callable[[Path], bool] | None = None,
+) -> str:
+    staging = Path(staging_dir)
+    target = Path(target_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        if existing_cache_valid is not None and existing_cache_valid(target) and not force:
+            return "already_exists"
+        _replace_library_directory(staging, target)
+        return "published"
+    staging.replace(target)
+    return "published"
+
+
+def _replace_library_directory(staging_dir: Path, target_dir: Path) -> None:
+    backup_dir = Path(tempfile.mkdtemp(prefix=f".{target_dir.name}.old-", dir=target_dir.parent))
+    backup_dir.rmdir()
+    target_dir.replace(backup_dir)
+    try:
+        staging_dir.replace(target_dir)
+    except Exception:
+        if target_dir.exists():
+            shutil.rmtree(target_dir, ignore_errors=True)
+        backup_dir.replace(target_dir)
+        raise
+    else:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def prs_scoring_file_status(
@@ -188,7 +250,6 @@ def _prs_scoring_file_import_command(score_id: str, genome_build: str) -> str:
 
 
 def _prs_scoring_file_ask_user(status_payload: dict[str, Any]) -> dict[str, str]:
-    score_id = str(status_payload.get("library") or "")
     return {
         "question": f"{status_payload['title']} is not in the local score cache. Import it from PGS Catalog now?",
         "install_command": str(status_payload.get("install_command") or ""),

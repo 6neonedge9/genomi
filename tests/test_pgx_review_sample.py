@@ -78,7 +78,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
         self.assertEqual(user_matrix_item["finding"]["known_diplotype"], "*1/*2")
         self.assertEqual(user_matrix_item["verification"]["status"], "user_provided_unverified")
         self.assertEqual(result["evidence_matrix"]["traceability"]["user_provided_unverified_item_count"], 1)
-        self.assertEqual(result["pgx_evidence_scope"]["traceability"]["user_provided_unverified_item_count"], 1)
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
         self.assertEqual(components["sample_variant_or_marker_evidence"]["state"], "present")
         self.assertEqual(components["technical_sample_support"]["state"], "user_provided")
@@ -188,8 +187,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             patch("genomi.capabilities.pharmacogenomics.pgxdb.lookup_pgxdb", return_value=pgxdb_result),
         ):
             result = review_medication_interaction(drug="mysterymed", include_active_genome_index=True)
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_public_pgx_evidence")
         unanswered = {item["component"]: item for item in result["unanswered_answer_components"]}
         self.assertIn("public_pgx_evidence", unanswered)
@@ -245,7 +242,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
             "marker_calls": [{"evidence_status": "observed_reference_or_other_allele"}],
@@ -287,7 +283,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
             "genome_build": "GRCh38",
@@ -343,7 +338,6 @@ class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
             "genome_build": "GRCh37",

@@ -10,7 +10,6 @@ class PgxPresentationTests(unittest.TestCase):
         presented = present_result(
             "pharmacogenomics.review_medication",
             {
-                "ok": True,
                 "status": "completed",
                 "query": {"drug": "clopidogrel", "rsid": "rs4244285"},
                 "evidence_state": {
@@ -20,13 +19,6 @@ class PgxPresentationTests(unittest.TestCase):
                 },
                 "interpretation_readiness": {
                     "status": "ready_for_agent_synthesis",
-                },
-                "pgx_evidence_scope": {
-                    "model": "bounded_target_scoped_evidence",
-                    "status": "bounded_evidence_ready",
-                    "scope": {
-                        "sample_context_requested": True,
-                    },
                 },
                 "public_evidence": {
                     "source_evidence_count": 1,
@@ -40,6 +32,14 @@ class PgxPresentationTests(unittest.TestCase):
                 "sample_evidence": {
                     "sample_context_requested": True,
                     "sample_match_count": 1,
+                    "star_allele_calls": [
+                        {
+                            "status": "completed",
+                            "gene": "CYP2C19",
+                            "called_star_alleles": ["*1", "*2"],
+                            "diplotype": "*1/*2",
+                        }
+                    ],
                     "variant_lookups": [
                         {
                             "sample_context": {
@@ -81,14 +81,6 @@ class PgxPresentationTests(unittest.TestCase):
             {"status": "ready_for_agent_synthesis"},
         )
         self.assertEqual(
-            presented["pgx_evidence_scope"],
-            {
-                "model": "bounded_target_scoped_evidence",
-                "status": "bounded_evidence_ready",
-                "scope": {"sample_context_requested": True},
-            },
-        )
-        self.assertEqual(
             presented["sample_evidence"]["variant_matches"],
             [
                 {
@@ -98,6 +90,18 @@ class PgxPresentationTests(unittest.TestCase):
                     "ref": "G",
                     "alt": "A",
                     "genotype": "0/1",
+                }
+            ],
+        )
+        self.assertEqual(
+            presented["sample_evidence"]["star_allele_calls"],
+            [
+                {
+                    "status": "completed",
+                    "gene": "CYP2C19",
+                    "called_star_alleles": ["*1", "*2"],
+                    "diplotype": "*1/*2",
+                    "marker_calls": [],
                 }
             ],
         )

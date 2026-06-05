@@ -16,6 +16,7 @@ dict; that path is not exposed via MCP.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 JsonObject = dict[str, Any]
@@ -46,17 +47,20 @@ def _present_active_genome_index_parse(result: JsonObject) -> JsonObject:
         if isinstance(step_result, dict):
             compact_step["result"] = _select(
                 step_result,
-                ("status", "stats", "schema_version", "include_reference", "header"),
+                ("status", "stats", "schema_version", "include_reference", "header", "missing_libraries", "message"),
             )
         steps.append(compact_step)
     payload: JsonObject = {
         "status": result.get("status"),
+        "message": result.get("message"),
         "workflow_area": result.get("workflow_area"),
         "source_format": result.get("source_format"),
+        "provider": result.get("provider"),
         "source_kind": result.get("source_kind"),
         "annotation_scope": result.get("annotation_scope"),
         "sample_slug": result.get("sample_slug"),
         "genome_build": result.get("genome_build"),
+        "missing_libraries": result.get("missing_libraries"),
         "defaults_applied": result.get("defaults_applied"),
         "active_genome_index": active,
         "steps": steps,
@@ -100,13 +104,11 @@ def _present_pgx_medication_review(result: JsonObject) -> JsonObject:
     if envelope:
         payload["evidence_envelope"] = envelope
     payload.update({
-        "ok": result.get("ok"),
         "status": result.get("status"),
         "query": result.get("query"),
         "defaults_applied": result.get("defaults_applied"),
         "evidence_state": _compact_generic_value(result.get("evidence_state")),
         "interpretation_readiness": _compact_generic_value(result.get("interpretation_readiness")),
-        "pgx_evidence_scope": _compact_generic_value(result.get("pgx_evidence_scope")),
         "target_inventory": _select(
             target_inventory,
             (
@@ -229,7 +231,15 @@ def _compact_envelope(envelope: object) -> JsonObject | None:
             if not value:
                 continue
         if isinstance(value, dict) and key == "query_scope":
-            value = {k: v for k, v in value.items() if v not in (None, "", [], False)}
+            value = {
+                k: _compact_generic_value(v)
+                for k, v in value.items()
+                if v not in (None, "", [], False) and not _omit_key(str(k))
+            }
+            if not value:
+                continue
+        if isinstance(value, list) and key == "notes":
+            value = [_compact_scalar_value(item) for item in value if item]
             if not value:
                 continue
         ordered[key] = value
@@ -321,7 +331,7 @@ def _compact_public_evidence(public_evidence: JsonObject) -> JsonObject:
 
 
 def _compact_source_result(value: JsonObject) -> JsonObject:
-    compact = _select(value, ("ok", "status", "summary", "warnings", "clinical_verification"))
+    compact = _select(value, ("status", "summary", "warnings", "clinical_verification"))
     for key in ("guideline_annotations", "clinical_annotations", "label_annotations", "pgx_records", "rows"):
         records = value.get(key)
         if isinstance(records, list):
@@ -418,7 +428,7 @@ def _star_call_summaries(calls: list[object]) -> list[JsonObject]:
     for call in calls:
         if not isinstance(call, dict):
             continue
-        summary = _select(call, ("ok", "status", "gene", "genome_build", "definition_set", "definition_scope", "called_star_alleles", "diplotype", "warnings"))
+        summary = _select(call, ("status", "gene", "genome_build", "definition_set", "definition_scope", "called_star_alleles", "diplotype", "warnings"))
         marker_calls = []
         for marker in call.get("marker_calls") or []:
             marker_calls.append(
@@ -477,8 +487,12 @@ def _compact_generic_value(value: object, *, depth: int = 0) -> object:
 
 
 def _compact_scalar_value(value: object) -> object:
-    if isinstance(value, str) and _looks_like_local_path(value):
-        return "[omitted_local_path]"
+    if isinstance(value, str):
+        if _looks_like_local_path(value):
+            return "[omitted_local_path]"
+        redacted = _redact_embedded_local_paths(value)
+        if redacted != value:
+            return redacted
     return value
 
 
@@ -508,12 +522,16 @@ def _compact_active_index(value: object) -> JsonObject | None:
             "agi_source_format",
             "agi_source_kind",
             "agi_source_member",
+            "agi_source_provider",
             "genome_build",
             "digitized",
             "availability",
+            "active_genome_index_readiness",
             "intake_source",
         ),
     )
+    if "active_genome_index_readiness" in compact:
+        compact["active_genome_index_readiness"] = _compact_generic_value(compact["active_genome_index_readiness"])
     return compact
 
 
@@ -547,12 +565,26 @@ def _omit_key(key: str) -> bool:
         "workspace",
     }:
         return True
-    return bool(lowered.endswith("_path") or lowered.endswith("_dir") or lowered.endswith("_file") or lowered.endswith("_db") or lowered in {"output", "path", "db", "manifest_path"})
+    return bool(
+        lowered.endswith("_path")
+        or lowered.endswith("_dir")
+        or lowered.endswith("_file")
+        or lowered.endswith("_db")
+        or lowered.endswith("_gtf")
+        or lowered.endswith("_bed")
+        or lowered in {"output", "path", "db", "manifest_path"}
+    )
 
 
 def _looks_like_local_path(value: str) -> bool:
     stripped = value.strip()
     return stripped.startswith(("/", "~/", "$GENOMI_HOME/"))
+
+
+def _redact_embedded_local_paths(value: str) -> str:
+    # Keep the surrounding structured error useful while removing host-local
+    # path details from message/note strings.
+    return re.sub(r"(?<!:)($GENOMI_HOME/[^\s,;)'\"`]+|~/[^\s,;)'\"`]+|/[^\s,;)'\"`]+)", "[omitted_local_path]", value)
 
 
 def _drop_none(value: JsonObject) -> JsonObject:

@@ -68,6 +68,25 @@ class StatusAndInventoryTests(unittest.TestCase):
         self.assertEqual(status["validation"]["reason"], "missing_or_invalid_manifest")
         self.assertIn("prs.import_scoring_file", status["install_command"])
 
+    def test_prs_scoring_file_publish_reuses_valid_existing_cache(self) -> None:
+        target = self.root / "prs" / "PGS900001" / "GRCh38"
+        staging = self.root / "prs" / ".import-test"
+        target.mkdir(parents=True)
+        staging.mkdir(parents=True)
+        (target / "manifest.json").write_text("old\n", encoding="utf-8")
+        (staging / "manifest.json").write_text("new\n", encoding="utf-8")
+
+        result = manager.publish_prs_scoring_file_cache(
+            staging,
+            target,
+            force=False,
+            existing_cache_valid=lambda path: path == target,
+        )
+
+        self.assertEqual(result, "already_exists")
+        self.assertEqual((target / "manifest.json").read_text(encoding="utf-8"), "old\n")
+        self.assertTrue(staging.exists())
+
     def test_msigdb_install_command_has_gmt_hint(self) -> None:
         self.assertIn("--msigdb-gmt", manager.status("msigdb-hallmark", root=self.root)["install_command"])
 
@@ -82,7 +101,8 @@ class StatusAndInventoryTests(unittest.TestCase):
 
     def test_inventory_counts(self) -> None:
         inv = manager.inventory(root=self.root)
-        self.assertEqual(inv["summary"]["library_count"], 24)
+        expected_count = sum(1 for spec in registry.all_specs() if spec.kind.value != "parameterized")
+        self.assertEqual(inv["summary"]["library_count"], expected_count)
         self.assertEqual(
             inv["summary"]["installed_count"],
             sum(1 for item in inv["libraries"] if item["installed"]),

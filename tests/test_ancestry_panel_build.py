@@ -8,17 +8,13 @@ from pathlib import Path
 from unittest import mock
 
 from genomi.capabilities.ancestry import panel_build, source_context
-from genomi.runtime.liftover import liftover_preflight
 from genomi.runtime.paths import ancestry_reference_panel_dir
 
 
-def _liftover_available() -> bool:
-    return liftover_preflight("GRCh38", "GRCh37").get("status") == "available"
-
-
-# Three SNPs with curated GRCh38 coordinates that lift cleanly to GRCh37
-# (verified against UCSC liftOver): APOE rs429358, APOE rs7412, ACTN3
-# rs1815739. Expected GRCh37 marker IDs in test assertions below.
+# Three SNPs with curated GRCh38 -> GRCh37 coordinates. The panel-build tests
+# use a deterministic lifter so CI exercises panel materialization without
+# depending on host-installed UCSC chain files; runtime chain parsing is covered
+# separately in test_liftover.py when the host has the liftover library.
 _SYNTHETIC_GRCH38_MARKERS = [
     ("19:44908684:T:C", "19", 44908684, "T", "C", "0.10", "0.30"),
     ("19:44908822:C:T", "19", 44908822, "C", "T", "0.05", "0.22"),
@@ -29,6 +25,17 @@ _EXPECTED_GRCH37_MARKER_IDS = [
     "19:45412079:C:T",
     "11:66328095:C:T",
 ]
+
+
+class _FakePanelLifter:
+    _MAPPING = {
+        ("19", 44908684): ("19", 45411941, "+"),
+        ("19", 44908822): ("19", 45412079, "+"),
+        ("11", 66560624): ("11", 66328095, "+"),
+    }
+
+    def lift_position_full(self, chrom: str, pos: int) -> tuple[str, int, str] | None:
+        return self._MAPPING.get((chrom, pos))
 
 
 def _write_synthetic_panel(panel_dir: Path) -> None:
@@ -89,10 +96,6 @@ class PanelBuildRootTests(unittest.TestCase):
             get_liftover.assert_called_once_with("GRCh38", "GRCh37", root=root)
 
 
-@unittest.skipUnless(
-    _liftover_available(),
-    "liftover setup unavailable; install liftover-chains and pyliftover",
-)
 class PanelBuildTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -104,8 +107,11 @@ class PanelBuildTests(unittest.TestCase):
             source_context.PANEL_ID_GRCH37, root=self.root
         )
         _write_synthetic_panel(self.grch38_dir)
+        self._liftover_patch = mock.patch.object(panel_build, "get_liftover", return_value=_FakePanelLifter())
+        self._liftover_patch.start()
 
     def tearDown(self) -> None:
+        self._liftover_patch.stop()
         self._tmp.cleanup()
 
     def test_build_lifts_markers_and_remaps_loadings(self) -> None:

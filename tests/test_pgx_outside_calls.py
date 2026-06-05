@@ -23,8 +23,8 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = validate_outside_call_file(outside)
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["summary"]["record_count"], 1)
         self.assertEqual(result["summary"]["genes"], ["CYP2D6"])
         self.assertEqual(result["rows"][0]["gene"], "CYP2D6")
         self.assertEqual(result["rows"][0]["diplotype"], "*1/*4")
@@ -40,14 +40,12 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = validate_outside_call_file(outside)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_outside_call_file")
         self.assertEqual(result["invalid_rows"][0]["reason"], "missing_diplotype_phenotype_or_activity_score")
 
     def test_missing_outside_call_file_asks_for_file(self) -> None:
         result = validate_outside_call_file("missing.tsv")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "missing_outside_call_file")
 
     def test_rejects_too_many_fields(self) -> None:
@@ -57,7 +55,6 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = validate_outside_call_file(outside)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["invalid_rows"][0]["reason"], "too_many_fields")
 
     def test_rejects_non_utf8_input(self) -> None:
@@ -67,7 +64,6 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = validate_outside_call_file(outside)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "encoding_error")
         self.assertNotIn(str(outside), str(result))
 
@@ -93,14 +89,16 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = call_operation("pharmacogenomics.validate_outside_call_tsv", {"outside_call_file": str(outside)})
 
-        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["summary"]["record_count"], 1)
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["summary"]["genes"], ["HLA-B"])
 
     def test_call_operation_asks_for_missing_outside_call_file(self) -> None:
         result = call_operation("pharmacogenomics.validate_outside_call_tsv", {})
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "missing_outside_call_file")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
 
     def test_prepares_optitype_hla_output_for_pharmcat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,9 +112,9 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = prepare_outside_call_file(optitype, caller_format="optitype", output_file=output)
 
-            self.assertTrue(result["ok"])
             self.assertEqual(result["status"], "completed")
             self.assertEqual(result["caller_format"], "optitype")
+            self.assertEqual(result["summary"]["record_count"], 2)
             self.assertEqual(result["summary"]["genes"], ["HLA-A", "HLA-B"])
             self.assertEqual(result["rows"][0]["diplotype"], "*32:01/*68:03")
             self.assertEqual(result["rows"][1]["diplotype"], "*07:02/*35:01")
@@ -130,8 +128,8 @@ class PGxOutsideCallTests(unittest.TestCase):
     def test_call_operation_asks_for_missing_caller_output_file(self) -> None:
         result = call_operation("pharmacogenomics.prepare_outside_call_tsv", {})
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "missing_caller_output_file")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
 
     def test_prepares_generic_gene_call_table_for_pharmcat(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -148,7 +146,9 @@ class PGxOutsideCallTests(unittest.TestCase):
                 {"caller_output_file": str(table), "caller_format": "generic_table", "output_file": str(output)},
             )
 
-            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["summary"]["record_count"], 1)
+            self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
             self.assertEqual(result["summary"]["genes"], ["CYP2D6"])
             self.assertEqual(result["validation"]["rows"][0]["phenotype"], "Intermediate Metabolizer")
             self.assertIn("CYP2D6\t*1/*4\tIntermediate Metabolizer\t1.0", output.read_text(encoding="utf-8"))
@@ -170,7 +170,8 @@ class PGxOutsideCallTests(unittest.TestCase):
                 output_file=output,
             )
 
-            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "completed")
+            self.assertEqual(result["summary"]["record_count"], 1)
             self.assertEqual(result["sample"], "HG01086")
             self.assertEqual(result["summary"]["genes"], ["CYP2D6"])
             self.assertEqual(result["rows"][0]["diplotype"], "*1/*31")
@@ -184,7 +185,7 @@ class PGxOutsideCallTests(unittest.TestCase):
 
             result = prepare_outside_call_file(summary, caller_format="stellarpgx_summary")
 
-        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "invalid_caller_output_file")
         self.assertEqual(result["invalid_rows"][0]["reason"], "multiple_samples_require_sample")
 
 

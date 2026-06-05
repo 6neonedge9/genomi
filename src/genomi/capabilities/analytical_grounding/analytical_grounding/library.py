@@ -18,7 +18,10 @@ def analytical_library_path(name: str, *, root: str | Path | None = None) -> Pat
 
 
 def installed_analytical_library_path(name: str, *, root: str | Path | None = None) -> Path | None:
-    path = analytical_library_path(name, root=root)
+    try:
+        path = analytical_library_path(name, root=root)
+    except ValueError:
+        return None
     return path if path.is_file() else None
 
 

@@ -116,6 +116,34 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
             },
         )
 
+    def test_presentation_redacts_paths_inside_envelope_scope_and_notes(self) -> None:
+        presented = present_result(
+            "region.retrieve_features",
+            {
+                "status": "needs_input",
+                "message": "required file not found: /tmp/genomi/private/jobs/missing.json",
+                "evidence_envelope": {
+                    "operation": "region.retrieve_features",
+                    "headline": "region.retrieve_features: not_assessed · cannot_answer_yet",
+                    "finding_state": "not_assessed",
+                    "answer_readiness": "cannot_answer_yet",
+                    "guidance": ["missing_input:provide_required_context"],
+                    "negative_inference": {"allowed": False, "requires": ["library_coverage"], "satisfied": [], "reason": "missing"},
+                    "query_scope": {
+                        "assembly": "GRCh38",
+                        "gencode_gtf": "/tmp/genomi/private/reference/gencode.gtf.gz",
+                        "region": "1:1-10",
+                    },
+                    "notes": ["looked for /tmp/genomi/private/jobs/missing.json"],
+                },
+            },
+        )
+
+        text = json.dumps(presented)
+        self.assertNotIn("/tmp/genomi/private", text)
+        self.assertNotIn("gencode_gtf", presented["evidence_envelope"].get("query_scope", {}))
+        self.assertIn("[omitted_local_path]", text)
+
     # NOTE: test_panel_tools_are_agent_native_and_hide_intake_source was
     # removed when nutrition_core/common_risk_core panels were deleted (their
     # content moved into the nutrigenomics capability). Re-add when a new
@@ -848,6 +876,48 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertNotIn("outputs", payload)
         self.assertNotIn("project_dir", payload)
         self.assertNotIn(str(vcf.resolve(strict=False)), text)
+
+    def test_parse_blocker_preserves_missing_libraries_without_marking_digitized(self) -> None:
+        source = self.genomi_home / "sample_R1_001.fastq.gz"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(b"stub")
+        agi_path = self.genomi_home / "blocked" / "active-genome-index.sqlite"
+
+        with mock.patch(
+            "genomi.operations.registry.handlers_admin.source_intake.parse_source",
+            return_value={
+                "status": "requires_library_install",
+                "source": str(source),
+                "source_format": "fastq",
+                "source_kind": "sequencing_reads",
+                "sample_slug": "fastq-sha256-blocked",
+                "genome_build": "GRCh38",
+                "missing_libraries": [{"binary": "samtools", "install_library": "samtools"}],
+                "message": "samtools is required",
+                "outputs": {"agi_path": str(agi_path)},
+                "steps": [
+                    {
+                        "name": "align-fastq-to-bam",
+                        "status": "requires_library_install",
+                        "result": {
+                            "status": "requires_library_install",
+                            "missing_libraries": [{"binary": "samtools", "install_library": "samtools"}],
+                            "message": "samtools is required",
+                        },
+                    }
+                ],
+            },
+        ):
+            parsed = call_operation("genomi.parse_source", {"source": str(source)})
+
+        self.assertEqual(parsed["status"], "requires_library_install")
+        self.assertEqual(parsed["missing_libraries"][0]["binary"], "samtools")
+        self.assertEqual(parsed["steps"][0]["result"]["missing_libraries"][0]["install_library"], "samtools")
+        active = parsed["active_genome_index"]
+        self.assertEqual(active["status"], "requires_library_install")
+        self.assertFalse(active["digitized"])
+        self.assertEqual(active["active_genome_index_readiness"]["status"], "missing")
+        self.assertFalse(active["active_genome_index_readiness"]["complete"])
 
     def test_describe_context_surfaces_active_response_profile_default(self) -> None:
         context = call_operation("genomi.describe_context")

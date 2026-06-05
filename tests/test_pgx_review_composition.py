@@ -10,8 +10,6 @@ from tests._pgx_review_helpers import PGxMedicationReviewTestBase
 class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
     def test_review_invalid_target_exposes_agent_question_alias(self) -> None:
         result = review_medication_interaction(drug="")
-
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_target")
         self.assertEqual(result["unanswered_answer_components"][0]["component"], "medication_target")
         self.assertEqual(result["unanswered_answer_components"][0]["missing_inputs"], ["drug", "atc_code", "drugbank_id"])
@@ -149,7 +147,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "support_context": {"genotype_support": [{"support_status": "supported"}]},
         }
         star_result = {
-            "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
             "marker_calls": [{"evidence_status": "observed_effect_allele"}],
@@ -163,8 +160,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             patch("genomi.capabilities.pharmacogenomics.pgx_star.call_star_alleles", return_value=star_result) as star_lookup,
         ):
             result = review_medication_interaction(drug="clopidogrel", gene="CYP2C19", has_active_genome_index_context=True)
-
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["sample_evidence"]["rsid_targets"], ["rs4244285"])
         self.assertEqual(result["sample_evidence"]["sample_match_count"], 1)
@@ -229,12 +224,11 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
         self.assertTrue(result["evidence_state"]["has_public_pgx_evidence"])
         self.assertTrue(result["evidence_state"]["has_sample_evidence"])
         self.assertTrue(result["evidence_state"]["has_genotype_support"])
-        self.assertEqual(result["pgx_evidence_scope"]["model"], "bounded_target_scoped_evidence")
-        self.assertEqual(result["pgx_evidence_scope"]["scope"]["selected_public_targets"]["drug"], "clopidogrel")
-        self.assertTrue(result["pgx_evidence_scope"]["scope"]["sample_context_requested"])
-        self.assertTrue(result["pgx_evidence_scope"]["traceability"]["all_items_have_stable_ids"])
+        self.assertEqual(result["evidence_envelope"]["query_scope"]["drug"], "clopidogrel")
+        self.assertTrue(result["evidence_envelope"]["query_scope"]["sample_context_requested"])
+        self.assertTrue(result["evidence_matrix"]["traceability"]["all_items_have_stable_ids"])
         self.assertEqual(
-            result["traceability"]["pgx_evidence_scope"]["traceability"]["verification_status_counts"],
+            result["traceability"]["evidence_matrix_traceability"]["verification_status_counts"],
             result["evidence_matrix"]["traceability"]["verification_status_counts"],
         )
         self.assertNotIn("raw_calls", result["public_evidence"]["clinpgx"])
@@ -362,10 +356,10 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["interpretation_readiness"]["personal_statement_support"], "public_source_evidence_only")
         self.assertFalse(result["sample_evidence"]["sample_context_requested"])
         self.assertFalse(result["evidence_state"]["sample_context_requested"])
-        self.assertEqual(result["pgx_evidence_scope"]["status"], "bounded_evidence_ready")
-        self.assertFalse(result["pgx_evidence_scope"]["scope"]["sample_context_requested"])
-        self.assertFalse(result["pgx_evidence_scope"]["scope"]["clinical_context_requested"])
-        self.assertEqual(result["pgx_evidence_scope"]["unresolved_components"], [])
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
+        self.assertFalse(result["evidence_envelope"]["query_scope"]["sample_context_requested"])
+        self.assertFalse(result["evidence_envelope"]["query_scope"]["clinical_context_requested"])
+        self.assertEqual(result["evidence_envelope"]["observations"]["unresolved_components"], [])
         self.assertEqual(result["unanswered_answer_components"], [])
         components = {item["id"]: item for item in result["evidence_components"]["items"]}
         self.assertEqual(components["sample_target_selection"]["state"], "not_requested")
@@ -445,7 +439,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "ok": True,
             "status": "completed",
             "gene": "CYP2C19",
             "marker_calls": [{"evidence_status": "not_observed_in_active_genome_index"}],
@@ -491,7 +484,6 @@ class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):
             "record_research_payloads": [],
         }
         star_result = {
-            "ok": False,
             "status": "no_sample_context",
             "gene": "CYP2C19",
             "marker_calls": [{"evidence_status": "no_active_genome_index_selected"}],

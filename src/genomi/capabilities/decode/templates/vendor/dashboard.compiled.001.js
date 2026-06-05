@@ -1,5 +1,5 @@
 // AUTO-GENERATED chunk 1/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: 0fabf1b45edbc11c72e93debd7c46245d6d6e3d9c8349c09af4c5359a679c242
+// source-sha256: e7aa6dcd75eb4688a29e01d1de287abddd7156a45936737e8f6d38df0925d6c9
 // All evidence comes from the decode pipeline via window.__GENOMI_DASHBOARD__.
 // Anything below this line is presentation/layout only — no genome data is
 // prefilled in the template.
@@ -287,7 +287,7 @@ function OverviewView({
       fontSize: 13,
       fontWeight: 600
     }
-  }, src.name || src.label || src.source || src.library || src.library_id || src.id || 'unknown source'), /*#__PURE__*/React.createElement("span", {
+  }, src.name || 'unknown source'), /*#__PURE__*/React.createElement("span", {
     className: "badge",
     style: {
       background: '#10b98118',

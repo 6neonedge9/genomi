@@ -109,19 +109,33 @@ class ActiveGenomeIndexContractFixtureMixin:
             ("gvcf_zip", "gvcf", self._write_gvcf_zip_source),
             ("gvcf_tar", "gvcf", self._write_gvcf_tar_source),
             ("23andme_txt", "23andme", self._write_23andme_text_source),
+            ("23andme_gz", "23andme", self._write_23andme_gzip_source),
+            ("23andme_bz2", "23andme", self._write_23andme_bzip2_source),
+            ("23andme_xz", "23andme", self._write_23andme_xz_source),
             ("23andme_zip", "23andme", self._write_23andme_zip_source),
             ("23andme_tar", "23andme", self._write_23andme_tar_source),
             ("ancestrydna_txt", "ancestrydna", self._write_ancestry_text_source),
+            ("ancestrydna_gz", "ancestrydna", self._write_ancestry_gzip_source),
+            ("ancestrydna_bz2", "ancestrydna", self._write_ancestry_bzip2_source),
+            ("ancestrydna_xz", "ancestrydna", self._write_ancestry_xz_source),
             ("ancestrydna_zip", "ancestrydna", self._write_ancestry_zip_source),
             ("ancestrydna_tar", "ancestrydna", self._write_ancestry_tar_source),
             ("myheritage_csv", "myheritage", self._write_myheritage_csv_source),
+            ("myheritage_gz", "myheritage", self._write_myheritage_gzip_source),
+            ("myheritage_bz2", "myheritage", self._write_myheritage_bzip2_source),
+            ("myheritage_xz", "myheritage", self._write_myheritage_xz_source),
             ("myheritage_zip", "myheritage", self._write_myheritage_zip_source),
             ("myheritage_tar", "myheritage", self._write_myheritage_tar_source),
             ("ftdna_csv", "ftdna", self._write_ftdna_csv_source),
             ("ftdna_csv_gz", "ftdna", self._write_ftdna_gzip_source),
+            ("ftdna_bz2", "ftdna", self._write_ftdna_bzip2_source),
+            ("ftdna_xz", "ftdna", self._write_ftdna_xz_source),
             ("ftdna_zip", "ftdna", self._write_ftdna_zip_source),
             ("ftdna_tar", "ftdna", self._write_ftdna_tar_source),
             ("livingdna_txt", "livingdna", self._write_livingdna_text_source),
+            ("livingdna_gz", "livingdna", self._write_livingdna_gzip_source),
+            ("livingdna_bz2", "livingdna", self._write_livingdna_bzip2_source),
+            ("livingdna_xz", "livingdna", self._write_livingdna_xz_source),
             ("livingdna_zip", "livingdna", self._write_livingdna_zip_source),
             ("livingdna_tar", "livingdna", self._write_livingdna_tar_source),
         ]
@@ -131,6 +145,7 @@ class ActiveGenomeIndexContractFixtureMixin:
             "bam": "bam",
             "bam_zip": "bam",
             "bam_tar": "bam",
+            "fastq_pair": "fastq",
             "fastq": "fastq",
             "fastq_zip": "fastq",
             "fastq_tar": "fastq",
@@ -155,6 +170,19 @@ class ActiveGenomeIndexContractFixtureMixin:
 
     def _write_tar_member(self, path: Path, member_name: str, content: bytes) -> Path:
         return self._write_tar_members(path, [(member_name, content)])
+
+    def _write_gzip_file(self, path: Path, content: str) -> Path:
+        with gzip.open(path, "wb") as handle:
+            handle.write(content.encode("utf-8"))
+        return path
+
+    def _write_bzip2_file(self, path: Path, content: str) -> Path:
+        path.write_bytes(bz2.compress(content.encode("utf-8")))
+        return path
+
+    def _write_xz_file(self, path: Path, content: str) -> Path:
+        path.write_bytes(lzma.compress(content.encode("utf-8")))
+        return path
 
     def _fastq_record_bytes(self) -> bytes:
         sequence = "ACGT" * 40
@@ -183,6 +211,13 @@ class ActiveGenomeIndexContractFixtureMixin:
             handle.write(record)
         with gzip.open(r2_path, "wb") as handle:
             handle.write(record)
+        return r1_path
+
+    def _write_fastq_pair_sources(self, r1_path: Path) -> Path:
+        r2_path = r1_path.with_name(r1_path.name.replace("_R1_", "_R2_"))
+        record = self._fastq_record_bytes()
+        r1_path.write_bytes(record)
+        r2_path.write_bytes(record)
         return r1_path
 
     def _write_fastq_zip_sources(self, stem: Path) -> Path:
@@ -529,6 +564,15 @@ class ActiveGenomeIndexContractFixtureMixin:
         path.write_text(self._23andme_text(), encoding="utf-8")
         return path
 
+    def _write_23andme_gzip_source(self, stem: Path) -> Path:
+        return self._write_gzip_file(stem.with_name("genome_PGP_PUBLIC_v5_Full_20260429131650.txt.gz"), self._23andme_text())
+
+    def _write_23andme_bzip2_source(self, stem: Path) -> Path:
+        return self._write_bzip2_file(stem.with_name("genome_PGP_PUBLIC_v5_Full_20260429131650.txt.bz2"), self._23andme_text())
+
+    def _write_23andme_xz_source(self, stem: Path) -> Path:
+        return self._write_xz_file(stem.with_name("genome_PGP_PUBLIC_v5_Full_20260429131650.txt.xz"), self._23andme_text())
+
     def _write_23andme_zip_source(self, stem: Path) -> Path:
         path = stem.with_name("genome_PGP_PUBLIC_v4_Full_20240826181111.zip")
         return self._write_zip_member(
@@ -564,6 +608,15 @@ class ActiveGenomeIndexContractFixtureMixin:
         path = stem.with_name("AncestryDNA.txt")
         path.write_text(self._ancestry_text(), encoding="utf-8")
         return path
+
+    def _write_ancestry_gzip_source(self, stem: Path) -> Path:
+        return self._write_gzip_file(stem.with_name("AncestryDNA.txt.gz"), self._ancestry_text())
+
+    def _write_ancestry_bzip2_source(self, stem: Path) -> Path:
+        return self._write_bzip2_file(stem.with_name("AncestryDNA.txt.bz2"), self._ancestry_text())
+
+    def _write_ancestry_xz_source(self, stem: Path) -> Path:
+        return self._write_xz_file(stem.with_name("AncestryDNA.txt.xz"), self._ancestry_text())
 
     def _write_ancestry_zip_source(self, stem: Path) -> Path:
         path = stem.with_name("dna-data-2023-04-26.zip")
@@ -601,6 +654,15 @@ class ActiveGenomeIndexContractFixtureMixin:
         path.write_text(self._consumer_csv(include_banner=True), encoding="utf-8")
         return path
 
+    def _write_myheritage_gzip_source(self, stem: Path) -> Path:
+        return self._write_gzip_file(stem.with_name("MyHeritage_raw_dna_data.csv.gz"), self._consumer_csv(include_banner=True))
+
+    def _write_myheritage_bzip2_source(self, stem: Path) -> Path:
+        return self._write_bzip2_file(stem.with_name("MyHeritage_raw_dna_data.csv.bz2"), self._consumer_csv(include_banner=True))
+
+    def _write_myheritage_xz_source(self, stem: Path) -> Path:
+        return self._write_xz_file(stem.with_name("MyHeritage_raw_dna_data.csv.xz"), self._consumer_csv(include_banner=True))
+
     def _write_myheritage_zip_source(self, stem: Path) -> Path:
         path = stem.with_name("PGP_PUBLIC_raw_dna_data.zip")
         return self._write_zip_member(
@@ -627,6 +689,12 @@ class ActiveGenomeIndexContractFixtureMixin:
         with gzip.open(path, "wb") as handle:
             handle.write(self._consumer_csv(include_banner=False).encode("utf-8"))
         return path
+
+    def _write_ftdna_bzip2_source(self, stem: Path) -> Path:
+        return self._write_bzip2_file(stem.with_name("PGP_PUBLIC_Autosomal_o37_Results_20200820.csv.bz2"), self._consumer_csv(include_banner=False))
+
+    def _write_ftdna_xz_source(self, stem: Path) -> Path:
+        return self._write_xz_file(stem.with_name("PGP_PUBLIC_Autosomal_o37_Results_20200820.csv.xz"), self._consumer_csv(include_banner=False))
 
     def _write_ftdna_zip_source(self, stem: Path) -> Path:
         path = stem.with_name("PGP_PUBLIC_Autosomal_o37_Results_20200820.zip")
@@ -666,6 +734,15 @@ class ActiveGenomeIndexContractFixtureMixin:
         path = stem.with_name("living-dna-PGP_PUBLIC-autosomal.txt")
         path.write_text(self._livingdna_text(), encoding="utf-8")
         return path
+
+    def _write_livingdna_gzip_source(self, stem: Path) -> Path:
+        return self._write_gzip_file(stem.with_name("living-dna-PGP_PUBLIC-autosomal.txt.gz"), self._livingdna_text())
+
+    def _write_livingdna_bzip2_source(self, stem: Path) -> Path:
+        return self._write_bzip2_file(stem.with_name("living-dna-PGP_PUBLIC-autosomal.txt.bz2"), self._livingdna_text())
+
+    def _write_livingdna_xz_source(self, stem: Path) -> Path:
+        return self._write_xz_file(stem.with_name("living-dna-PGP_PUBLIC-autosomal.txt.xz"), self._livingdna_text())
 
     def _write_livingdna_zip_source(self, stem: Path) -> Path:
         path = stem.with_name("living-dna-PGP_PUBLIC-autosomal.zip")

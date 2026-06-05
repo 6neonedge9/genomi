@@ -24,7 +24,6 @@ def _geo_response(
     if acquisition:
         direct_records = [record for record in acquisition.get("direct_perturbation_source_records", []) if isinstance(record, dict)]
     payload: dict[str, Any] = {
-        "ok": status != "source_unavailable",
         "status": status,
         "coverage_state": coverage_state,
         "query": query,
@@ -41,6 +40,12 @@ def _geo_response(
         "source_records": source_records,
         "direct_perturbation_source_records": direct_records,
         "records_by_gene": _records_by_gene(source_records),
+        "summary": {
+            "record_count": len(source_records),
+            "direct_perturbation_record_count": len(direct_records),
+            "geo_hit_count": len(geo_hits),
+            "download_candidate_count": len(download_candidates),
+        },
         "coverage": {
             "geo_hit_count": len(geo_hits),
             "download_candidate_count": len(download_candidates),

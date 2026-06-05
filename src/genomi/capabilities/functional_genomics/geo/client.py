@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from ....retrieval import semantic as retrieval_semantic
+from ....runtime.libraries import manager as library_manager
 from .text_utils import (
     _clean_text,
     _extract_accessions,
@@ -17,8 +18,8 @@ from .text_utils import (
     _https_url,
 )
 
-NCBI_EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-NCBI_GEO_FTP_BASE = "https://ftp.ncbi.nlm.nih.gov/geo"
+NCBI_EUTILS_BASE = library_manager.api_base("ncbi-geo")
+NCBI_GEO_FTP_BASE = library_manager.source_url("ncbi-geo")
 NCBI_API_KEY_ENV = "NCBI_API_KEY"
 NCBI_EMAIL_ENV = "NCBI_EMAIL"
 NCBI_TOOL_ENV = "NCBI_TOOL"

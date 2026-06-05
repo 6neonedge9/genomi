@@ -8,6 +8,7 @@ from ...evidence import envelope as _env
 from ...runtime.external import utc_now
 from ...runtime.http_json import build_api_url, fetch_json_with_trace
 from ...runtime.libraries import manager as library_manager
+from .pgx_envelope import PublicPGxSourceEnvelopeSpec, build_public_pgx_source_envelope
 
 _PGXDB_LIBRARY = library_manager.get("pgxdb")
 PGXDB_API_URL = _PGXDB_LIBRARY.source.api_base or ""
@@ -17,6 +18,38 @@ PGXDB_MAX_LIMIT = 50
 PGXDB_MAX_RAW_LIST_ITEMS = 10
 PGXDB_MAX_RAW_TEXT_CHARS = 500
 PGXDB_MAX_TEXT_CHARS = 1000
+_PGXDB_ENVELOPE = PublicPGxSourceEnvelopeSpec(
+    operation="pharmacogenomics.fetch_pgxdb",
+    library_id="pgxdb",
+    source_id="pgxdb",
+    observation_keys=(
+        "pgx_record_count",
+        "gene_drug_record_count",
+        "medication_scoped_gene_drug_record_count",
+        "variant_context_record_count",
+    ),
+    invalid_target_reason="Missing PGxDB public target.",
+    invalid_target_action="provide_public_pgxdb_target",
+    missing_inputs=("drug", "atc_code", "drugbank_id", "rsid", "variant_marker", "gene"),
+    invalid_target_guidance="target_missing:provide_drug_gene_or_variant",
+    source_unavailable_reason="PGxDB source lookup was unavailable.",
+    alternate_operations=("pharmacogenomics.fetch_clinpgx", "pharmacogenomics.fetch_fda_labels"),
+    no_match_status="no_matching_pgxdb_records",
+    no_match_action="try_alternate_pgx_source",
+    no_match_guidance=(
+        "not_observed_in_consulted_scope:pgxdb_no_records_for_target",
+        "negative_inference_disallowed:check_other_pgx_sources",
+    ),
+    evidence_guidance=(
+        "pgxdb_evidence_present:public_pgx_context_only",
+        "sample_context:check_genotype_separately",
+    ),
+    evidence_next_action={
+        "action": "check_sample_support_before_personal_statement",
+        "operation": "variant.resolve",
+        "target_fields": ["rsid", "variant_marker", "gene"],
+    },
+)
 
 
 def lookup_pgxdb(
@@ -103,7 +136,6 @@ def lookup_pgxdb(
         status = "source_unavailable" if _raw_call_errors(raw_calls) else "no_matching_pgxdb_records"
 
     result = {
-        "ok": status in {"completed", "no_matching_pgxdb_records"},
         "status": status,
         "source": _source_metadata(base_url),
         "query": target,
@@ -137,7 +169,6 @@ def _empty_result(
     missing_inputs: list[str],
 ) -> dict[str, Any]:
     result = {
-        "ok": False,
         "status": status,
         "source": _source_metadata(base_url),
         "query": target,
@@ -167,65 +198,29 @@ def _empty_result(
 
 
 def _attach_evidence_envelope(result: dict[str, Any]) -> dict[str, Any]:
-    result["evidence_envelope"] = _pgxdb_evidence_envelope(result)
+    result["evidence_envelope"] = build_public_pgx_source_envelope(
+        result,
+        _PGXDB_ENVELOPE,
+        extra_status_handler=_pgxdb_medication_scope_envelope,
+    )
     return result
 
 
-def _pgxdb_evidence_envelope(result: dict[str, Any]) -> dict[str, Any]:
-    operation = "pharmacogenomics.fetch_pgxdb"
-    target = dict(result.get("query") or {})
-    summary = dict(result.get("summary") or {})
-    raw_calls = result.get("raw_calls") or []
-    status = str(result.get("status") or "")
-    observations = {
-        "status": status,
-        "pgx_record_count": summary.get("pgx_record_count", 0),
-        "gene_drug_record_count": summary.get("gene_drug_record_count", 0),
-        "medication_scoped_gene_drug_record_count": summary.get("medication_scoped_gene_drug_record_count", 0),
-        "variant_context_record_count": summary.get("variant_context_record_count", 0),
-    }
-    coverage = {
-        "libraries": [{"library": "pgxdb", "state": "failed" if status == "source_unavailable" else "installed"}],
-        "consulted_sources": ["pgxdb"] if raw_calls and status != "source_unavailable" else [],
-        "unavailable_sources": ["pgxdb"] if status == "source_unavailable" else [],
-        "materialization": [],
-    }
-    if status == "invalid_target":
+def _pgxdb_medication_scope_envelope(
+    result: dict[str, Any],
+    target: dict[str, Any],
+    coverage: dict[str, Any],
+    observations: dict[str, Any],
+) -> dict[str, Any] | None:
+    if (
+        target.get("rsid")
+        and not result.get("resolved_atc_codes")
+        and not target.get("drugbank_id")
+        and not target.get("drug")
+        and not target.get("atc_code")
+    ):
         return _env.not_assessed(
-            operation=operation,
-            reason="Missing PGxDB public target.",
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "provide_public_pgxdb_target",
-                    "missing_inputs": ["drug", "atc_code", "drugbank_id", "rsid", "variant_marker", "gene"],
-                }
-            ],
-            guidance=["target_missing:provide_drug_gene_or_variant"],
-        )
-    if status == "source_unavailable":
-        return _env.not_assessed(
-            operation=operation,
-            reason="PGxDB source lookup was unavailable.",
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "use_alternate_pgx_source_or_retry",
-                    "operations": [
-                        "pharmacogenomics.fetch_clinpgx",
-                        "pharmacogenomics.fetch_fda_labels",
-                    ],
-                }
-            ],
-            guidance=["source_unavailable:retry_or_use_other_pgx_sources"],
-        )
-    if target.get("rsid") and not result.get("resolved_atc_codes") and not target.get("drugbank_id") and not target.get("drug") and not target.get("atc_code"):
-        return _env.not_assessed(
-            operation=operation,
+            operation=_PGXDB_ENVELOPE.operation,
             reason="PGxDB association lookup needs medication scope for rsID-only input.",
             query_scope=target,
             coverage=coverage,
@@ -242,44 +237,7 @@ def _pgxdb_evidence_envelope(result: dict[str, Any]) -> dict[str, Any]:
                 "negative_inference_disallowed:do_not_treat_as_no_pgx_evidence",
             ],
         )
-    if status == "no_matching_pgxdb_records":
-        return _env.empty_consulted_scope(
-            operation=operation,
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "try_alternate_pgx_source",
-                    "operations": [
-                        "pharmacogenomics.fetch_clinpgx",
-                        "pharmacogenomics.fetch_fda_labels",
-                    ],
-                }
-            ],
-            guidance=[
-                "not_observed_in_consulted_scope:pgxdb_no_records_for_target",
-                "negative_inference_disallowed:check_other_pgx_sources",
-            ],
-        )
-    return _env.evidence_present(
-        operation=operation,
-        query_scope=target,
-        coverage=coverage,
-        observations=observations,
-        answer_readiness=_env.SCOPED_ANSWER_ONLY,
-        next_actions=[
-            {
-                "action": "check_sample_support_before_personal_statement",
-                "operation": "variant.resolve",
-                "target_fields": ["rsid", "variant_marker", "gene"],
-            }
-        ],
-        guidance=[
-            "pgxdb_evidence_present:public_pgx_context_only",
-            "sample_context:check_genotype_separately",
-        ],
-    )
+    return None
 
 
 def _source_metadata(base_url: str) -> dict[str, Any]:

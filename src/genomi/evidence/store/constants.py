@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+
+from ...runtime.libraries import manager as library_manager
 from ...runtime.paths import run_evidence_db_path, run_output_path
 from ...runtime.sqlite_support import (
     LONG_WRITE_BUSY_TIMEOUT_SECONDS,
@@ -127,7 +129,7 @@ CANDIDATE_EVIDENCE_GROUP_DESCRIPTIONS = dict(CANDIDATE_EVIDENCE_GROUPS)
 DEFAULT_CANDIDATE_EVIDENCE_GROUPS = ["clinvar_p_lp", "clinvar_conflicting", "clinvar_vus"]
 DEFAULT_POPULATION_LABEL = "global"
 SQLITE_BUSY_TIMEOUT_SECONDS = LONG_WRITE_BUSY_TIMEOUT_SECONDS
-GNOMAD_API_URL = "https://gnomad.broadinstitute.org/api"
+GNOMAD_API_URL = library_manager.api_base("gnomad")
 RESEARCH_FINDING_TEXT_MAX_CHARS = 1600
 RESEARCH_TARGET_TYPES = {"condition", "drug", "gene", "topic", "variant"}
 RESEARCH_SCOPES = {"shared", "private"}

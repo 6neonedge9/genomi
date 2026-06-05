@@ -187,6 +187,7 @@ def _decode_build_dashboard_evidence(params: JsonObject) -> JsonObject:
         return decode_evidence_builder.build_dashboard_evidence(
             params=resolved,
             run_operation=_run_decode_panel_operation,
+            active_genome_index_context=active,
         )
     except ValueError as exc:
         raise OperationError("invalid_params", str(exc)) from exc

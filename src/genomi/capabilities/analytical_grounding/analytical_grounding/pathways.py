@@ -48,11 +48,11 @@ def _retrieve_reactome_pathway_members(
         reactome_api_base=reactome_api_base,
         fetch_json=fetch_json,
     )
-    coverage_status = relationship_result.get("coverage_status") or "out_of_scope_for_input"
-    if coverage_status != "data_returned":
+    coverage_state = relationship_result.get("coverage_state") or "out_of_scope_for_input"
+    if coverage_state != "data_returned":
         return _pathway_empty(
             status=relationship_result.get("status") or "no_pathway_members",
-            coverage_status=coverage_status,
+            coverage_state=coverage_state,
             query=query,
             empty_reason=relationship_result.get("empty_reason") or "Reactome returned no pathway participant records.",
             resolved_pathways=relationship_result.get("resolved_entities") or [],
@@ -67,7 +67,7 @@ def _retrieve_reactome_pathway_members(
     ]
     return _pathway_response(
         status="pathway_members_found" if members else "no_pathway_members",
-        coverage_status="data_returned" if members else "in_scope_empty",
+        coverage_state="data_returned" if members else "in_scope_empty",
         query=query,
         pathway={
             "id": _clean_text(resolved.get("entity_id")),
@@ -92,7 +92,7 @@ def _retrieve_kegg_pathway_members(
     if resolved["state"] != "resolved":
         return _pathway_empty(
             status=resolved["state"],
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason=resolved["reason"],
             resolution_candidates=resolved.get("candidates", []),
@@ -131,7 +131,7 @@ def _retrieve_kegg_pathway_members(
             break
     return _pathway_response(
         status="pathway_members_found" if members else "no_pathway_members",
-        coverage_status="data_returned" if members else "in_scope_empty",
+        coverage_state="data_returned" if members else "in_scope_empty",
         query=query,
         pathway=pathway,
         members=members,
@@ -190,7 +190,7 @@ def _retrieve_msigdb_hallmark_members(
             ]
             return _pathway_response(
                 status="pathway_members_found" if members else "no_pathway_members",
-                coverage_status="data_returned" if members else "in_scope_empty",
+                coverage_state="data_returned" if members else "in_scope_empty",
                 query=query,
                 pathway={
                     "id": set_name,
@@ -209,7 +209,7 @@ def _retrieve_msigdb_hallmark_members(
         candidates.append({"id": set_name, "name": set_name, "source": "msigdb_hallmark"})
     return _pathway_empty(
         status="pathway_not_found",
-        coverage_status="out_of_scope_for_input",
+        coverage_state="out_of_scope_for_input",
         query=query,
         empty_reason="No Hallmark gene set in the supplied MSigDB GMT matched the requested identifier or name.",
         resolution_candidates=candidates[:10],

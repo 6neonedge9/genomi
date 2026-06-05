@@ -99,8 +99,8 @@ class ClinPGxTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.clinpgx._fetch_json", side_effect=fake_fetch):
             result = lookup_clinpgx(drug="clopidogrel", gene="CYP2C19", rsid="rs4244285")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["resolved"]["chemicals"][0]["id"], "PA449053")
         self.assertEqual(result["resolved"]["genes"][0]["symbol"], "CYP2C19")
         self.assertEqual(result["resolved"]["variants"][0]["symbol"], "rs4244285")
@@ -165,8 +165,8 @@ class ClinPGxTests(unittest.TestCase):
     def test_lookup_requires_selected_public_target(self) -> None:
         result = lookup_clinpgx()
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_target")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertEqual(result["raw_calls"], [])
         self.assertEqual(
             result["unanswered_answer_components"][0]["missing_inputs"],
@@ -248,8 +248,8 @@ class ClinPGxTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.clinpgx.urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
             result = lookup_clinpgx(drug="clopidogrel")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertEqual(result["summary"]["guideline_annotation_count"], 0)
         self.assertEqual(result["raw_calls"][0]["attempts"], 2)
         self.assertIn("offline", result["warnings"][0]["error"])
@@ -296,7 +296,6 @@ class ClinPGxTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.clinpgx._fetch_json", side_effect=fake_fetch):
             result = call_operation("pharmacogenomics.fetch_clinpgx", {"drug": "clopidogrel", "guideline_source": "cpic"})
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "no_matching_clinpgx_records")
         self.assertEqual(result["resolved"]["chemicals"][0]["id"], "PA449053")
         self.assertEqual(result["evidence_envelope"]["finding_state"], "not_observed_in_consulted_scope")

@@ -63,8 +63,9 @@ class GwasCatalogVariantTests(unittest.TestCase):
         )
 
         self.assertEqual(result["summary"]["variant_count"], 3)
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["summary"]["matched_association_count"], 2)
         self.assertEqual(result["summary"]["top_variant"], "rs3738934")
         self.assertEqual(result["summary"]["top_observed_candidate"], "rs3738934")
@@ -99,8 +100,10 @@ class GwasCatalogVariantTests(unittest.TestCase):
             fetch_json=fake_fetch,
         )
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
+        self.assertEqual(result["evidence_envelope"]["answer_readiness"], "cannot_answer_yet")
         self.assertEqual(result["summary"]["matched_association_count"], 0)
         self.assertEqual(len(result["errors"]), 2)
 
@@ -111,8 +114,9 @@ class GwasCatalogVariantTests(unittest.TestCase):
             fetch_json=lambda _url: {"_embedded": {"associations": []}},
         )
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "no_matching_gwas_associations")
+        self.assertEqual(result["coverage_state"], "in_scope_empty")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_observed_in_consulted_scope")
         self.assertEqual(result["summary"]["matched_association_count"], 0)
         self.assertIsNone(result["top_observed"])
         self.assertEqual(result["candidate_matrix"], [])

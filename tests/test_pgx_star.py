@@ -54,7 +54,6 @@ class PGxStarAlleleTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pgx_star.variant_lookup.lookup_variant", side_effect=fake_lookup) as lookup:
             result = call_star_alleles(gene="CYP2C19")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["genome_build"], "GRCh38")
         self.assertEqual(result["called_star_alleles"][0]["star_allele"], "*2")
@@ -161,7 +160,6 @@ class PGxStarAlleleTests(unittest.TestCase):
     def test_unsupported_gene_is_explicit(self) -> None:
         result = call_star_alleles(gene="CYP2D6")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "unsupported_gene")
         self.assertIn("CYP2C19", result["implemented_marker_definition_genes"])
 
@@ -169,7 +167,6 @@ class PGxStarAlleleTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pgx_star.variant_lookup.lookup_variant") as lookup:
             result = call_star_alleles(gene="CYP2C19", include_active_genome_index=False)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_sample_context")
         self.assertEqual(result["marker_calls"][0]["evidence_status"], "no_active_genome_index_selected")
         self.assertEqual(result["diplotype"]["possible_diplotype"], None)

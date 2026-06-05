@@ -21,8 +21,8 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_json=_fake_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
-        self.assertEqual(result["source_coverage"]["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["source_coverage"]["coverage_state"], "data_returned")
         self.assertEqual(result["pathway"]["id"], "R-HSA-70635")
         self.assertEqual({member["gene_symbol"] for member in result["members"]}, {"OTC", "CPS1"})
         self.assertNotIn("answer", result)
@@ -35,7 +35,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_text=_fake_fetch_text,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["pathway"]["source"], "kegg")
         self.assertEqual([member["gene_symbol"] for member in result["members"]], ["HK1", "GPI"])
         self.assertEqual(result["members"][0]["source_evidence"]["evidence_class"], "kegg_pathway_membership")
@@ -52,7 +52,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["pathway"]["id"], "R-HSA-70635")
         accepted = {item["text"] for item in result["semantic_context"]["term_matches"]}
         self.assertIn("R-HSA-70635", accepted)
@@ -72,7 +72,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 msigdb_version="test",
             )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["pathway"]["id"], "HALLMARK_G2M_CHECKPOINT")
         self.assertEqual({member["gene_symbol"] for member in result["members"]}, {"CDK1", "CCNB1"})
 
@@ -82,7 +82,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_json=_fake_fetch_json,
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "source_required")
         self.assertNotIn("members", result)
         self.assertTrue(result["resolution_candidates"])
@@ -95,7 +95,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             fetch_bytes=_fake_fetch_bytes,
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["cell_type"]["source"], "hpa")
         self.assertEqual([marker["gene_symbol"] for marker in result["markers"]], ["ABCB4", "ABCC2"])
         self.assertEqual(result["markers"][0]["marker_strength"]["expression_unit"], "nCPM")
@@ -114,7 +114,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         accepted = {item["text"] for item in result["semantic_context"]["term_matches"]}
         self.assertIn("hepatocytes", accepted)
 
@@ -133,7 +133,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 marker_table=table,
             )
 
-        self.assertEqual(result["coverage_status"], "in_scope_empty")
+        self.assertEqual(result["coverage_state"], "in_scope_empty")
         self.assertEqual(result["status"], "no_canonical_markers")
         self.assertNotIn("markers", result)
 
@@ -152,7 +152,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 marker_table=table,
             )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["markers"][0]["gene_symbol"], "FCGR3A")
 
     def test_region_feature_annotation_overlaps_gencode_and_encode(self) -> None:
@@ -173,7 +173,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 encode_ccre_bed=bed,
             )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["classification"]["distance_to_nearest_TSS"], 150)
         self.assertEqual({feature["source"] for feature in result["features"]}, {"GENCODE", "ENCODE cCRE"})
         self.assertIn("GENCODE GTF", result["source_coverage"]["sources_consulted"])
@@ -186,7 +186,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             gencode_gtf="unused.gtf",
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "unsupported_assembly")
         self.assertEqual(result["features"], [])
 
@@ -197,7 +197,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
             gencode_gtf="/definitely/not/here.gtf",
         )
 
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["status"], "source_unavailable")
         self.assertEqual(result["features"], [])
         self.assertTrue(result["source_coverage"]["sources_consulted_but_unavailable"])
@@ -214,9 +214,26 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 assembly="GRCh38",
             )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["query"]["gencode_gtf"], str(gtf))
         self.assertEqual(result["features"][0]["gene_symbol"], "GENE1")
+
+    def test_region_feature_annotation_grch37_degrades_to_gencode_without_ccre(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"GENOMI_HOME": tmp}):
+            gtf = analytical_grounding.analytical_library_path("gencode-grch37")
+            gtf.parent.mkdir(parents=True, exist_ok=True)
+            with gzip.open(gtf, "wt", encoding="utf-8") as handle:
+                handle.write('chr1\tGENCODE\tgene\t1000\t1500\t.\t+\t.\tgene_id "ENSG1"; gene_name "GENE1";\n')
+
+            result = analytical_grounding.retrieve_region_feature_annotation(
+                region="1:1100-1200",
+                assembly="GRCh37",
+            )
+
+        self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["query"]["gencode_gtf"], str(gtf))
+        self.assertEqual(result["query"]["encode_ccre_bed"], "")
+        self.assertEqual({feature["source"] for feature in result["features"]}, {"GENCODE"})
 
     def test_region_feature_annotation_reports_missing_default_library_install_request(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"GENOMI_HOME": tmp}):
@@ -245,7 +262,7 @@ class AnalyticalGroundingTests(unittest.TestCase):
                 source="cellmarker",
             )
 
-        self.assertEqual(result["coverage_status"], "data_returned")
+        self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["markers"][0]["gene_symbol"], "ALB")
 
     def test_cellmarker_reports_missing_default_library_install_request(self) -> None:

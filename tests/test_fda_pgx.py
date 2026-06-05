@@ -44,8 +44,8 @@ class FdaPgxTests(unittest.TestCase):
                 associations_url="https://example.test/association",
             )
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["summary"]["row_count"], 2)
         self.assertEqual(result["summary"]["biomarker_labeling_count"], 1)
         self.assertEqual(result["summary"]["association_count"], 1)
@@ -94,7 +94,6 @@ class FdaPgxTests(unittest.TestCase):
     def test_lookup_invalid_target_asks_required_question(self) -> None:
         result = lookup_fda_pgx()
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_target")
         self.assertEqual(result["unanswered_answer_components"][0]["missing_inputs"], ["drug", "gene"])
         self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
@@ -108,7 +107,6 @@ class FdaPgxTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.fda_pgx._fetch_text", side_effect=unavailable):
             result = lookup_fda_pgx(drug="clopidogrel")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "source_unavailable")
         self.assertEqual(len(result["warnings"]), 2)
         self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")

@@ -35,7 +35,7 @@ from _install_for_agents_lib import (  # noqa: F401  (explicit; incl. underscore
     _capability_skill_sources,
     _ensure_src_on_path,
     _load_existing_users,
-    configure_genome_source,
+    configure_genome_source as _configure_genome_source,
     genomi_home_path,
     install_capability_skills,
     install_genomi_command_shim,
@@ -61,6 +61,10 @@ _OVERRIDE_ARGS = (
     "ancestry_panel_url",
     "ancestry_panel_dir",
 )
+
+
+def configure_genome_source(args) -> None:
+    _configure_genome_source(args, load_existing_users=_load_existing_users)
 
 
 def install_libraries(selected: list[str], *, force: bool, args=None) -> None:

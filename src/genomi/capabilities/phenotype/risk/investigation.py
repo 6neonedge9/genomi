@@ -61,16 +61,6 @@ def prepare_risk_investigation(
         condition=normalized_condition,
         topic=normalized_topic,
     )
-    matches_path = Path(matches) if matches is not None else None
-    missing_matches_path: Path | None = None
-    if matches_path is not None and not matches_path.exists():
-        # The Active Genome Index ClinVar match file is materialized lazily by the
-        # ClinVar scan; if a caller hands us a path that has not been produced
-        # yet, degrade to public-only context with a note instead of hard-
-        # crashing the background job. Otherwise the first open-ended risk
-        # question after parse_source aborts the investigation.
-        missing_matches_path = matches_path
-        matches_path = None
     evidence_db_path = Path(evidence_db)
 
     target = {
@@ -81,6 +71,10 @@ def prepare_risk_investigation(
         "topic": normalized_topic,
         "genome_build": genome_build,
     }
+    matches_path = Path(matches) if matches is not None else None
+    if matches_path is not None and not matches_path.exists():
+        return _materialization_incomplete_response(target, mode=mode, genome_build=genome_build)
+
     context_scope = "active_genome_index_selected" if matches_path is not None else "public_only"
     stored_research = (
         _stored_research_context(
@@ -130,7 +124,6 @@ def prepare_risk_investigation(
             stored_research,
             active_candidates,
             context_scope=context_scope,
-            missing_matches_path=missing_matches_path,
         ),
     )
     payload = {
@@ -170,6 +163,118 @@ def prepare_risk_investigation(
         view,
         operation="phenotype.plan_risk_investigation",
         envelope=risk_envelope,
+        personal_context=personal_context,
+    )
+    return payload
+
+
+def _materialization_incomplete_response(
+    target: dict[str, Any],
+    *,
+    mode: str,
+    genome_build: str,
+) -> dict[str, Any]:
+    context_scope = "active_genome_index_selected"
+    materialization = {
+        "library": "clinvar-grch38",
+        "artifact": "clinvar_candidate_inventory",
+        "status": "not_materialized",
+        "genome_build": genome_build,
+    }
+    active_candidates = {
+        "status": "materialization_incomplete",
+        "summary": {"candidate_count": 0},
+        "result_state": "clinvar_candidate_inventory_not_materialized",
+        "materialization": materialization,
+        "candidate_summaries": [],
+    }
+    next_actions = [
+        {
+            "operation": "clinvar.scan_candidates",
+            "params": {"genome_build": genome_build},
+            "materializes": "clinvar_candidate_inventory",
+            "uses_active_genome_index": True,
+        }
+    ]
+    view = evidence_view(
+        task_profile=RARE_DISEASE_CANCER_RISK_INVESTIGATION,
+        query=target,
+        candidate_matrix=[],
+        top_observed_candidate=None,
+        evidence_policy=_decision_policy(mode, context_scope=context_scope),
+        warnings=[],
+        evidence_state="materialization_incomplete",
+        coverage_state="materialization_incomplete",
+    )
+    personal_context = _env._personal_context(
+        uses_personal_dna=True,
+        source="clinvar_candidate_inventory",
+    )
+    coverage = _env._coverage(
+        libraries=[
+            _env.LibraryUse(
+                library="clinvar-grch38",
+                state="not_materialized",
+                materialization_id="clinvar_candidate_inventory",
+            )
+        ],
+        unavailable_sources=["clinvar_candidate_inventory"],
+        materialization=[materialization],
+    )
+    envelope = _env.envelope(
+        operation="phenotype.plan_risk_investigation",
+        finding_state=_env.MATERIALIZATION_INCOMPLETE,
+        answer_readiness=_env.NEEDS_MATERIALIZATION,
+        query_scope={
+            **target,
+            "context_scope": context_scope,
+            "investigation_type": target.get("investigation_type"),
+        },
+        personal_context=personal_context,
+        coverage=coverage,
+        observations={
+            "active_candidate_count": 0,
+            "ranked_review_targets": 0,
+            "result_state": active_candidates["result_state"],
+            "pending_materialization": "clinvar_candidate_inventory",
+        },
+        negative_inference=_env._negative_inference(
+            allowed=False,
+            requires=[_env.REQ_LIBRARY_COVERAGE],
+            reason="ClinVar candidate inventory materialization is incomplete.",
+        ),
+        next_actions=next_actions,
+    )
+    payload = {
+        "status": "materialization_incomplete",
+        "workflow_area": "research",
+        "context_scope": context_scope,
+        "target": target,
+        "source_plan": _source_plan(mode, target=target, context_scope=context_scope),
+        "stored_research": {
+            "status": "not_searched",
+            "exact_targets": [],
+            "searches": [],
+            "summary": {"record_count": 0},
+        },
+        "gene_context": {
+            "status": "not_requested",
+            "contexts": [],
+            "summary": {
+                "gene_count": 0,
+                "sample_gene_match_count": 0,
+                "reviewed_research_count": 0,
+            },
+        },
+        "active_genome_index_evidence": active_candidates,
+        "record_research_templates": [],
+        "next_actions": next_actions,
+    }
+    apply_evidence_view(
+        payload,
+        view,
+        operation="phenotype.plan_risk_investigation",
+        envelope=envelope,
         personal_context=personal_context,
     )
     return payload

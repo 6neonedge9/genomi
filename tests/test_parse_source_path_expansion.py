@@ -84,7 +84,7 @@ class ParseSourcePathExpansionTests(GenomiRuntimeTestCase):
             raw = Path(tmp) / "genome.txt"
             _write_23andme(raw)
 
-            parsed = call_operation("genomi.parse_source", {"source": str(raw)})
+            call_operation("genomi.parse_source", {"source": str(raw)})
             call_operation(
                 "active_genome_index.assign_user_genome",
                 {"nickname": "Sample user", "source": str(raw)},
@@ -126,6 +126,7 @@ class ParseSourcePathExpansionTests(GenomiRuntimeTestCase):
                 "agi_source_format",
                 "agi_source_kind",
                 "agi_source_member",
+                "agi_source_provider",
                 "candidate_inventory",
                 "created_at",
                 "evidence_db",

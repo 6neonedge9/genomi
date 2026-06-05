@@ -8,10 +8,10 @@ import urllib.request
 from html.parser import HTMLParser
 from typing import Any
 
-from ...evidence import envelope as _env
 from ...runtime.external import utc_now
 from ...runtime.http_json import build_api_url, fetch_json_with_trace
 from ...runtime.libraries import manager as library_manager
+from .pgx_envelope import PublicPGxSourceEnvelopeSpec, build_public_pgx_source_envelope
 
 _CLINPGX_LIBRARY = library_manager.get("clinpgx")
 CLINPGX_API_URL = _CLINPGX_LIBRARY.source.api_base or ""
@@ -22,6 +22,35 @@ CLINPGX_MAX_LIMIT = 25
 CLINPGX_MAX_RAW_LIST_ITEMS = 10
 CLINPGX_MAX_RAW_TEXT_CHARS = 600
 CLINPGX_MAX_TEXT_CHARS = 1600
+_CLINPGX_ENVELOPE = PublicPGxSourceEnvelopeSpec(
+    operation="pharmacogenomics.fetch_clinpgx",
+    library_id="clinpgx",
+    source_id="clinpgx",
+    observation_keys=("guideline_annotation_count", "clinical_annotation_count", "label_annotation_count"),
+    invalid_target_reason="Missing ClinPGx public target.",
+    invalid_target_action="provide_public_clinpgx_target",
+    missing_inputs=("drug", "gene", "rsid", "chemical_id", "gene_id", "variant_id"),
+    invalid_target_guidance="target_missing:provide_drug_gene_variant_or_pharmgkb_id",
+    source_unavailable_reason="ClinPGx source lookup was unavailable.",
+    alternate_operations=("pharmacogenomics.fetch_pgxdb", "pharmacogenomics.fetch_fda_labels"),
+    no_match_status="no_matching_clinpgx_records",
+    no_match_action="try_alternate_pgx_source_or_target_spelling",
+    no_match_guidance=(
+        "not_observed_in_consulted_scope:clinpgx_no_records_for_target",
+        "negative_inference_disallowed:check_other_pgx_sources",
+    ),
+    no_match_target_fields=("drug", "gene", "rsid", "chemical_id", "gene_id", "variant_id"),
+    evidence_guidance=(
+        "clinpgx_evidence_present:public_guideline_context_only",
+        "clinical_verification:check_actionability_boundary",
+        "sample_context:use_follow_up_targets",
+    ),
+    evidence_next_action=lambda result: {
+        "action": "check_sample_support_before_personal_statement",
+        "operation": "variant.resolve",
+        "follow_up_targets": result.get("sample_follow_up_targets") or {},
+    },
+)
 
 
 def lookup_clinpgx(
@@ -105,7 +134,6 @@ def lookup_clinpgx(
         status = "source_unavailable" if _raw_call_errors(raw_calls) else "no_matching_clinpgx_records"
 
     result = {
-        "ok": status in {"completed", "no_matching_clinpgx_records"},
         "status": status,
         "source": source,
         "query": target,
@@ -148,7 +176,6 @@ def _empty_result(
     missing_inputs: list[str],
 ) -> dict[str, Any]:
     result = {
-        "ok": False,
         "status": status,
         "source": _source_metadata(base_url),
         "query": target,
@@ -182,101 +209,8 @@ def _empty_result(
 
 
 def _attach_evidence_envelope(result: dict[str, Any]) -> dict[str, Any]:
-    result["evidence_envelope"] = _clinpgx_evidence_envelope(result)
+    result["evidence_envelope"] = build_public_pgx_source_envelope(result, _CLINPGX_ENVELOPE)
     return result
-
-
-def _clinpgx_evidence_envelope(result: dict[str, Any]) -> dict[str, Any]:
-    operation = "pharmacogenomics.fetch_clinpgx"
-    target = dict(result.get("query") or {})
-    summary = dict(result.get("summary") or {})
-    raw_calls = result.get("raw_calls") or []
-    status = str(result.get("status") or "")
-    observations = {
-        "status": status,
-        "guideline_annotation_count": summary.get("guideline_annotation_count", 0),
-        "clinical_annotation_count": summary.get("clinical_annotation_count", 0),
-        "label_annotation_count": summary.get("label_annotation_count", 0),
-    }
-    coverage = {
-        "libraries": [{"library": "clinpgx", "state": "failed" if status == "source_unavailable" else "installed"}],
-        "consulted_sources": ["clinpgx"] if raw_calls and status != "source_unavailable" else [],
-        "unavailable_sources": ["clinpgx"] if status == "source_unavailable" else [],
-        "materialization": [],
-    }
-    if status == "invalid_target":
-        return _env.not_assessed(
-            operation=operation,
-            reason="Missing ClinPGx public target.",
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "provide_public_clinpgx_target",
-                    "missing_inputs": ["drug", "gene", "rsid", "chemical_id", "gene_id", "variant_id"],
-                }
-            ],
-            guidance=["target_missing:provide_drug_gene_variant_or_pharmgkb_id"],
-        )
-    if status == "source_unavailable":
-        return _env.not_assessed(
-            operation=operation,
-            reason="ClinPGx source lookup was unavailable.",
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "use_alternate_pgx_source_or_retry",
-                    "operations": [
-                        "pharmacogenomics.fetch_pgxdb",
-                        "pharmacogenomics.fetch_fda_labels",
-                    ],
-                }
-            ],
-            guidance=["source_unavailable:retry_or_use_other_pgx_sources"],
-        )
-    if status == "no_matching_clinpgx_records":
-        return _env.empty_consulted_scope(
-            operation=operation,
-            query_scope=target,
-            coverage=coverage,
-            observations=observations,
-            next_actions=[
-                {
-                    "action": "try_alternate_pgx_source_or_target_spelling",
-                    "operations": [
-                        "pharmacogenomics.fetch_pgxdb",
-                        "pharmacogenomics.fetch_fda_labels",
-                    ],
-                    "target_fields": ["drug", "gene", "rsid", "chemical_id", "gene_id", "variant_id"],
-                }
-            ],
-            guidance=[
-                "not_observed_in_consulted_scope:clinpgx_no_records_for_target",
-                "negative_inference_disallowed:check_other_pgx_sources",
-            ],
-        )
-    return _env.evidence_present(
-        operation=operation,
-        query_scope=target,
-        coverage=coverage,
-        observations=observations,
-        answer_readiness=_env.SCOPED_ANSWER_ONLY,
-        next_actions=[
-            {
-                "action": "check_sample_support_before_personal_statement",
-                "operation": "variant.resolve",
-                "follow_up_targets": result.get("sample_follow_up_targets") or {},
-            }
-        ],
-        guidance=[
-            "clinpgx_evidence_present:public_guideline_context_only",
-            "clinical_verification:check_actionability_boundary",
-            "sample_context:use_follow_up_targets",
-        ],
-    )
 
 
 def _source_metadata(base_url: str) -> dict[str, Any]:

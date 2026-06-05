@@ -98,14 +98,14 @@ def retrieve_pathway_member_genes(
     if source_key == "unsupported":
         return _pathway_empty(
             status="unsupported_source",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason=f"Unsupported source: {query['source']}",
         )
     if source_key == "source_required":
         return _pathway_empty(
             status="source_required",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason="Free-text pathway lookup requires source, or a controlled Reactome/KEGG/MSigDB identifier.",
             resolution_candidates=_pathway_source_candidates(),
@@ -146,7 +146,7 @@ def retrieve_pathway_member_genes(
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _pathway_empty(
             status="source_unavailable",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason="A declared pathway membership source was unavailable.",
             source_coverage=_source_coverage(
@@ -195,7 +195,7 @@ def retrieve_canonical_markers(
     if source_key not in SUPPORTED_CELL_MARKER_SOURCES:
         return _cell_marker_empty(
             status="unsupported_source",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason=f"Unsupported source: {source_key}",
         )
@@ -228,7 +228,7 @@ def retrieve_canonical_markers(
                 )
             return _cell_marker_empty(
                 status="source_table_required",
-                coverage_status="out_of_scope_for_input",
+                coverage_state="out_of_scope_for_input",
                 query=query,
                 empty_reason=(
                     f"{SUPPORTED_CELL_MARKER_SOURCES[source_key]} Pass marker_table with the official exported table "
@@ -252,7 +252,7 @@ def retrieve_canonical_markers(
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _cell_marker_empty(
             status="source_unavailable",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason="A declared cell-type marker source was unavailable.",
             source_coverage=_source_coverage(
@@ -296,14 +296,14 @@ def retrieve_region_feature_annotation(
     if parsed.get("error"):
         return _region_empty(
             status="invalid_interval",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason=parsed["error"],
         )
     if not assembly_label:
         return _region_empty(
             status="unsupported_assembly",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason="assembly must be GRCh37 or GRCh38.",
         )
@@ -323,7 +323,7 @@ def retrieve_region_feature_annotation(
             )
         return _region_empty(
             status="source_files_required",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query=query,
             empty_reason="Provide gencode_gtf, encode_ccre_bed, or both. Region annotation does not use undeclared/custom tracks.",
             source_coverage=_source_coverage(
@@ -366,7 +366,7 @@ def retrieve_region_feature_annotation(
     if not features and not nearest_tss and unavailable:
         return _region_empty(
             status="source_unavailable",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             query={**query, "assembly": assembly_label},
             empty_reason="One or more declared annotation files could not be read, so Genomi cannot report a clean in-scope empty result.",
             source_coverage=_source_coverage(
@@ -376,10 +376,10 @@ def retrieve_region_feature_annotation(
                 not_integrated=NOT_INTEGRATED_REGION_SOURCES,
             ),
         )
-    coverage_status = "data_returned" if features or nearest_tss else "in_scope_empty"
-    status = "feature_annotations_found" if coverage_status == "data_returned" else "no_feature_annotations"
+    coverage_state = "data_returned" if features or nearest_tss else "in_scope_empty"
+    status = "feature_annotations_found" if coverage_state == "data_returned" else "no_feature_annotations"
     response: dict[str, Any] = {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": {**query, "assembly": assembly_label},
@@ -398,7 +398,7 @@ def retrieve_region_feature_annotation(
             "unavailable_source_count": len(unavailable),
         },
         "source_coverage": _source_coverage(
-            coverage_status,
+            coverage_state,
             consulted=consulted,
             unavailable=unavailable,
             not_integrated=NOT_INTEGRATED_REGION_SOURCES,

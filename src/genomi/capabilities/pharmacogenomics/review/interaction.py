@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ....evidence import envelope as _env
 from ....evidence.candidate_evidence import (
     DIRECT_SOURCE_MATCH,
     EXACT_TRAIT_MATCH,
@@ -20,6 +19,7 @@ from ....evidence.task_profiles import PGX_MEDICATION_REVIEW
 from ....retrieval import semantic as retrieval_semantic
 from ...variant import variant_lookup
 from .. import clinpgx, fda_pgx, pgx_star, pgxdb, pharmcat
+from ..pgx_envelope import build_medication_review_envelope
 from ._common import (
     JsonObject,
     _clean,
@@ -55,7 +55,6 @@ from .sample_evidence import (
 )
 from .source_state import (
     _evidence_components,
-    _evidence_envelope,
     _evidence_state,
     _medication_review_status,
     _source_availability,
@@ -209,7 +208,6 @@ def review_medication_interaction(
     )
     if not selected_drug and not drugbank_id and not atc_code:
         return {
-            "ok": False,
             "status": "invalid_target",
             "query": {"drug": selected_drug, "gene": gene, "rsid": rsid, "atc_code": atc_code, "drugbank_id": drugbank_id},
             "semantic_context": retrieval_semantic.term_usage_payload(
@@ -454,22 +452,6 @@ def review_medication_interaction(
         rsid_targets=rsid_targets,
         star_genes=star_genes,
     )
-    pgx_evidence_scope = _evidence_envelope(
-        query={
-            "drug": selected_drug,
-            "gene": selected_gene,
-            "rsid": selected_rsid,
-            "atc_code": atc_code,
-            "drugbank_id": drugbank_id,
-            "genome_build": genome_build,
-        },
-        source_availability=source_availability,
-        evidence_components=evidence_components,
-        evidence_state=evidence_state,
-        evidence_matrix_traceability=evidence_matrix_traceability,
-        sample_context_requested=sample_context_requested,
-        clinical_context_requested=clinical_context_requested,
-    )
     pgx_candidate_evidence = _pgx_candidate_evidence_view(
         query={
             "drug": selected_drug,
@@ -490,7 +472,6 @@ def review_medication_interaction(
         source_availability=source_availability,
     )
     payload = {
-        "ok": status == "completed",
         "status": status,
         "unanswered_answer_components": unanswered_answer_components,
         "query": {
@@ -538,7 +519,6 @@ def review_medication_interaction(
             "traceability": evidence_matrix_traceability,
             "items": evidence_items,
         },
-        "pgx_evidence_scope": pgx_evidence_scope,
         "evidence_state": evidence_state,
         "interpretation_readiness": readiness,
         "answer_support": answer_support,
@@ -563,7 +543,6 @@ def review_medication_interaction(
             "evidence_matrix_item_count": len(evidence_items),
             "evidence_matrix_role_counts": _evidence_item_role_counts(evidence_items),
             "evidence_matrix_traceability": evidence_matrix_traceability,
-            "pgx_evidence_scope": pgx_evidence_scope,
             **(
                 {"record_research_payloads": record_research_payloads}
                 if include_record_research_payloads
@@ -571,10 +550,10 @@ def review_medication_interaction(
             ),
         },
     }
-    pgx_envelope = _build_pgx_envelope(
+    pgx_envelope = build_medication_review_envelope(
         query=payload["query"],
-        pgx_evidence_scope=pgx_evidence_scope,
         evidence_state=evidence_state,
+        evidence_matrix_traceability=evidence_matrix_traceability,
         sample_context_requested=sample_context_requested,
         clinical_context_requested=clinical_context_requested,
         unanswered_answer_components=unanswered_answer_components,
@@ -586,79 +565,6 @@ def review_medication_interaction(
         operation="pharmacogenomics.review_medication",
         envelope=pgx_envelope,
     )
-
-
-def _build_pgx_envelope(
-    *,
-    query: JsonObject,
-    pgx_evidence_scope: JsonObject,
-    evidence_state: JsonObject,
-    sample_context_requested: bool,
-    clinical_context_requested: bool,
-    unanswered_answer_components: Any,
-    source_availability: JsonObject,
-) -> JsonObject:
-    sources = source_availability.get("sources") or []
-    consulted = [str(item.get("source_id")) for item in sources if item.get("source_id") and item.get("availability") not in {"unavailable", "source_unavailable"}]
-    unavailable = [str(item.get("source_id")) for item in sources if item.get("availability") in {"unavailable", "source_unavailable"}]
-    libraries = [_pgx_source_library_use(item) for item in sources if item.get("source_id")]
-    coverage = _env._coverage(libraries=libraries, consulted_sources=consulted, unavailable_sources=unavailable)
-    observations = {
-        "source_evidence_count": evidence_state.get("source_evidence_count"),
-        "sample_evidence_count": evidence_state.get("sample_evidence_count"),
-        "evidence_matrix_item_count": pgx_evidence_scope.get("checked", {}).get("evidence_matrix_item_count"),
-        "unresolved_components": pgx_evidence_scope.get("unresolved_components"),
-    }
-    personal_context = _env._personal_context(uses_personal_dna=bool(sample_context_requested))
-    scope_payload = {
-        "drug": query.get("drug"),
-        "gene": query.get("gene"),
-        "rsid": query.get("rsid"),
-        "atc_code": query.get("atc_code"),
-        "drugbank_id": query.get("drugbank_id"),
-        "genome_build": query.get("genome_build"),
-        "sample_context_requested": sample_context_requested,
-        "clinical_context_requested": clinical_context_requested,
-    }
-    pgx_status = pgx_evidence_scope.get("status")
-    has_public = bool(evidence_state.get("has_public_pgx_evidence"))
-    has_sample = bool(evidence_state.get("has_sample_evidence"))
-    if pgx_status == "source_unavailable":
-        return _env.not_assessed(
-            operation="pharmacogenomics.review_medication",
-            reason="All consulted PGx sources were unavailable.",
-            query_scope=scope_payload,
-            personal_context=personal_context,
-            coverage=coverage,
-            observations=observations,
-        )
-    if not has_public and not has_sample:
-        return _env.empty_consulted_scope(
-            operation="pharmacogenomics.review_medication",
-            query_scope=scope_payload,
-            personal_context=personal_context,
-            coverage=coverage,
-            observations=observations,
-        )
-    answer_readiness = _env.NEEDS_CLINICAL_CONFIRMATION if (clinical_context_requested and has_public) else _env.SCOPED_ANSWER_ONLY
-    return _env.evidence_present(
-        operation="pharmacogenomics.review_medication",
-        query_scope=scope_payload,
-        personal_context=personal_context,
-        coverage=coverage,
-        observations=observations,
-        answer_readiness=answer_readiness,
-    )
-
-
-def _pgx_source_library_use(source: JsonObject) -> JsonObject:
-    source_id = str(source.get("source_id") or "")
-    library_id = {"fda_pgx": "fda-pgx"}.get(source_id, source_id)
-    failed_states = {"unavailable", "source_unavailable"}
-    return {
-        "library": library_id,
-        "state": "failed" if source.get("availability") in failed_states else "installed",
-    }
 
 
 def _pgx_candidate_evidence_view(

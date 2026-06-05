@@ -231,7 +231,6 @@ def _compact_public_source_result(result: JsonObject) -> JsonObject:
     compact = {
         key: result[key]
         for key in (
-            "ok",
             "status",
             "source",
             "query",

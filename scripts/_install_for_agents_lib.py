@@ -17,6 +17,7 @@ import os
 import shlex
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -309,7 +310,11 @@ def install_capability_skills(args: argparse.Namespace) -> None:
         print(f"Genomi per-capability skills linked: {installed} symlinks across {len(parents)} host dir(s).")
 
 
-def configure_genome_source(args: argparse.Namespace) -> None:
+def configure_genome_source(
+    args: argparse.Namespace,
+    *,
+    load_existing_users: Callable[[], list[dict[str, object]]] | None = None,
+) -> None:
     source = args.genome_source
     user_nickname = args.user_nickname.strip() if args.user_nickname else None
     set_default_user = bool(args.set_default_user)
@@ -321,7 +326,7 @@ def configure_genome_source(args: argparse.Namespace) -> None:
     if not source_path.exists():
         raise SystemExit(f"Genome source does not exist: {source_path}")
     _ensure_src_on_path()
-    existing_users = _load_existing_users()
+    existing_users = (load_existing_users or _load_existing_users)()
     user_nickname = resolve_genome_source_user_nickname(
         user_nickname,
         existing_users=existing_users,

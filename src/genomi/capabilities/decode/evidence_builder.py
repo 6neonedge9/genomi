@@ -28,6 +28,7 @@ def build_dashboard_evidence(
     *,
     params: JsonObject | None = None,
     run_operation: OperationRunner,
+    active_genome_index_context: JsonObject | None = None,
 ) -> JsonObject:
     """Gather native panel evidence through existing operations.
 
@@ -48,6 +49,7 @@ def build_dashboard_evidence(
 
     if "overview" in panels:
         result = run("active_genome_index.summarize")
+        result = _overview_with_active_context(result, active_genome_index_context)
         _store_panel(evidence, panel_states, "overview", "active_genome_index.summarize", result)
 
     clinvar_result: JsonObject | None = None
@@ -180,10 +182,10 @@ def _build_nutrigenomics_panel(
         result = run("nutrigenomics.retrieve_domain_markers", {"domain_id": domain_id})
         domain_results.append(result)
         markers.extend(item for item in result.get("markers") or [] if isinstance(item, dict))
-    coverage_status = "data_returned" if markers else "in_scope_empty"
+    coverage_state = "data_returned" if markers else "in_scope_empty"
     return {
         "capability": "nutrigenomics",
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "domains": selected_domains,
         "markers": markers,
         "domain_results": domain_results,
@@ -208,6 +210,24 @@ def _store_panel(
     )
 
 
+def _overview_with_active_context(result: JsonObject, active: JsonObject | None) -> JsonObject:
+    if not isinstance(active, dict):
+        return result
+    context = {
+        key: active.get(key)
+        for key in (
+            "agi_source_format",
+            "agi_source_kind",
+            "sample_slug",
+            "genome_build",
+        )
+        if active.get(key) not in (None, "", [], "auto")
+    }
+    if not context:
+        return result
+    return {**context, **result}
+
+
 def _panel_state(
     panel: str,
     operation: str | None,
@@ -229,7 +249,7 @@ def _panel_state(
 def _panel_status(panel: str, value: Any) -> str:
     if _is_empty_panel_value(panel, value):
         if isinstance(value, dict):
-            status = str(value.get("status") or value.get("coverage_status") or "")
+            status = str(value.get("status") or value.get("coverage_state") or "")
             if status in _BLOCKED_STATUSES:
                 return status
             if status:

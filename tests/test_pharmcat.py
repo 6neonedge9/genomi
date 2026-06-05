@@ -51,8 +51,8 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, dry_run=True, base_filename="sample")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "planned")
+        self.assertEqual(result["summary"]["record_count"], 0)
         self.assertEqual(result["execution"]["mode"], "pipeline")
         self.assertIn("[derived_pharmcat_input]", result["execution"]["command"])
         self.assertEqual(result["execution"]["command"][result["execution"]["command"].index("-o") + 1], "[hidden_output_dir]")
@@ -94,7 +94,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
                     dry_run=True,
                 )
 
-        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "planned")
         self.assertRegex(result["base_filename"], r"^active-genome-index-[0-9a-f]{12}$")
         self.assertIn("[derived_pharmcat_input]", result["execution"]["command"])
         self.assertEqual(result["execution"]["command"].count("[hidden_private_path]"), 2)
@@ -189,8 +189,8 @@ class PharmCATIntegrationTests(unittest.TestCase):
             ):
                 result = run_pharmcat(agi_path=agi_path, output_dir=output, base_filename="sample", timeout_seconds=30)
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["summary"]["record_count"], 2)
         self.assertTrue(result["output_dir_hidden"])
         self.assertTrue(result["artifacts"]["output_dir_hidden"])
         self.assertEqual(result["execution"]["version_probe"]["version_text"], "PharmCAT 3.2.0")
@@ -248,8 +248,8 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
         result = pharmcat_preflight(agi_path=agi_path)
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["summary"]["record_count"], 1)
         self.assertEqual(result["input_preflight"]["header"]["sample_count"], 1)
         self.assertEqual(result["input_preflight"]["header"]["contig_style"], "bare")
         self.assertEqual(result["input_preflight"]["scan_summary"]["records_with_gt"], 1)
@@ -409,9 +409,19 @@ class PharmCATIntegrationTests(unittest.TestCase):
                 phenotype_json=phenotype,
                 missing_pgx_positions_vcf=missing,
             )
+            operation_result = call_operation(
+                "pharmacogenomics.import_pharmcat_artifacts",
+                {
+                    "report_json": str(report),
+                    "calls_only_tsv": str(calls),
+                    "match_json": str(match),
+                    "phenotype_json": str(phenotype),
+                    "missing_pgx_positions_vcf": str(missing),
+                },
+            )
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["summary"]["record_count"], 4)
         self.assertEqual(result["artifacts"]["calls_only"]["genes"], ["CYP2C19"])
         self.assertTrue(result["artifacts"]["calls_only"]["path_hidden"])
         calls_hash = result["artifacts"]["calls_only"]["artifact"]["content_sha256"]
@@ -448,12 +458,20 @@ class PharmCATIntegrationTests(unittest.TestCase):
         ])
         self.assertTrue(result["interpretation_readiness"]["has_parsed_match_records"])
         self.assertTrue(result["interpretation_readiness"]["has_parsed_phenotype_records"])
+        self.assertEqual(operation_result["status"], "completed")
+        self.assertEqual(operation_result["summary"]["record_count"], 4)
+        self.assertEqual(operation_result["evidence_envelope"]["finding_state"], "evidence_present")
 
     def test_import_asks_for_existing_artifact_when_none_found(self) -> None:
         result = import_pharmcat_artifacts()
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "no_pharmcat_artifacts")
+        self.assertEqual(result["summary"]["record_count"], 0)
+
+        operation_result = call_operation("pharmacogenomics.import_pharmcat_artifacts")
+        self.assertEqual(operation_result["status"], "no_pharmcat_artifacts")
+        self.assertEqual(operation_result["summary"]["record_count"], 0)
+        self.assertEqual(operation_result["evidence_envelope"]["finding_state"], "not_observed_in_consulted_scope")
 
     def test_pipeline_mode_blocks_explicit_outside_call_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -471,7 +489,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, outside_call_file=outside, dry_run=True)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "outside_call_file_not_supported_in_pipeline_mode")
         self.assertEqual(result["availability"]["mode"], "pipeline")
         self.assertEqual(result["outside_call_validation"]["status"], "completed")
@@ -516,7 +533,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, outside_call_file=outside, dry_run=True)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_outside_call_file")
         self.assertEqual(result["outside_call_validation"]["invalid_rows"][0]["reason"], "missing_diplotype_phenotype_or_activity_score")
 
@@ -538,7 +554,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value=None):
                 result = run_pharmcat(agi_path=agi_path, sample_file=sample_file, sample_metadata=sample_metadata)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "requires_library_install")
         self.assertEqual(result["missing_library"]["library"], "pharmcat")
         self.assertIn("install_command", result["ask_user"])
@@ -559,7 +574,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value=None):
                 result = run_pharmcat(agi_path=agi_path, mode="pipeline")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "explicit_pharmcat_executable_unavailable")
         self.assertEqual(result["availability"]["mode"], "unavailable")
         self.assertEqual(result["execution"]["version_probe"]["status"], "skipped")
@@ -568,7 +582,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value=None):
             result = pharmcat_status()
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "requires_library_install")
         self.assertEqual(result["missing_library"]["library"], "pharmcat")
         self.assertIn("install_command", result["ask_user"])
@@ -583,7 +596,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
         ):
             result = pharmcat_status()
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "available")
         self.assertEqual(result["version_probe"]["version_text"], "PharmCAT 3.2.0")
         runner.assert_called_once()
@@ -591,6 +603,33 @@ class PharmCATIntegrationTests(unittest.TestCase):
         # so a working install is not reported as failed.
         probe_command = result["version_probe"]["command"]
         self.assertEqual(probe_command, ["/usr/local/bin/pharmcat_pipeline", "--version"])
+
+    def test_status_reports_version_probe_failure(self) -> None:
+        def fake_run(command, **_kwargs):
+            return subprocess.CompletedProcess(command, 1, "", "bad version probe")
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"),
+            patch("genomi.capabilities.pharmacogenomics.pharmcat.subprocess.run", side_effect=fake_run),
+        ):
+            result = pharmcat_status()
+
+        self.assertEqual(result["status"], "version_probe_failed")
+        self.assertEqual(result["version_probe"]["status"], "failed")
+        self.assertIn("bad version probe", result["version_probe"]["stderr_tail"])
+
+    def test_status_reports_version_probe_timeout(self) -> None:
+        def fake_run(command, **_kwargs):
+            raise subprocess.TimeoutExpired(command, 15)
+
+        with (
+            patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"),
+            patch("genomi.capabilities.pharmacogenomics.pharmcat.subprocess.run", side_effect=fake_run),
+        ):
+            result = pharmcat_status()
+
+        self.assertEqual(result["status"], "version_probe_timeout")
+        self.assertEqual(result["version_probe"]["status"], "timeout")
 
     def test_pharmcat_is_agent_operation(self) -> None:
         tools = {tool["name"]: tool for tool in list_operations(capability="pharmacogenomics")}
@@ -708,7 +747,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, dry_run=True)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "position_aware_pharmcat_export_required")
         self.assertEqual(result["pharmcat_input"]["status"], "position_aware_pharmcat_export_required")
         self.assertGreater(result["pharmcat_input"]["reference_records"], 0)
@@ -729,7 +767,6 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, dry_run=True)
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "position_aware_pharmcat_export_required")
         self.assertEqual(result["pharmcat_input"]["reference_records"], 0)
         self.assertEqual(result["pharmcat_input"]["no_call_records"], 1)

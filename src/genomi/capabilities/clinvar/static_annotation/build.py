@@ -646,7 +646,6 @@ def fetch_static_population(
         if not message.startswith("gnomAD API"):
             raise
         result = {
-            "ok": False,
             "status": "source_unavailable",
             "evidence_db": str(public_write_db),
             "variant_id": f"{chrom}-{pos}-{ref}-{alt}",
@@ -655,6 +654,7 @@ def fetch_static_population(
             "inserted_rows": 0,
             "found": None,
             "error": message,
+            "summary": {"record_count": 0},
             "population_frequency": {
                 "query": {
                     "chrom": chrom,
@@ -668,7 +668,8 @@ def fetch_static_population(
             },
         }
     else:
-        result.setdefault("ok", True)
+        population_frequency = result.get("population_frequency") if isinstance(result.get("population_frequency"), dict) else {}
+        result.setdefault("summary", {"record_count": int(population_frequency.get("count") or 0)})
     if sync_shared:
         result["run_evidence_db"] = str(run_db)
         result["public_write_db"] = str(public_write_db)

@@ -90,6 +90,42 @@ class RiskInvestigationTests(unittest.TestCase):
         )
         self.assertTrue(result["evidence_view"]["agent_decision_required"])
 
+    def test_missing_active_index_matches_reports_materialization_incomplete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            missing_matches = Path(tmp) / "missing.matches.jsonl"
+            import_clinvar_vcf(TINY_CLINVAR, db, source_version="fixture")
+
+            result = prepare_risk_investigation(
+                db,
+                question="rare disease review for GENE2",
+                gene="GENE2",
+                matches=missing_matches,
+                investigation_type="rare_disease",
+            )
+
+        self.assertEqual(result["status"], "materialization_incomplete")
+        self.assertEqual(result["context_scope"], "active_genome_index_selected")
+        self.assertEqual(result["coverage_state"], "materialization_incomplete")
+        self.assertEqual(result["active_genome_index_evidence"]["status"], "materialization_incomplete")
+        self.assertEqual(
+            result["active_genome_index_evidence"]["result_state"],
+            "clinvar_candidate_inventory_not_materialized",
+        )
+        self.assertEqual(result["stored_research"]["status"], "not_searched")
+        self.assertEqual(result["next_actions"][0]["operation"], "clinvar.scan_candidates")
+        self.assertEqual(result["next_actions"][0]["materializes"], "clinvar_candidate_inventory")
+        env = result["evidence_envelope"]
+        self.assertEqual(env["finding_state"], "materialization_incomplete")
+        self.assertEqual(env["answer_readiness"], "needs_materialization")
+        self.assertTrue(env["personal_context"]["uses_personal_dna"])
+        self.assertEqual(env["personal_context"]["source"], "clinvar_candidate_inventory")
+        self.assertIn("clinvar_candidate_inventory", env["coverage"]["unavailable_sources"])
+        self.assertEqual(env["coverage"]["libraries"][0]["library"], "clinvar-grch38")
+        self.assertEqual(env["coverage"]["libraries"][0]["state"], "not_materialized")
+        self.assertIn("materialization_incomplete:wait_or_poll_background_job", env["guidance"])
+        self.assertNotIn(str(missing_matches), str(result))
+
     def test_broad_active_index_zero_candidates_emits_scoped_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "evidence.sqlite"

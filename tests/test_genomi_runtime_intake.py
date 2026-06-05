@@ -611,6 +611,25 @@ class GenomiRuntimeIntakeTests(GenomiRuntimeTestCase):
             self.assertEqual(detection.provider, "sequencingdotcom")
             self.assertEqual(detection.reference_build, "GRCh38")
 
+    def test_parse_source_surfaces_vcf_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "sample.vcf"
+            vcf.write_text(
+                "##fileformat=VCFv4.2\n"
+                "##source=Sequencing.com (30x WGS)\n"
+                "##dataAnalysisProvider=Sequencing.com\n"
+                "##reference=GRCh38.p13\n"
+                "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNG1ABCDEFG\n"
+                "1\t100\trs900000001\tA\tC\t50\tPASS\t.\tGT\t0/1\n",
+                encoding="utf-8",
+            )
+
+            parsed = call_operation("genomi.parse_source", {"source": str(vcf)})
+
+        self.assertEqual(parsed["status"], "completed")
+        self.assertEqual(parsed["provider"], "sequencingdotcom")
+        self.assertEqual(parsed["active_genome_index"]["agi_source_provider"], "sequencingdotcom")
+
     def test_detect_source_tags_vcf_provider_for_dantelabs(self) -> None:
         from genomi.active_genome_index.source_intake import detect_source
 

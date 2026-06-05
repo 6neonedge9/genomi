@@ -32,7 +32,12 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
         def run(operation: str, params: dict) -> dict:
             calls.append((operation, params))
             if operation == "active_genome_index.summarize":
-                return {"active_genome_index": {"variant_count": 100}, "nickname": "BUILT"}
+                return {
+                    "active_genome_index": {
+                        "metadata": {"header": {"samples": ["BUILT"]}},
+                        "stats": {"variant_records": 100},
+                    },
+                }
             if operation == "clinvar.scan_candidates":
                 return {
                     "status": "completed",
@@ -62,7 +67,7 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
                 return {"domains": [{"domain_id": "folate_metabolism"}]}
             if operation == "nutrigenomics.retrieve_domain_markers":
                 return {
-                    "coverage_status": "data_returned",
+                    "coverage_state": "data_returned",
                     "markers": [
                         {
                             "domain": "folate_metabolism",
@@ -89,6 +94,35 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
         self.assertEqual(result["render_params"]["evidence"]["risk"][0]["polygenic_score"]["pgs_id"], "PGS000001")
         self.assertIn(("pharmacogenomics.run_pharmcat", {"timeout_seconds": 30}), calls)
         self.assertIn(("prs.calculate_score", {"pgs_id": "PGS000001"}), calls)
+
+    def test_overview_prefers_active_intake_format_over_derived_vcf_metadata(self) -> None:
+        def run(operation: str, params: dict) -> dict:
+            if operation == "active_genome_index.summarize":
+                return {
+                    "active_genome_index": {
+                        "metadata": {"source_format": "vcf"},
+                        "stats": {"variant_records": 2},
+                    }
+                }
+            raise AssertionError(f"unexpected operation {operation}")
+
+        result = evidence_builder.build_dashboard_evidence(
+            params={"panels": ["overview"]},
+            run_operation=run,
+            active_genome_index_context={
+                "agi_source_format": "bam",
+                "agi_source_kind": "alignment_reads",
+                "sample_slug": "bam-fixture",
+                "genome_build": "GRCh37",
+                "agi_path": "/tmp/private.active-genome-index.sqlite",
+            },
+        )
+
+        overview = result["render_params"]["evidence"]["overview"]
+        self.assertEqual(overview["agi_source_format"], "bam")
+        self.assertEqual(overview["agi_source_kind"], "alignment_reads")
+        self.assertEqual(overview["sample_slug"], "bam-fixture")
+        self.assertNotIn("agi_path", overview)
 
     def test_catalog_exposes_builder(self) -> None:
         names = {op.name for op in OPERATIONS}

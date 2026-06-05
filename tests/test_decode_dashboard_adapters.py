@@ -200,7 +200,7 @@ class DecodeDashboardAdapterTests(unittest.TestCase):
             evidence={
                 "variants": {"status": "completed", "candidate_inventory": []},
                 "variants_all": {"status": "requires_library_install", "missing_library": {"library": "clinvar-grch38"}},
-                "nutrigenomics": {"coverage_status": "in_scope_empty", "markers": []},
+                "nutrigenomics": {"coverage_state": "in_scope_empty", "markers": []},
             },
             mode="update",
             output=out,
@@ -228,7 +228,7 @@ class DecodeDashboardAdapterTests(unittest.TestCase):
                     ],
                 },
                 "nutrigenomics": {
-                    "coverage_status": "data_returned",
+                    "coverage_state": "data_returned",
                     "markers": [
                         {
                             "domain": "folate_metabolism",
@@ -250,6 +250,49 @@ class DecodeDashboardAdapterTests(unittest.TestCase):
         self.assertEqual(parsed["variants"][0]["zygosity"], "het")
         self.assertEqual(parsed["nutrigenomics"][0]["gene"], "MTHFR")
         self.assertEqual(parsed["nutrigenomics"][0]["marker"], "Folate Metabolism")
+
+    def test_direct_panel_rows_reject_native_only_fields(self) -> None:
+        cases = [
+            (
+                "pgx",
+                {"pgx": [{"Gene": "CYP2C19", "Source Diplotype": "*1/*2"}]},
+            ),
+            (
+                "risk",
+                {"risk": [{"reported_trait": "Synthetic common trait", "score": 2.0}]},
+            ),
+            (
+                "variants",
+                {
+                    "variants": [
+                        {
+                            "sample_variant": {"id": "rs777", "chrom": "1", "pos": 100},
+                            "clinvar": {"clinical_significance": "Pathogenic"},
+                        }
+                    ]
+                },
+            ),
+            (
+                "nutrigenomics",
+                {
+                    "nutrigenomics": [
+                        {
+                            "domain": "folate_metabolism",
+                            "variant": {"rsid": "rs1801133"},
+                        }
+                    ]
+                },
+            ),
+        ]
+        for name, evidence in cases:
+            with self.subTest(name=name):
+                with self.assertRaises(decode_dashboard.DashboardRenderError) as ctx:
+                    decode_dashboard.render_dashboard(
+                        evidence=evidence,
+                        mode="full",
+                        output=self.tmpdir / f"{name}-direct-alias.html",
+                    )
+                self.assertEqual(ctx.exception.code, "panel_schema_mismatch")
 
     def test_gene_less_native_pgx_review_is_empty_for_dashboard_cards(self) -> None:
         out = self.tmpdir / "dash.html"

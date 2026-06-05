@@ -12,6 +12,7 @@ from ....retrieval import semantic as retrieval_semantic
 from .helpers import (
     BIOGRID_ORCS_ACCESS_KEY_ENV,
     BIOGRID_ORCS_API_BASE,
+    BIOGRID_ORCS_HOME_URL,
     DEPMAP_CRISPR_GENE_EFFECT_URL_ENV,
     DEPMAP_MODEL_URL_ENV,
     SUPPORTED_NATIVE_SCREEN_SOURCES,
@@ -306,7 +307,7 @@ def _biogrid_score_record(screen_row: dict[str, Any], score_row: dict[str, Any],
         return None
     score = _first_score(score_row)
     title = _first_text(screen_row, "SCREEN_TITLE", "screen_title", "title", "name", "Screen Title") or f"BioGRID ORCS screen {screen_id}"
-    source_url = f"https://orcs.thebiogrid.org/Screen/{screen_id}"
+    source_url = f"{BIOGRID_ORCS_HOME_URL.rstrip('/')}/Screen/{screen_id}"
     cell_line = _clean_text(query.get("cell_line")) or _first_text(screen_row, "CELL_LINE", "cell_line", "cellLine")
     perturbation = _clean_text(query.get("perturbation")) or _first_text(screen_row, "LIBRARY_METHODOLOGY", "libraryMethodology", "screenType")
     phenotype = _clean_text(query.get("phenotype")) or _first_text(screen_row, "PHENOTYPE", "phenotype", "conditionName")

@@ -19,6 +19,14 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install genomics CLI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends samtools bcftools minimap2
+          command -v samtools
+          command -v bcftools
+          command -v minimap2
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip

@@ -8,7 +8,7 @@ from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
     open_reader,
 )
-from ._common import JsonObject, _size
+from ._common import JsonObject, PHARMCAT_VCF_REQUIREMENTS_URL, _size
 
 
 def _input_preflight(
@@ -123,7 +123,7 @@ def _pharmcat_requirement_checks(header: Any, stats: dict[str, int]) -> list[Jso
                 "reference": header.first_meta_value("reference"),
                 "referenceInfo": header.first_meta_value("referenceInfo"),
             },
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
         {
             "id": "required_columns_and_gt",
@@ -132,14 +132,14 @@ def _pharmcat_requirement_checks(header: Any, stats: dict[str, int]) -> list[Jso
                 "sample_count": sample_count,
                 "records_with_gt": stats["records_with_gt"],
             },
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
         {
             "id": "required_pgx_positions",
             "status": "requires_missing_pgx_position_review",
             "evidence": {"records_scanned": stats["records_scanned"]},
             "next_evidence": "Inspect pharmacogenomics.run_pharmcat artifacts.missing_pgx_positions after execution.",
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
         {
             "id": "variant_representation",
@@ -148,19 +148,19 @@ def _pharmcat_requirement_checks(header: Any, stats: dict[str, int]) -> list[Jso
                 "indel_records": stats["indel_records"],
                 "symbolic_alt_records": stats["symbolic_alt_records"],
             },
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
         {
             "id": "chromosome_prefix",
             "status": "ready" if chrom_style == "chr_prefixed" else "needs_chr_prefixed_chromosomes",
             "evidence": {"chrom_style": chrom_style},
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
         {
             "id": "quality_filter_review",
             "status": "ready" if not stats["non_pass_filter_records"] else "review_filtered_records",
             "evidence": {"non_pass_filter_records": stats["non_pass_filter_records"]},
-            "source_url": "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            "source_url": PHARMCAT_VCF_REQUIREMENTS_URL,
         },
     ]
 

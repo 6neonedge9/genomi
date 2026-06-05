@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
-from ...active_genome_index.vcf import parse_info, parse_sample
-from ...runtime.external import file_metadata, matching_manifest, utc_now
+from ...active_genome_index.vcf import parse_info
+from ...runtime.external import file_metadata, utc_now
 
 from .constants import (
     CLINVAR_RSID_INDEX_RULE_SET_VERSION,
@@ -72,6 +73,8 @@ def import_clinvar_vcf(
             connection.execute("delete from main.clinvar_variants")
             connection.execute("delete from main.clinvar_variant_genes")
             connection.execute("delete from main.metadata where key like 'clinvar_%'")
+            connection.commit()
+            _checkpoint_truncate_wal(connection)
 
         _upsert_metadata(connection, "clinvar_source", file_metadata(clinvar_vcf))
         _upsert_metadata(connection, "clinvar_source_header", header_metadata)
@@ -148,6 +151,7 @@ def import_clinvar_vcf(
         )
         connection.execute("pragma synchronous = normal")
         connection.commit()
+        _checkpoint_truncate_wal(connection)
 
     return {
         "status": "completed",
@@ -216,6 +220,7 @@ def build_clinvar_gene_index(
             _insert_gene_index_batch(connection, batch)
         _upsert_metadata(connection, "clinvar_gene_index", expected_cache)
         connection.commit()
+        _checkpoint_truncate_wal(connection)
 
     return {
         "status": "completed",
@@ -279,6 +284,7 @@ def build_clinvar_rsid_index(
             _insert_rsid_index_batch(connection, batch)
         _upsert_metadata(connection, "clinvar_rsid_index", expected_cache)
         connection.commit()
+        _checkpoint_truncate_wal(connection)
 
     return {
         "status": "completed",
@@ -287,3 +293,10 @@ def build_clinvar_rsid_index(
         "scanned_records": scanned,
         "rsid_links": rsid_links,
     }
+
+
+def _checkpoint_truncate_wal(connection: sqlite3.Connection) -> None:
+    try:
+        connection.execute("pragma wal_checkpoint(truncate)").fetchone()
+    except sqlite3.OperationalError:
+        return

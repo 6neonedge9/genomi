@@ -52,7 +52,7 @@ class PrsScoreCacheContractTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "out_of_scope_for_input")
-        self.assertEqual(result["coverage_status"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         self.assertEqual(result["genome_build"], "CHM13")
         self.assertEqual(result["supported_genome_builds"], ["GRCh37", "GRCh38"])
         self.assertEqual(result["next_actions"][0]["action"], "choose_supported_genome_build")

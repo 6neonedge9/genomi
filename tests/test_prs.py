@@ -361,7 +361,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
             mock.patch.object(prs_pgs_catalog, "fetch_rest_metadata", return_value=metadata),
             mock.patch.object(prs_scoring_files, "_download_source", side_effect=fake_download),
         ):
-            imported = call_operation("prs.import_scoring_file", {"pgs_id": "PGS900001", "genome_build": "GRCh38"})
+            call_operation("prs.import_scoring_file", {"pgs_id": "PGS900001", "genome_build": "GRCh38"})
 
         vcf = self._write_indexed_vcf("sample_grch38_for_fallback_score.vcf")
         runtime_context.set_active_agi_from_source(
@@ -561,7 +561,7 @@ class PolygenicScoreCapabilityTests(unittest.TestCase):
 
         with mock.patch.object(Path, "replace", fail_staging_publish):
             with self.assertRaises(RuntimeError):
-                prs_scoring_files._publish_cache(staging_dir, target_dir, force=True)
+                library_manager.publish_prs_scoring_file_cache(staging_dir, target_dir, force=True)
 
         self.assertEqual((target_dir / "manifest.json").read_text(encoding="utf-8"), '{"pgs_id":"PGS900777","genome_build":"GRCh38"}\n')
         self.assertEqual((target_dir / "variants.sqlite").read_text(encoding="utf-8"), "old-db")

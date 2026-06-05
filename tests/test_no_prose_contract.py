@@ -73,7 +73,7 @@ class NoProseContractTests(GenomiRuntimeTestCase):
             with self.subTest(op=name):
                 result = _stub_dispatch(
                     name,
-                    {"status": "completed", "ok": True, "summary": {"record_count": 1}},
+                    {"status": "completed", "summary": {"record_count": 1}},
                 )
                 top_level_keys = set(result.keys()) if isinstance(result, dict) else set()
                 forbidden = top_level_keys & FORBIDDEN_TOP_LEVEL_KEYS

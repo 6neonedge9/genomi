@@ -24,14 +24,14 @@ from .helpers import (
 def _pathway_response(
     *,
     status: str,
-    coverage_status: str,
+    coverage_state: str,
     query: dict[str, Any],
     pathway: dict[str, Any],
     members: list[dict[str, Any]],
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -43,14 +43,14 @@ def _pathway_response(
             "source": pathway.get("source"),
         },
         "source_coverage": source_coverage
-        or _source_coverage(coverage_status, consulted=[_pathway_source_label(pathway.get("source"))], unavailable=[], not_integrated=NOT_INTEGRATED_PATHWAY_SOURCES),
+        or _source_coverage(coverage_state, consulted=[_pathway_source_label(pathway.get("source"))], unavailable=[], not_integrated=NOT_INTEGRATED_PATHWAY_SOURCES),
     }
 
 
 def _pathway_empty(
     *,
     status: str,
-    coverage_status: str,
+    coverage_state: str,
     query: dict[str, Any],
     empty_reason: str,
     resolved_pathways: list[dict[str, Any]] | None = None,
@@ -58,7 +58,7 @@ def _pathway_empty(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -67,14 +67,14 @@ def _pathway_empty(
         "resolution_candidates": resolution_candidates or [],
         "empty_reason": empty_reason,
         "source_coverage": source_coverage
-        or _source_coverage(coverage_status, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_PATHWAY_SOURCES),
+        or _source_coverage(coverage_state, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_PATHWAY_SOURCES),
     }
 
 
 def _cell_marker_response(
     *,
     status: str,
-    coverage_status: str,
+    coverage_state: str,
     query: dict[str, Any],
     cell_type: dict[str, Any],
     markers: list[dict[str, Any]],
@@ -82,7 +82,7 @@ def _cell_marker_response(
 ) -> dict[str, Any]:
     deduped = _dedupe_markers(markers)
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -94,14 +94,14 @@ def _cell_marker_response(
             "source": cell_type.get("source"),
         },
         "source_coverage": source_coverage
-        or _source_coverage(coverage_status, consulted=[_cell_marker_source_label(cell_type.get("source"))], unavailable=[], not_integrated=NOT_INTEGRATED_CELL_MARKER_SOURCES),
+        or _source_coverage(coverage_state, consulted=[_cell_marker_source_label(cell_type.get("source"))], unavailable=[], not_integrated=NOT_INTEGRATED_CELL_MARKER_SOURCES),
     }
 
 
 def _cell_marker_empty(
     *,
     status: str,
-    coverage_status: str,
+    coverage_state: str,
     query: dict[str, Any],
     empty_reason: str,
     resolved_cell_types: list[dict[str, Any]] | None = None,
@@ -109,7 +109,7 @@ def _cell_marker_empty(
     source_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -118,13 +118,13 @@ def _cell_marker_empty(
         "resolution_candidates": resolution_candidates or [],
         "empty_reason": empty_reason,
         "source_coverage": source_coverage
-        or _source_coverage(coverage_status, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_CELL_MARKER_SOURCES),
+        or _source_coverage(coverage_state, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_CELL_MARKER_SOURCES),
     }
 
 
-def _region_empty(*, status: str, coverage_status: str, query: dict[str, Any], empty_reason: str, source_coverage: dict[str, Any] | None = None) -> dict[str, Any]:
+def _region_empty(*, status: str, coverage_state: str, query: dict[str, Any], empty_reason: str, source_coverage: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "status": status,
         "agent_decision_required": True,
         "query": query,
@@ -139,7 +139,7 @@ def _region_empty(*, status: str, coverage_status: str, query: dict[str, Any], e
         },
         "empty_reason": empty_reason,
         "source_coverage": source_coverage
-        or _source_coverage(coverage_status, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_REGION_SOURCES),
+        or _source_coverage(coverage_state, consulted=[], unavailable=[], not_integrated=NOT_INTEGRATED_REGION_SOURCES),
     }
 
 
@@ -161,7 +161,7 @@ def _library_install_response(
     extra_libraries = [manager.status(name) for name in (additional_missing_libraries or [])]
     payload: dict[str, Any] = {
         **request,
-        "coverage_status": "out_of_scope_for_input",
+        "coverage_state": "out_of_scope_for_input",
         "agent_decision_required": True,
         "query": query,
         "capability": capability,
@@ -221,12 +221,12 @@ def _region_capability_contract() -> dict[str, Any]:
     }
 
 
-def _source_coverage(coverage_status: str, *, consulted: list[str], unavailable: list[dict[str, str]], not_integrated: list[str]) -> dict[str, Any]:
+def _source_coverage(coverage_state: str, *, consulted: list[str], unavailable: list[dict[str, str]], not_integrated: list[str]) -> dict[str, Any]:
     consulted_unique = sorted(set(item for item in consulted if item))
     return {
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "sources_consulted": consulted_unique,
-        "sources_consulted_and_empty": consulted_unique if coverage_status == "in_scope_empty" else [],
+        "sources_consulted_and_empty": consulted_unique if coverage_state == "in_scope_empty" else [],
         "sources_consulted_but_unavailable": unavailable,
         "sources_not_integrated": not_integrated,
     }

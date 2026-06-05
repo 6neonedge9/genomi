@@ -28,11 +28,14 @@
         "23andMe",
         "23andme raw data"
       ],
-      "contract_fixture_cases": [
-        "23andme_txt",
-        "23andme_zip",
-        "23andme_tar"
-      ]
+    "contract_fixture_cases": [
+      "23andme_txt",
+      "23andme_gz",
+      "23andme_bz2",
+      "23andme_xz",
+      "23andme_zip",
+      "23andme_tar"
+    ]
     },
     "ancestrydna": {
       "public_pgp_hms_examples_observed": true,
@@ -43,11 +46,14 @@
         "AncestryDNA",
         "AncestryDNA-genotyping.vcf.bz2"
       ],
-      "contract_fixture_cases": [
-        "ancestrydna_txt",
-        "ancestrydna_zip",
-        "ancestrydna_tar"
-      ]
+    "contract_fixture_cases": [
+      "ancestrydna_txt",
+      "ancestrydna_gz",
+      "ancestrydna_bz2",
+      "ancestrydna_xz",
+      "ancestrydna_zip",
+      "ancestrydna_tar"
+    ]
     },
     "myheritage": {
       "public_pgp_hms_examples_observed": true,
@@ -56,11 +62,14 @@
         "MyHeritage",
         "MyHeritage raw DNA data"
       ],
-      "contract_fixture_cases": [
-        "myheritage_csv",
-        "myheritage_zip",
-        "myheritage_tar"
-      ]
+    "contract_fixture_cases": [
+      "myheritage_csv",
+      "myheritage_gz",
+      "myheritage_bz2",
+      "myheritage_xz",
+      "myheritage_zip",
+      "myheritage_tar"
+    ]
     },
     "ftdna": {
       "public_pgp_hms_examples_observed": true,
@@ -69,23 +78,28 @@
         "Family Tree DNA",
         "FamilyTreeDNA autosomal results"
       ],
-      "contract_fixture_cases": [
-        "ftdna_csv",
-        "ftdna_csv_gz",
-        "ftdna_zip",
-        "ftdna_tar"
-      ]
+    "contract_fixture_cases": [
+      "ftdna_csv",
+      "ftdna_csv_gz",
+      "ftdna_bz2",
+      "ftdna_xz",
+      "ftdna_zip",
+      "ftdna_tar"
+    ]
     },
     "livingdna": {
       "public_pgp_hms_examples_observed": false,
       "pgp_public_evidence": [
         "No Living DNA examples were present in the public PGP-HMS data-type inventory checked for this manifest; Genomi still supports this provider format."
       ],
-      "contract_fixture_cases": [
-        "livingdna_txt",
-        "livingdna_zip",
-        "livingdna_tar"
-      ]
+    "contract_fixture_cases": [
+      "livingdna_txt",
+      "livingdna_gz",
+      "livingdna_bz2",
+      "livingdna_xz",
+      "livingdna_zip",
+      "livingdna_tar"
+    ]
     },
     "vcf": {
       "public_pgp_hms_examples_observed": true,
@@ -144,10 +158,11 @@
         "GENOS fastq Part 2",
         "paired FASTQ"
       ],
-      "contract_fixture_cases": [
-        "fastq",
-        "fastq_zip",
-        "fastq_tar"
+    "contract_fixture_cases": [
+      "fastq_pair",
+      "fastq",
+      "fastq_zip",
+      "fastq_tar"
       ]
     }
   },

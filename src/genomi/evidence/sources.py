@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..runtime.libraries import manager as library_manager
+
 SOURCE_HOME_URLS = {
     "clinvar": "https://www.ncbi.nlm.nih.gov/clinvar/",
-    "gnomad": "https://gnomad.broadinstitute.org/",
+    "gnomad": library_manager.source_url("gnomad"),
     "clingen_gene_validity": "https://search.clinicalgenome.org/kb/gene-validity",
     "gencc": "https://search.thegencc.org/",
     "genereviews": "https://www.ncbi.nlm.nih.gov/books/NBK1116/",
@@ -16,7 +18,7 @@ SOURCE_HOME_URLS = {
     "malacards": "https://www.malacards.org/",
     "nci_cancer_genetics": "https://www.cancer.gov/about-cancer/causes-prevention/genetics",
     "cosmic_cancer_gene_census": "https://www.cosmickb.org/knowledgebase/cosmic-modules/",
-    "opentargets": "https://platform.opentargets.org/",
+    "opentargets": library_manager.source_url("opentargets"),
     "chembl": "https://www.ebi.ac.uk/chembl/",
     "drugbank": "https://go.drugbank.com/",
     "pharmaprojects": "https://pharmaintelligence.informa.com/products-and-services/data-and-analysis/pharmaprojects",
@@ -25,8 +27,8 @@ SOURCE_HOME_URLS = {
     "pgxdb": "https://pgx-db.org/",
     "fda_pharmacogenomics": "https://www.fda.gov/drugs/science-and-research-drugs/table-pharmacogenomic-biomarkers-drug-labeling",
     "fda_pharmacogenetic_associations": "https://www.fda.gov/medical-devices/precision-medicine/table-pharmacogenetic-associations",
-    "gwas_catalog": "https://www.ebi.ac.uk/gwas/",
-    "functional_genomics_perturbation_source": "https://orcs.thebiogrid.org/",
+    "gwas_catalog": library_manager.source_url("gwas-catalog"),
+    "functional_genomics_perturbation_source": library_manager.source_url("biogrid-orcs"),
     "pubmed_or_primary_literature": "https://pubmed.ncbi.nlm.nih.gov/",
 }
 

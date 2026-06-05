@@ -300,7 +300,7 @@ def _active_genome_index_build_mismatch(
         return None
     result: JsonObject = {
         "status": "out_of_scope_for_input",
-        "coverage_status": "out_of_scope_for_input",
+        "coverage_state": "out_of_scope_for_input",
         "requested_genome_build": requested_build,
         "active_genome_index_genome_build": agi_build,
         "supported_genome_builds": list(scoring_files.SUPPORTED_GENOME_BUILDS),

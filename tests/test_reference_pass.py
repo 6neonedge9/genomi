@@ -160,7 +160,7 @@ class ReferencePassChokepointTests(GenomiRuntimeTestCase):
         index = self._active_variants_ready()
         _set_reference_job(index, status="running", pid=os.getpid(), fresh_heartbeat=True)
         result = _stamp_reference_pending_if_due(
-            "active_genome_index.classify_region_callability", {}, {"ok": True}
+            "active_genome_index.classify_region_callability", {}, {"status": "completed"}
         )
         self.assertTrue(result["reference_pending"])
         self.assertFalse("reference_pending_failed" in result)
@@ -174,7 +174,7 @@ class ReferencePassChokepointTests(GenomiRuntimeTestCase):
         self.assertTrue(state["failed"])
 
         result = _stamp_reference_pending_if_due(
-            "active_genome_index.classify_region_callability", {}, {"ok": True}
+            "active_genome_index.classify_region_callability", {}, {"status": "completed"}
         )
         self.assertTrue(result["reference_pending"])
         self.assertTrue(result["reference_pending_failed"])
@@ -186,7 +186,7 @@ class ReferencePassChokepointTests(GenomiRuntimeTestCase):
         _set_reference_job(index, status="failed", pid=None, fresh_heartbeat=False)
         # variant.resolve is variant-need: its rows are final at variants_ready,
         # so it must never carry a reference_pending stamp.
-        result = _stamp_reference_pending_if_due("variant.resolve", {}, {"ok": True})
+        result = _stamp_reference_pending_if_due("variant.resolve", {}, {"status": "completed"})
         self.assertFalse("reference_pending" in result)
 
 

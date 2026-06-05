@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -20,6 +21,39 @@ from _active_genome_index_contract_fixtures import (
     ActiveGenomeIndexContractFixtureMixin,
 )
 from _genomi_runtime_helpers import GenomiRuntimeTestCase
+
+
+def _extract_dashboard_evidence(html: str) -> dict[str, object]:
+    marker = "window.__GENOMI_DASHBOARD__"
+    assignment_index = html.find(marker)
+    assert assignment_index >= 0, "no __GENOMI_DASHBOARD__ block in HTML"
+    json_start = html.find("{", assignment_index)
+    assert json_start >= 0, "no __GENOMI_DASHBOARD__ object in HTML"
+    parsed, _end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
+    assert isinstance(parsed, dict), "__GENOMI_DASHBOARD__ is not an object"
+    return parsed
+
+
+def _nested_dict(value: object, *path: str) -> dict[str, object]:
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return {}
+        current = current.get(key)
+    return current if isinstance(current, dict) else {}
+
+
+def _expected_dashboard_genome_build(overview: object) -> str | None:
+    if isinstance(overview, dict) and overview.get("genome_build") not in (None, "", []):
+        return str(overview["genome_build"])
+    active = _nested_dict(overview, "active_genome_index")
+    metadata = _nested_dict(active, "metadata")
+    header = _nested_dict(metadata, "header")
+    return (
+        str(metadata["genome_build"])
+        if metadata.get("genome_build") not in (None, "", [])
+        else str(header["reference"]) if header.get("reference") not in (None, "", []) else None
+    )
 
 
 @dataclass(frozen=True)
@@ -314,6 +348,16 @@ class ActiveGenomeIndexDownstreamContractTests(
                 ),
                 Path("Nebula_Genomics_BAM_format.tar.gz"),
                 False,
+            ),
+            (
+                SourceContractCase(
+                    case_id="fastq_pair",
+                    expected_format="fastq",
+                    writer=self._write_fastq_pair_sources,
+                    parse_overrides={"reference_fasta": str(reference)},
+                ),
+                Path("PGP_PUBLIC_SA_L001_R1_001.fastq"),
+                True,
             ),
             (
                 SourceContractCase(
@@ -638,17 +682,15 @@ class ActiveGenomeIndexDownstreamContractTests(
                 "active_genome_index.approve_access",
                 {"approved_by_user": True, "reason": "contract dashboard render"},
             )
+            overview_build = call_operation("decode.build_dashboard_evidence", {"panels": ["overview"]})
+            self.assertEqual(overview_build["status"], "completed", overview_build)
+            overview = overview_build["render_params"]["evidence"]["overview"]
             out = Path(f"{contract.case_id}.dashboard.html")
             result = call_operation(
                 "decode.render_dashboard",
                 {
                     "evidence": {
-                        "overview": {
-                            "sampleId": contract.case_id,
-                            "genomeBuild": "GRCh37",
-                            "variantCount": contract.expected_record_stats["variant_records"],
-                            "sourceFormat": contract.expected_format,
-                        },
+                        "overview": overview,
                         "variants": [
                             {
                                 "rsid": "rs900000002",
@@ -682,6 +724,23 @@ class ActiveGenomeIndexDownstreamContractTests(
             self.assertIn("variants", result["panels_rendered"])
             self.assertIn("variants_all", result["panels_rendered"])
             self.assertIn("pgx", result["panels_rendered"])
+            dashboard_overview = _extract_dashboard_evidence(out.read_text(encoding="utf-8"))["overview"]
+            expected_count = (
+                contract.expected_record_stats["pass_records"]
+                if contract.is_consumer_array
+                else contract.expected_record_stats["variant_records"]
+            )
+            self.assertEqual(dashboard_overview["variantCount"], expected_count)
+            self.assertEqual(
+                dashboard_overview["variantCountLabel"],
+                "Markers Indexed" if contract.is_consumer_array else "Variants Indexed",
+            )
+            expected_build = _expected_dashboard_genome_build(overview)
+            if expected_build is None:
+                self.assertNotIn("genomeBuild", dashboard_overview)
+            else:
+                self.assertEqual(dashboard_overview["genomeBuild"], expected_build)
+            self.assertEqual(dashboard_overview["genomeSource"], contract.expected_format)
 
     @contextmanager
     def _mock_contract_pgx_sources(self):

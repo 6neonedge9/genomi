@@ -25,6 +25,7 @@ from ....evidence import (
     query_population_frequency,
 )
 from ....runtime.handoff import attach_evidence_context, evidence_context
+from ....runtime.paths import sample_slug_from_source
 
 from ._helpers import (
     WORKFLOW_AREA_ID,
@@ -348,11 +349,14 @@ def summarize_static_state_from_agi(
 ) -> dict[str, Any]:
     agi_path = Path(agi_path)
     db_path = Path(evidence_db) if evidence_db is not None else agi_path.parent / "evidence.sqlite"
+    active_summary = active_genome_index_summary(agi_path) if agi_path.exists() else None
+    evidence = evidence_summary(db_path) if db_path.exists() else None
+    _align_evidence_metadata_to_active_index(evidence, active_summary)
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "contract": workflow_contract(),
-        "active_genome_index": active_genome_index_summary(agi_path) if agi_path.exists() else None,
-        "evidence": evidence_summary(db_path) if db_path.exists() else None,
+        "active_genome_index": active_summary,
+        "evidence": evidence,
         "outputs": {
             "sample_qc": str(agi_path.parent / "sample-qc.json"),
             "clinvar_matches": str(agi_path.parent / "clinvar.matches.jsonl"),
@@ -364,3 +368,16 @@ def summarize_static_state_from_agi(
             commands=["genomi call research.build_target_packet --params '{\"db\":\"<evidence.sqlite>\",\"target_type\":\"gene\",\"gene\":\"<gene>\"}'"],
         ),
     }
+
+
+def _align_evidence_metadata_to_active_index(evidence: dict[str, Any] | None, active_summary: dict[str, Any] | None) -> None:
+    if not isinstance(evidence, dict) or not isinstance(active_summary, dict):
+        return
+    metadata = evidence.get("metadata")
+    active_metadata = active_summary.get("metadata")
+    if not isinstance(metadata, dict) or not isinstance(active_metadata, dict):
+        return
+    source = active_metadata.get("source")
+    source_format = active_metadata.get("source_format")
+    if source and source_format:
+        metadata["run_sample_slug"] = sample_slug_from_source(source, source_format=str(source_format))

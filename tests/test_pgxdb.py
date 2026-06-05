@@ -48,8 +48,8 @@ class PGxDBTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pgxdb._fetch_json", side_effect=fake_fetch):
             result = lookup_pgxdb(drug="Infliximab", rsid="rs1061622")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["resolved_atc_codes"][0]["atc_code"], "L04AB02")
         self.assertEqual(len(result["pgx_records"]), 1)
         self.assertEqual(result["pgx_records"][0]["rsid"], "rs1061622")
@@ -176,8 +176,8 @@ class PGxDBTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pgxdb._fetch_json", side_effect=fake_fetch):
             result = lookup_pgxdb(drug="clopidogrel", gene="CYP2C19")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertNotIn("warnings", result)
         optional_errors = [call for call in result["raw_calls"] if call.get("optional")]
         self.assertEqual(len(optional_errors), 1)
@@ -206,8 +206,8 @@ class PGxDBTests(unittest.TestCase):
     def test_lookup_requires_selected_public_target(self) -> None:
         result = lookup_pgxdb()
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "invalid_target")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertEqual(result["raw_calls"], [])
         self.assertEqual(
             result["unanswered_answer_components"][0]["missing_inputs"],
@@ -217,7 +217,6 @@ class PGxDBTests(unittest.TestCase):
     def test_lookup_no_match_is_successful_empty_lookup(self) -> None:
         result = lookup_pgxdb(rsid="rs999999999")
 
-        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "no_matching_pgxdb_records")
         self.assertEqual(result["raw_calls"], [])
         self.assertEqual(result["summary"]["pgx_record_count"], 0)
@@ -232,8 +231,8 @@ class PGxDBTests(unittest.TestCase):
         with patch("genomi.capabilities.pharmacogenomics.pgxdb.urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
             result = lookup_pgxdb(drug="Infliximab")
 
-        self.assertFalse(result["ok"])
         self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertEqual(result["summary"]["pgx_record_count"], 0)
         self.assertEqual(result["raw_calls"][0]["attempts"], 2)
         self.assertIn("offline", result["warnings"][0]["error"])

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 
-GWAS_CATALOG_API_URL = "https://www.ebi.ac.uk/gwas/rest/api"
-GWAS_CATALOG_V2_API_URL = "https://www.ebi.ac.uk/gwas/rest/api/v2"
+from ....runtime.libraries import manager as library_manager
+
+GWAS_CATALOG_SOURCE_URL = library_manager.source_url("gwas-catalog")
+GWAS_CATALOG_API_URL = library_manager.source_url("gwas-catalog", 1)
+GWAS_CATALOG_V2_API_URL = library_manager.api_base("gwas-catalog")
 GWAS_CATALOG_PROJECTION = "associationByEfoTrait"
-GWAS_CATALOG_SOURCE_URL = "https://www.ebi.ac.uk/gwas/"
 GWAS_MAX_ASSOCIATION_LIMIT = 500
 # Each emitted association record carries study metadata, mapped/reported
 # genes, traits, and a record_research_payload — at ~6 KB per record the

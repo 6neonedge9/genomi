@@ -382,34 +382,24 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(parsed["overview"]["sampleId"], "HG-BRACE")
         self.assertEqual(parsed["pgx"][0]["gene"], "CYP2C19")
 
-    def test_normalizes_snake_case_overview(self) -> None:
-        """Raw active_genome_index.summarize-style keys map to dashboard schema."""
+    def test_rejects_legacy_overview_aliases(self) -> None:
         out = self.tmpdir / "dash.html"
-        result = decode_dashboard.render_dashboard(
-            evidence={
-                "overview": {
-                    "nickname": "matthew",
-                    "genome_build": "GRCh38",
-                    "agi_source_format": "vcf",
-                    "active_genome_index_completed_at": "2026-05-25T21:20:00Z",
-                    "active_genome_index": {"variant_count": 5_148_321},
+        with self.assertRaises(decode_dashboard.DashboardRenderError) as ctx:
+            decode_dashboard.render_dashboard(
+                evidence={
+                    "overview": {
+                        "nickname": "matthew",
+                        "genome_build": "GRCh38",
+                        "agi_source_format": "vcf",
+                        "active_genome_index_completed_at": "2026-05-25T21:20:00Z",
+                        "active_genome_index": {"variant_count": 5_148_321},
+                    },
                 },
-            },
-            mode="full",
-            output=out,
-        )
-        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
-        ov = parsed["overview"]
-        self.assertEqual(ov["sampleId"], "matthew")
-        self.assertEqual(ov["genomeBuild"], "GRCh38")
-        self.assertEqual(ov["genomeSource"], "vcf")
-        self.assertEqual(ov["parsedAt"], "2026-05-25T21:20:00Z")
-        self.assertEqual(ov["variantCount"], 5_148_321)
-        self.assertIn("overview", result["panels_rendered"])
-        self.assertEqual(
-            set(result["panels_empty"]),
-            set(decode_dashboard.PANEL_KEYS) - {"overview"},
-        )
+                mode="full",
+                output=out,
+            )
+        self.assertEqual(ctx.exception.code, "panel_schema_mismatch")
+        self.assertIn("no recognized fields", ctx.exception.message)
 
     def test_normalizes_ancestry_nearest_reference_groups(self) -> None:
         """ancestry.estimate_population_context keys map to neighbors[]."""
@@ -418,12 +408,14 @@ class RenderDashboardTests(unittest.TestCase):
             evidence={
                 "ancestry": {
                     "nearest_reference_groups": [
-                        {"group": "EUR", "score": 0.61},
-                        {"group": "AMR", "score": 0.18},
+                        {"label": "EUR", "centroid_distance": 0.39},
+                        {"label": "AMR", "centroid_distance": 0.82},
                     ],
-                    "markerOverlapQuality": "low",
-                    "overlap_fraction": 0.56,
-                    "panel_id": "1000g-30x-grch38",
+                    "sample_qc": {
+                        "marker_overlap_quality": "low",
+                        "overlap_fraction": 0.56,
+                    },
+                    "reference_panel": {"panel_id": "1000g-30x-grch38"},
                 },
             },
             mode="full",
@@ -432,7 +424,7 @@ class RenderDashboardTests(unittest.TestCase):
         parsed = _extract_evidence(out.read_text(encoding="utf-8"))
         anc = parsed["ancestry"]
         self.assertEqual(anc["dominantAncestry"], "EUR")
-        self.assertEqual(anc["neighbors"][0], {"population": "EUR", "similarity": 0.61})
+        self.assertEqual(anc["neighbors"][0], {"population": "EUR", "similarity": 0.39})
         self.assertIn("ancestry", result["panels_rendered"])
 
     def test_supplied_overview_unmappable_raises(self) -> None:
@@ -459,17 +451,14 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertIn("variantCount", ctx.exception.message)
 
     def test_normalizes_real_summarize_overview(self) -> None:
-        """The actual active_genome_index.summarize nesting maps variantCount.
-
-        summarize puts the count at index.stats.variant_records (two levels
-        deep) and the sample name under index.metadata.header.samples — the
-        shape that previously rendered a blank "0" stat.
-        """
+        """The current active_genome_index.summarize result maps to overview."""
         out = self.tmpdir / "dash.html"
         decode_dashboard.render_dashboard(
             evidence={
                 "overview": {
-                    "index": {
+                    "workflow_area": "static_annotation",
+                    "active_genome_index": {
+                        "agi_path": "/tmp/private.active-genome-index.sqlite",
                         "stats": {"variant_records": 5_151_074,
                                   "pass_records": 11_778_439,
                                   "total_records": 12_410_160},
@@ -477,6 +466,7 @@ class RenderDashboardTests(unittest.TestCase):
                                                 "reference": "GRCh38.p13",
                                                 "dataSourceType": "WGS"}},
                     },
+                    "outputs": {"clinvar_matches": "/tmp/private/clinvar.matches.jsonl"},
                 },
             },
             mode="full",
@@ -487,6 +477,14 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(ov["sampleId"], "SQ73VL33")
         self.assertEqual(ov["genomeBuild"], "GRCh38.p13")
         self.assertEqual(ov["genotypeQuality"], 94.9)
+        self.assertEqual(set(ov), {
+            "sampleId",
+            "genomeBuild",
+            "variantCount",
+            "variantCountLabel",
+            "genotypeQuality",
+            "genomeSource",
+        })
 
     def test_normalizes_consumer_array_overview_marker_count(self) -> None:
         out = self.tmpdir / "dash.html"
@@ -603,7 +601,7 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertIn("Ancestry", html)
         self.assertIn("Journal", html)
 
-    def test_source_coverage_falls_back_to_alternate_name_keys(self) -> None:
+    def test_source_coverage_uses_canonical_name_key(self) -> None:
         out = self.tmpdir / "dash.html"
         decode_dashboard.render_dashboard(
             evidence={
@@ -613,8 +611,8 @@ class RenderDashboardTests(unittest.TestCase):
                     "variantCount": 100,
                     "parsedAt": "2026-05-25T00:00:00Z",
                     "sourceCoverage": [
-                        {"label": "ClinVar", "status": "ok"},
-                        {"library": "PharmCAT", "status": "ok"},
+                        {"name": "ClinVar", "status": "ok", "percent": 100},
+                        {"name": "PharmCAT", "status": "ok"},
                     ],
                 },
             },
@@ -628,6 +626,7 @@ class RenderDashboardTests(unittest.TestCase):
         sources = parsed["overview"]["sourceCoverage"]
         self.assertEqual(sources[0]["name"], "ClinVar")
         self.assertEqual(sources[1]["name"], "PharmCAT")
+        self.assertEqual(sources[0]["percent"], 100)
 
     def test_ancestry_pca_empty_shows_placeholder(self) -> None:
         out = self.tmpdir / "dash.html"

@@ -4,17 +4,13 @@ import html
 import json
 import re
 import urllib.error
-import urllib.request
 from importlib import resources as importlib_resources
 from typing import Any
 
+from ...runtime import http_text
+from .pharmcat._common import PHARMCAT_FAQ_URL, PHARMCAT_GENES_DRUGS_URL
+
 JsonObject = dict[str, Any]
-
-
-PHARMCAT_GENES_DRUGS_URL = "https://pharmcat.clinpgx.org/Genes-Drugs/"
-PHARMCAT_CYP2D6_URL = "https://pharmcat.clinpgx.org/using/Calling-CYP2D6/"
-PHARMCAT_OUTSIDE_CALL_URL = "https://pharmcat.clinpgx.org/using/Outside-Call-Format/"
-PHARMCAT_FAQ_URL = "https://pharmcat.clinpgx.org/faqs/"
 PGX_GENE_REQUIREMENTS_RESOURCE = ("data", "gene_requirements.json")
 PHARMCAT_NAMED_MATCHER_SECTION = "genes-pharmcat-will-attempt-to-match"
 PHARMCAT_OUTSIDE_CALLER_SECTION = "genes-handled-by-outside-callers"
@@ -151,7 +147,16 @@ def _clean_url(value: str | None) -> str:
 
 def _pharmcat_gene_source_snapshot(url: str, *, fetch_text: Any | None = None) -> JsonObject:
     try:
-        text = fetch_text(url) if fetch_text is not None else _fetch_text(url)
+        text = (
+            fetch_text(url)
+            if fetch_text is not None
+            else http_text.fetch_text(
+                url,
+                timeout=30,
+                accept="text/html, text/plain",
+                user_agent="Mozilla/5.0 (compatible; Genomi/0.1)",
+            )
+        )
     except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
         return {
             "status": "source_unavailable",
@@ -204,15 +209,3 @@ def _catalog_source_comparison(snapshot: JsonObject) -> JsonObject:
             "packaged_not_in_source": sorted(set(OUTSIDE_CALL_GENES) - outside_source),
         },
     }
-
-
-def _fetch_text(url: str) -> str:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "text/html, text/plain",
-            "User-Agent": "Mozilla/5.0 (compatible; Genomi/0.1)",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8", "replace")

@@ -278,12 +278,14 @@ def _insert_metadata(
     *,
     max_records: int | None,
     source_format: str = "vcf",
+    provider: str | None = None,
 ) -> None:
     stat = vcf_path.stat()
     values = {
         "schema_version": SCHEMA_VERSION,
         "vcf_path": str(vcf_path),
         "source_format": source_format,
+        "provider": provider,
         "vcf_size_bytes": stat.st_size,
         "vcf_mtime_ns": stat.st_mtime_ns,
         "include_reference": include_reference,

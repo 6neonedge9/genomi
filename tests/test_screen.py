@@ -68,6 +68,8 @@ class ScreenGeneTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["coverage_state"], "data_returned")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["top_observed"]["candidate_id"], "EGFR")
         self.assertEqual(result["top_observed"]["best_evidence_lane"], "direct_source_match")
         view = result["evidence_view"]
@@ -130,7 +132,8 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(result["status"], "no_source_records")
         self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
         env = result["evidence_envelope"]
-        self.assertIn(env["finding_state"], ("not_observed_in_consulted_scope", "not_assessed"))
+        self.assertEqual(env["finding_state"], "not_assessed")
+        self.assertEqual(env["answer_readiness"], "cannot_answer_yet")
         self.assertFalse(env["negative_inference"]["allowed"])
         self.assertIsNone(result["top_observed"])
         self.assertEqual(result["unmatched_candidates"], ["EGFR", "MYC"])
@@ -238,6 +241,8 @@ class ScreenGeneTests(unittest.TestCase):
 
         self.assertIn("GSE12345%5BACCN%5D", seen_urls[0])
         self.assertEqual(result["status"], "geo_source_records_found")
+        self.assertEqual(result["summary"]["record_count"], 2)
+        self.assertEqual(result["summary"]["direct_perturbation_record_count"], 2)
         self.assertEqual(result["geo_hits"][0]["accession"], "GSE12345")
         self.assertEqual(result["coverage_state"], "data_returned")
         self.assertEqual(result["records_by_gene"]["EGFR"][0]["geo_accession"], "GSE12345")
@@ -289,15 +294,16 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertIn("oversized_compressed_file", reasons)
         self.assertIn("binary_file", reasons)
         self.assertEqual(result["status"], "geo_metadata_found")
+        self.assertEqual(result["summary"]["record_count"], 0)
         self.assertEqual(result["source_records"], [])
 
     def test_query_geo_operation_dispatches(self) -> None:
         with mock.patch(
             "genomi.operations.registry.geo.query_geo_datasets",
             return_value={
-                "ok": True,
                 "status": "geo_metadata_found",
                 "coverage_state": "metadata_only",
+                "summary": {"record_count": 0, "geo_hit_count": 1},
                 "geo_hits": [{"accession": "GSE12345"}],
                 "download_candidates": [],
                 "source_records": [],
@@ -311,6 +317,8 @@ class ScreenGeneTests(unittest.TestCase):
             )
 
         self.assertEqual(result["status"], "geo_metadata_found")
+        self.assertEqual(result["coverage_state"], "metadata_only")
+        self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         query_geo.assert_called_once()
 
     def test_compare_operation_uses_native_depmap_records(self) -> None:
@@ -498,6 +506,7 @@ class ScreenGeneTests(unittest.TestCase):
 
         self.assertEqual(extracted["status"], "direct_source_records_found")
         self.assertEqual(extracted["table"]["emitted_source_record_count"], 2)
+        self.assertEqual(extracted["summary"]["record_count"], 2)
         self.assertEqual(extracted["summary"]["direct_perturbation_source_record_count"], 2)
         self.assertEqual(extracted["direct_perturbation_source_records"][0]["verification"]["status"], "verified")
         self.assertEqual(extracted["direct_perturbation_source_records"][0]["genes"], ["EGFR"])
@@ -535,6 +544,8 @@ class ScreenGeneTests(unittest.TestCase):
             )
 
         self.assertEqual(compared["status"], "completed")
+        self.assertEqual(extracted["evidence_envelope"]["finding_state"], "evidence_present")
+        self.assertEqual(extracted["summary"]["record_count"], 2)
         self.assertEqual(compared["top_observed_candidate"], "EGFR")
         self.assertEqual(compared["decision_evidence"]["top_observed_evidence"]["supporting_evidence"][0]["record_id"], "table:screen.tsv:1:EGFR")
 

@@ -23,7 +23,7 @@ def list_domains() -> JsonObject:
         "domains": catalog.domain_summary(),
         "out_of_scope_by_construction": list(source_context.OUT_OF_SCOPE_BY_CONSTRUCTION),
         "boundary_note": source_context.BOUNDARY_NOTE,
-        "coverage_status": "data_returned",
+        "coverage_state": "data_returned",
     }
 
 
@@ -45,7 +45,7 @@ def retrieve_domain_markers(
     if not domain_id or not isinstance(domain_id, str):
         response = _empty(
             status="domain_id_required",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason="domain_id is required. Call nutrigenomics.list_domains to browse declared domains.",
             extra={"declared_domains": list(source_context.DOMAIN_DEFINITIONS.keys())},
         )
@@ -53,7 +53,7 @@ def retrieve_domain_markers(
     if domain_id in source_context.OUT_OF_SCOPE_BY_CONSTRUCTION:
         response = _empty(
             status="domain_out_of_scope_by_construction",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason=(
                 f"Domain '{domain_id}' is out of scope by construction. The nutrigenomics "
                 "capability does not return records for this domain — there is no replicated "
@@ -68,7 +68,7 @@ def retrieve_domain_markers(
     if domain_id not in source_context.DOMAIN_DEFINITIONS:
         response = _empty(
             status="unknown_domain",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason=f"Domain '{domain_id}' is not in the declared domain list.",
             extra={"declared_domains": list(source_context.DOMAIN_DEFINITIONS.keys())},
         )
@@ -78,7 +78,7 @@ def retrieve_domain_markers(
     if tier not in _VALID_EVIDENCE_TIERS:
         response = _empty(
             status="invalid_evidence_tier",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason=f"min_evidence_tier must be one of {_VALID_EVIDENCE_TIERS}.",
         )
         return _with_semantic_usage(response, semantic, requested_domain_id, domain_id)
@@ -91,7 +91,7 @@ def retrieve_domain_markers(
             "domain": {"id": domain_id, **definition},
             "min_evidence_tier_applied": tier,
             "markers": [],
-            "coverage_status": "in_scope_empty",
+            "coverage_state": "in_scope_empty",
             "empty_reason": (
                 f"Domain '{domain_id}' is declared and in scope, but no curated records meet "
                 f"min_evidence_tier='{tier}'. Loosen the tier or extend the catalogue."
@@ -105,7 +105,7 @@ def retrieve_domain_markers(
         "domain": {"id": domain_id, **definition},
         "min_evidence_tier_applied": tier,
         "markers": records,
-        "coverage_status": "data_returned",
+        "coverage_state": "data_returned",
         "boundary_note": source_context.BOUNDARY_NOTE,
         "composition_hints": {
             "population_frequency": "gnomad.fetch_population_frequency",
@@ -124,14 +124,14 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
     if not rsid or not isinstance(rsid, str):
         return _empty(
             status="rsid_required",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason="rsid is required (e.g. 'rs1801133').",
         )
     cleaned = rsid.strip()
     if not cleaned.lower().startswith("rs"):
         return _empty(
             status="invalid_rsid",
-            coverage_status="out_of_scope_for_input",
+            coverage_state="out_of_scope_for_input",
             empty_reason="Variant identifier must be an rsID (e.g. 'rs1801133').",
         )
 
@@ -141,7 +141,7 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
             "capability": source_context.CAPABILITY_ID,
             "variant": {"rsid": cleaned},
             "records": [],
-            "coverage_status": "in_scope_empty",
+            "coverage_state": "in_scope_empty",
             "empty_reason": (
                 f"Variant '{cleaned}' is not in the nutrigenomic catalogue. The catalogue is "
                 "intentionally small; absence is not evidence of negligible effect."
@@ -154,7 +154,7 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
         "capability": source_context.CAPABILITY_ID,
         "variant": {"rsid": cleaned},
         "records": records,
-        "coverage_status": "data_returned",
+        "coverage_state": "data_returned",
         "boundary_note": source_context.BOUNDARY_NOTE,
     }
 
@@ -162,14 +162,14 @@ def retrieve_variant_records(*, rsid: str | None = None) -> JsonObject:
 def _empty(
     *,
     status: str,
-    coverage_status: str,
+    coverage_state: str,
     empty_reason: str,
     extra: JsonObject | None = None,
 ) -> JsonObject:
     response: JsonObject = {
         "capability": source_context.CAPABILITY_ID,
         "status": status,
-        "coverage_status": coverage_status,
+        "coverage_state": coverage_state,
         "empty_reason": empty_reason,
         "boundary_note": source_context.BOUNDARY_NOTE,
     }

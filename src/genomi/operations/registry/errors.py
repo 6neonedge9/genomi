@@ -24,7 +24,6 @@ class OperationError(ValueError):
                 operation or "operation_error",
                 {
                     "status": status,
-                    "ok": False,
                     "error": {"code": self.code, "message": self.message},
                     "message": self.message,
                 },

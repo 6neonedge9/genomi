@@ -87,42 +87,30 @@ def _pick(d: dict, *keys: str):
     return None
 
 
-def _deep_pick(d: Any, *keys: str, max_depth: int = 4):
-    """Breadth-first search nested dicts for the first non-empty value at any key.
+def _as_dict(value: Any) -> JsonObject:
+    return value if isinstance(value, dict) else {}
 
-    Upstream ops nest the same field at different depths (e.g.
-    ``active_genome_index.summarize`` puts the variant count at
-    ``active_genome_index.stats.variant_records``, two levels down). A shallow parent->child
-    lookup misses it. Searching breadth-first keeps an explicit top-level value
-    winning over a deeper one.
-    """
-    if not isinstance(d, dict):
-        return None
-    queue: list[tuple[dict, int]] = [(d, 0)]
-    while queue:
-        cur, depth = queue.pop(0)
-        for k in keys:
-            if k in cur and cur[k] not in (None, "", []):
-                return cur[k]
-        if depth < max_depth:
-            for v in cur.values():
-                if isinstance(v, dict):
-                    queue.append((v, depth + 1))
+
+def _first_present(*values: Any) -> Any:
+    for value in values:
+        if value not in (None, "", []):
+            return value
     return None
 
 
 def _normalize_source_coverage_item(item: Any) -> JsonObject | None:
     """Normalize a single sourceCoverage entry to ``name``/``status``/``percent``.
 
-    The upstream evidence often uses alternates like ``label``, ``source``,
-    ``library``, ``library_id``, or ``id`` for the display name. Other keys
-    are preserved alongside.
+    ``sourceCoverage`` is a dashboard-owned shape; native capability results
+    should be adapted before reaching this field.
     """
     if not isinstance(item, dict):
         return None
-    name = _pick(item, "name", "label", "source", "library", "library_id", "id")
-    status = _pick(item, "status", "state")
-    percent = _pick(item, "percent", "coverage", "coverage_percent", "pct")
+    name = item.get("name")
+    if name in (None, "", []):
+        return None
+    status = item.get("status")
+    percent = item.get("percent")
     out: JsonObject = {}
     if name is not None:
         out["name"] = name
@@ -130,73 +118,26 @@ def _normalize_source_coverage_item(item: Any) -> JsonObject | None:
         out["status"] = status
     if percent is not None:
         out["percent"] = percent
-    # Preserve any extra agent-supplied keys that don't collide.
-    for k, v in item.items():
-        if k not in out and v not in (None, "", []):
-            out[k] = v
     return out or None
 
 
 def _pass_rate(raw: Any) -> float | None:
-    """Derive a 0-100 PASS-rate proxy when no explicit genotype-quality metric is given.
-
-    Many ops surface `pass_records` + `total_records` (e.g.
-    ``active_genome_index.summarize`` under ``active_genome_index.stats``,
-    ``classify_callset_qc`` under ``summary``). The ratio is a reasonable
-    quality proxy for the Overview "Genotype Quality" stat card.
-    """
     if not isinstance(raw, dict):
         return None
-    queue: list[tuple[dict, int]] = [(raw, 0)]
-    while queue:
-        cur, depth = queue.pop(0)
-        pr = cur.get("pass_records")
-        tr = cur.get("total_records")
-        if isinstance(pr, (int, float)) and isinstance(tr, (int, float)) and tr > 0:
-            return round(100 * pr / tr, 1)
-        if depth < 4:
-            queue.extend((value, depth + 1) for value in cur.values() if isinstance(value, dict))
+    pr = raw.get("pass_records")
+    tr = raw.get("total_records")
+    if isinstance(pr, (int, float)) and isinstance(tr, (int, float)) and tr > 0:
+        return round(100 * pr / tr, 1)
     return None
 
 
 def _normalize_overview(raw: Any) -> JsonObject | None:
     if not isinstance(raw, dict):
         return None
-    sample_id = _pick(raw, "sampleId", "sample_id", "nickname", "user_nickname") or _deep_pick(
-        raw, "run_sample_slug", "sample_slug"
-    )
-    genome_source = _pick(raw, "genomeSource", "genome_source", "agi_source_format") or _deep_pick(
-        raw, "agi_source_format", "source_format", "dataSourceType"
-    )
-    is_consumer_array = _is_consumer_array_overview(raw, genome_source)
-    variant_count = _pick(raw, "variantCount", "variant_count")
-    if variant_count is None:
-        if is_consumer_array:
-            variant_count = _deep_pick(raw, "array_call_records", "pass_records", "rsid_records", "total_records")
-        else:
-            variant_count = _deep_pick(raw, "variant_count", "variant_records", "record_count")
-    if sample_id is None:
-        samples = _deep_pick(raw, "samples")
-        if isinstance(samples, list) and samples:
-            sample_id = samples[0]
-    out = {
-        "sampleId": sample_id,
-        "genomeBuild": _pick(raw, "genomeBuild", "genome_build") or _deep_pick(raw, "genome_build", "reference"),
-        "variantCount": variant_count,
-        "variantCountLabel": "Markers Indexed" if is_consumer_array else "Variants Indexed",
-        "genotypeQuality": (
-            _deep_pick(raw, "genotypeQuality", "genotype_quality", "mean_gq")
-            or _pass_rate(raw)
-        ),
-        "meanDepth": _deep_pick(raw, "meanDepth", "mean_depth", "mean_dp"),
-        "genomeSource": genome_source,
-        "parsedAt": _pick(raw, "parsedAt", "parsed_at", "active_genome_index_completed_at", "updated_at", "file_date"),
-        "sourceCoverage": _pick(raw, "sourceCoverage", "source_coverage"),
-    }
-    # Preserve any extra agent-supplied keys that don't collide.
-    for k, v in raw.items():
-        if k not in out and v not in (None, "", []):
-            out[k] = v
+    if any(key in raw for key in _CANONICAL_OVERVIEW_KEYS):
+        out = _normalize_dashboard_overview(raw)
+    else:
+        out = _normalize_active_genome_index_overview(raw) or {}
     if isinstance(out.get("sourceCoverage"), list):
         normalized_sources = [
             n for n in (_normalize_source_coverage_item(it) for it in out["sourceCoverage"])
@@ -206,8 +147,67 @@ def _normalize_overview(raw: Any) -> JsonObject | None:
     return {k: v for k, v in out.items() if v is not None}
 
 
-def _is_consumer_array_overview(raw: JsonObject, genome_source: Any) -> bool:
-    source_kind = str(_deep_pick(raw, "agi_source_kind", "source_kind") or "").lower()
+_CANONICAL_OVERVIEW_KEYS = {
+    "sampleId",
+    "genomeBuild",
+    "variantCount",
+    "variantCountLabel",
+    "genotypeQuality",
+    "meanDepth",
+    "genomeSource",
+    "parsedAt",
+    "sourceCoverage",
+}
+
+
+def _normalize_dashboard_overview(raw: JsonObject) -> JsonObject:
+    return {key: raw[key] for key in _CANONICAL_OVERVIEW_KEYS if raw.get(key) not in (None, "", [])}
+
+
+def _normalize_active_genome_index_overview(raw: JsonObject) -> JsonObject | None:
+    active = _as_dict(raw.get("active_genome_index"))
+    metadata = _as_dict(active.get("metadata"))
+    stats = _as_dict(active.get("stats"))
+    if not stats:
+        return None
+    header = _as_dict(metadata.get("header"))
+    samples = header.get("samples")
+    sample_id = _first_present(
+        raw.get("sample_slug"),
+        metadata.get("sample_slug"),
+        samples[0] if isinstance(samples, list) and samples else None,
+    )
+    genome_source = _first_present(
+        raw.get("agi_source_format"),
+        metadata.get("source_format"),
+        header.get("dataSourceType"),
+    )
+    source_kind = _first_present(raw.get("agi_source_kind"), metadata.get("source_kind"))
+    is_consumer_array = _is_consumer_array_overview(source_kind, genome_source)
+    variant_count = (
+        _first_present(
+            stats.get("array_call_records"),
+            stats.get("pass_records"),
+            stats.get("rsid_records"),
+            stats.get("total_records"),
+        )
+        if is_consumer_array
+        else stats.get("variant_records")
+    )
+    return {
+        "sampleId": sample_id,
+        "genomeBuild": _first_present(raw.get("genome_build"), metadata.get("genome_build"), header.get("reference")),
+        "variantCount": variant_count,
+        "variantCountLabel": "Markers Indexed" if is_consumer_array else "Variants Indexed",
+        "genotypeQuality": _first_present(stats.get("genotype_quality"), stats.get("mean_gq"), _pass_rate(stats)),
+        "meanDepth": _first_present(stats.get("mean_depth"), stats.get("mean_dp")),
+        "genomeSource": genome_source,
+        "parsedAt": metadata.get("active_genome_index_completed_at"),
+    }
+
+
+def _is_consumer_array_overview(source_kind: Any, genome_source: Any) -> bool:
+    source_kind = str(source_kind or "").lower()
     if source_kind == "consumer_genotype_array":
         return True
     source = str(genome_source or "").lower()
@@ -217,12 +217,35 @@ def _is_consumer_array_overview(raw: JsonObject, genome_source: Any) -> bool:
 def _normalize_ancestry(raw: Any) -> JsonObject | None:
     if not isinstance(raw, dict):
         return None
+    if any(key in raw for key in ("dominantAncestry", "neighbors")):
+        return _normalize_dashboard_ancestry(raw)
+    return _normalize_native_ancestry(raw)
+
+
+_CANONICAL_ANCESTRY_KEYS = {
+    "dominantAncestry",
+    "neighbors",
+    "pcaPoints",
+    "markerOverlapQuality",
+    "overlapFraction",
+    "panelId",
+    "method",
+}
+
+
+def _normalize_dashboard_ancestry(raw: JsonObject) -> JsonObject:
+    return {key: raw[key] for key in _CANONICAL_ANCESTRY_KEYS if raw.get(key) not in (None, "", [])}
+
+
+def _normalize_native_ancestry(raw: JsonObject) -> JsonObject | None:
     neighbors_src = (
         raw.get("neighbors")
         or raw.get("nearest_reference_groups")
         or raw.get("nearest_reference_samples")
         or []
     )
+    sample_qc = _as_dict(raw.get("sample_qc"))
+    reference_panel = _as_dict(raw.get("reference_panel"))
     neighbors = []
     if isinstance(neighbors_src, list):
         for item in neighbors_src:
@@ -230,17 +253,16 @@ def _normalize_ancestry(raw: Any) -> JsonObject | None:
                 continue
             neighbors.append({
                 "population": _pick(item, "population", "group", "label", "id", "sample"),
-                "similarity": _pick(item, "similarity", "score", "distance", "overlap"),
+                "similarity": _pick(item, "similarity", "score", "distance", "centroid_distance", "overlap"),
             })
     out = {
-        "dominantAncestry": _pick(raw, "dominantAncestry", "dominant_ancestry", "predicted_group")
-            or (neighbors[0]["population"] if neighbors else None),
+        "dominantAncestry": neighbors[0]["population"] if neighbors else None,
         "neighbors": neighbors or None,
-        "pcaPoints": _pick(raw, "pcaPoints", "pca_points"),
-        "markerOverlapQuality": _pick(raw, "markerOverlapQuality", "marker_overlap_quality"),
-        "overlapFraction": _pick(raw, "overlapFraction", "overlap_fraction"),
-        "panelId": _pick(raw, "panelId", "panel_id"),
-        "method": _pick(raw, "method"),
+        "pcaPoints": raw.get("pca_projection"),
+        "markerOverlapQuality": sample_qc.get("marker_overlap_quality"),
+        "overlapFraction": sample_qc.get("overlap_fraction"),
+        "panelId": reference_panel.get("panel_id"),
+        "method": "ancestry.estimate_population_context",
     }
     return {k: v for k, v in out.items() if v not in (None, [], "")}
 
@@ -301,7 +323,17 @@ def _parse_gene_info(gene_info: Any) -> str | None:
     return ", ".join(symbols) if symbols else None
 
 
-def _normalize_variants_row(raw: Any) -> dict[str, Any] | None:
+def _normalize_dashboard_variants_row(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+    return {
+        key: raw[key]
+        for key in _PANEL_SCHEMAS["variants"]["row_fields"]
+        if raw.get(key) not in (None, "", [])
+    } or None
+
+
+def _normalize_native_variants_row(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or not raw:
         return None
 
@@ -391,12 +423,8 @@ def _normalize_variants_panel(raw: Any, *, panel: str) -> list[dict[str, Any]] |
         rows = native_panel_rows(panel, raw)
         if rows is None:
             return None
-        raw = rows
-    return _normalize_required_rows(
-        raw,
-        panel=panel,
-        row_normalizer=_normalize_variants_row,
-    )
+        return _normalize_required_rows(rows, panel=panel, row_normalizer=_normalize_native_variants_row)
+    return _normalize_required_rows(raw, panel=panel, row_normalizer=_normalize_dashboard_variants_row)
 
 
 def _normalize_variants(raw: Any) -> list[dict[str, Any]] | None:
@@ -417,7 +445,17 @@ _NUTRI_DOMAIN_LABELS: dict[str, str] = {
 }
 
 
-def _normalize_nutrigenomics_row(raw: Any) -> dict[str, Any] | None:
+def _normalize_dashboard_nutrigenomics_row(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or not raw:
+        return None
+    return {
+        key: raw[key]
+        for key in _PANEL_SCHEMAS["nutrigenomics"]["row_fields"]
+        if raw.get(key) not in (None, "", [])
+    } or None
+
+
+def _normalize_native_nutrigenomics_row(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict) or not raw:
         return None
     variant = raw.get("variant") or {}
@@ -463,12 +501,8 @@ def _normalize_nutrigenomics(raw: Any) -> list[dict[str, Any]] | None:
         rows = native_panel_rows("nutrigenomics", raw)
         if rows is None:
             return None
-        raw = rows
-    return _normalize_required_rows(
-        raw,
-        panel="nutrigenomics",
-        row_normalizer=_normalize_nutrigenomics_row,
-    )
+        return _normalize_required_rows(rows, panel="nutrigenomics", row_normalizer=_normalize_native_nutrigenomics_row)
+    return _normalize_required_rows(raw, panel="nutrigenomics", row_normalizer=_normalize_dashboard_nutrigenomics_row)
 
 
 def _normalize_required_rows(
@@ -839,7 +873,7 @@ def _load_variants_all_source(source: str | Path) -> list[dict[str, Any]]:
                     "variants_all_source_malformed",
                     f"variants_all_source line {line_number} is not valid JSON: {exc.msg}.",
                 ) from exc
-            normalized = _normalize_variants_row(raw)
+            normalized = _normalize_native_variants_row(raw)
             if not normalized:
                 raise DashboardRenderError(
                     "variants_all_source_malformed",

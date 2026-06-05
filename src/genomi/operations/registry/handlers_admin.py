@@ -936,10 +936,12 @@ def _genomi_parse_source(params: JsonObject) -> JsonObject:
         max_records=params.get("max_records"),
         parallel_workers=_optional_int(params, "parallel_workers"),
     )
+    result_status = str(result.get("status") or "")
+    parse_completed = result_status == "completed"
     parsed = _remember_source_result(
         source,
         result,
-        status="parsed",
+        status="parsed" if parse_completed else (result_status or "blocked"),
         user_nickname=params.get("user_nickname"),
         set_default_user=_bool(params, "set_default_user"),
     )
@@ -954,16 +956,17 @@ def _genomi_parse_source(params: JsonObject) -> JsonObject:
     reference_job_id = outputs.get("reference_pass_job_id")
     reference_pending = build_status == "variants_ready" or bool(reference_job_id)
 
-    parsed = _with_next_action(
-        parsed,
-        _read_agi_skill_next_action(
-            "Every variant is now queryable in the Active Genome Index. Interpreting "
-            "it and assigning it to a user profile use invoke-only active_genome_index.* tools."
-        ),
-    )
+    if parse_completed:
+        parsed = _with_next_action(
+            parsed,
+            _read_agi_skill_next_action(
+                "Every variant is now queryable in the Active Genome Index. Interpreting "
+                "it and assigning it to a user profile use invoke-only active_genome_index.* tools."
+            ),
+        )
     # The user did not pre-supply a profile name, so prompt for one (and whether
     # to make it the default) exactly like INSTALL_FOR_AGENTS.md Step 8.
-    if not params.get("user_nickname"):
+    if parse_completed and not params.get("user_nickname"):
         parsed = _with_next_action(parsed, assign_profile_next_action())
     if reference_pending:
         parsed = _with_next_action(parsed, reference_pass_next_action(reference_job_id, outputs.get("reference_pass_job_path")))

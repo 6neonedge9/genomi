@@ -6,12 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from ...runtime.paths import run_output_path_for_source
+from .pharmcat._common import PHARMCAT_CYP2D6_URL, PHARMCAT_HLA_URL, PHARMCAT_OUTSIDE_CALL_URL
 
 JsonObject = dict[str, Any]
-
-PHARMCAT_OUTSIDE_CALL_URL = "https://pharmcat.clinpgx.org/using/Outside-Call-Format/"
-PHARMCAT_HLA_URL = "https://pharmcat.clinpgx.org/using/Calling-HLA/"
-PHARMCAT_CYP2D6_URL = "https://pharmcat.clinpgx.org/using/Calling-CYP2D6/"
 
 _HEADER_ALIASES = {
     "gene",
@@ -34,7 +31,6 @@ def validate_outside_call_file(
 
     if outside_call_file is None or str(outside_call_file).strip() == "":
         return {
-            "ok": False,
             "status": "missing_outside_call_file",
             "input": {"hidden_intake_source": True},
             "traceability": _traceability(),
@@ -42,14 +38,12 @@ def validate_outside_call_file(
     path = Path(outside_call_file).expanduser()
     if not path.exists():
         return {
-            "ok": False,
             "status": "missing_outside_call_file",
             "input": {"hidden_intake_source": True},
             "traceability": _traceability(),
         }
     if not path.is_file():
         return {
-            "ok": False,
             "status": "invalid_outside_call_file",
             "input": _input_descriptor(path),
             "invalid_rows": [{"line_number": None, "reason": "not_a_file"}],
@@ -60,7 +54,6 @@ def validate_outside_call_file(
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         return {
-            "ok": False,
             "status": "encoding_error",
             "input": _input_descriptor(path),
             "message": f"Outside-call file must be UTF-8 encoded: {exc.reason}",
@@ -68,7 +61,6 @@ def validate_outside_call_file(
         }
     except OSError as exc:
         return {
-            "ok": False,
             "status": "read_error",
             "input": _input_descriptor(path),
             "message": str(exc),
@@ -91,7 +83,6 @@ def validate_outside_call_file(
     if not records and not invalid_rows:
         status = "empty_outside_call_file"
     return {
-        "ok": status == "completed",
         "status": status,
         "input": _input_descriptor(path),
         "format": {
@@ -101,6 +92,7 @@ def validate_outside_call_file(
             "required": ["gene", "at_least_one_of_diplotype_phenotype_activity_score"],
         },
         "summary": {
+            "record_count": len(records),
             "row_count": len(records) + len(invalid_rows),
             "valid_row_count": len(records),
             "invalid_row_count": len(invalid_rows),
@@ -126,7 +118,6 @@ def prepare_outside_call_file(
     requested_format = _normalize_caller_format(caller_format)
     if requested_format not in CALLER_FORMATS:
         return {
-            "ok": False,
             "status": "unsupported_caller_format",
             "input": {"hidden_intake_source": True},
             "caller_format": requested_format,
@@ -135,7 +126,6 @@ def prepare_outside_call_file(
         }
     if caller_output_file is None or str(caller_output_file).strip() == "":
         return {
-            "ok": False,
             "status": "missing_caller_output_file",
             "input": {"hidden_intake_source": True},
             "caller_format": requested_format,
@@ -144,7 +134,6 @@ def prepare_outside_call_file(
     input_path = Path(caller_output_file).expanduser()
     if not input_path.exists():
         return {
-            "ok": False,
             "status": "missing_caller_output_file",
             "input": {"hidden_intake_source": True},
             "caller_format": requested_format,
@@ -152,7 +141,6 @@ def prepare_outside_call_file(
         }
     if not input_path.is_file():
         return {
-            "ok": False,
             "status": "invalid_caller_output_file",
             "input": _input_descriptor(input_path),
             "caller_format": requested_format,
@@ -163,7 +151,6 @@ def prepare_outside_call_file(
         text = input_path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         return {
-            "ok": False,
             "status": "encoding_error",
             "input": _input_descriptor(input_path),
             "caller_format": requested_format,
@@ -172,7 +159,6 @@ def prepare_outside_call_file(
         }
     except OSError as exc:
         return {
-            "ok": False,
             "status": "read_error",
             "input": _input_descriptor(input_path),
             "caller_format": requested_format,
@@ -185,7 +171,6 @@ def prepare_outside_call_file(
     if invalid_rows or not rows:
         status = "empty_prepared_outside_call" if not rows and not invalid_rows else "invalid_caller_output_file"
         return {
-            "ok": False,
             "status": status,
             "input": _input_descriptor(input_path),
             "caller_format": detected_format,
@@ -205,9 +190,9 @@ def prepare_outside_call_file(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_outside_call_tsv(output_path, rows)
     validation = validate_outside_call_file(output_path, max_rows=max_rows)
+    validation_completed = _is_completed(validation)
     return {
-        "ok": bool(validation.get("ok")),
-        "status": "completed" if validation.get("ok") else "prepared_validation_failed",
+        "status": "completed" if validation_completed else "prepared_validation_failed",
         "input": _input_descriptor(input_path),
         "caller_format": detected_format,
         "sample": sample,
@@ -226,7 +211,7 @@ def prepare_outside_call_file(
         "prepared_artifact": {
             "artifact_type": "pharmcat_outside_call_tsv",
             "outside_call_file": str(output_path.expanduser().resolve(strict=False)),
-            "validated": bool(validation.get("ok")),
+            "validated": validation_completed,
             "selected_gene_count": len({str(row["gene"]) for row in rows if row.get("gene")}),
         },
     }
@@ -588,6 +573,7 @@ def _write_outside_call_tsv(path: Path, rows: list[JsonObject]) -> None:
 def _prepared_summary(rows: list[JsonObject], invalid_rows: list[JsonObject]) -> JsonObject:
     genes = sorted({str(record["gene"]) for record in rows if record.get("gene")})
     return {
+        "record_count": len(rows),
         "row_count": len(rows) + len(invalid_rows),
         "prepared_row_count": len(rows),
         "invalid_row_count": len(invalid_rows),
@@ -602,6 +588,10 @@ def _detect_delimiter(text: str) -> str:
             continue
         return "\t" if line.count("\t") >= line.count(",") else ","
     return "\t"
+
+
+def _is_completed(result: JsonObject) -> bool:
+    return result.get("status") == "completed"
 
 
 def _clean_cell(value: object) -> str:

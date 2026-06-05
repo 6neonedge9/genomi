@@ -539,7 +539,6 @@ def _compare_locus_to_gene_evidence(genes: list[str], source_records: Iterable[d
         candidate["why_not_selected"] = _locus_why_not_selected(candidate, selected)
     matrix = sorted(matrix, key=lambda candidate: (candidate["rank"] is None, candidate["rank"] or 10**9, candidate["candidate_id"].casefold()))
     return {
-        "ok": True,
         "status": "completed" if ranked else "no_matching_locus_to_gene_evidence",
         "query": {"genes": genes},
         "summary": {

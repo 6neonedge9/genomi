@@ -99,7 +99,7 @@
       "produces": [
         "members",
         "pathway",
-        "coverage_status",
+        "coverage_state",
         "source_coverage",
         "resolution_candidates"
       ],
@@ -195,7 +195,7 @@
       "produces": [
         "markers",
         "cell_type",
-        "coverage_status",
+        "coverage_state",
         "source_coverage",
         "resolution_candidates"
       ],
@@ -265,7 +265,7 @@
       "produces": [
         "features",
         "classification",
-        "coverage_status",
+        "coverage_state",
         "source_coverage"
       ],
       "context_optional": [],

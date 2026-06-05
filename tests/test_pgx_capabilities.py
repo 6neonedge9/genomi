@@ -35,11 +35,11 @@ class PGxCapabilityInventoryTests(unittest.TestCase):
     def test_capability_inventory_can_check_pharmcat(self) -> None:
         with patch(
             "genomi.capabilities.pharmacogenomics.pharmcat.pharmcat_status",
-            return_value={"status": "available", "ok": True},
+            return_value={"status": "available"},
         ) as status:
             result = capability_inventory(check_pharmcat=True, pharmcat_timeout_seconds=3)
 
-        self.assertTrue(result["capability_axes"]["broad_vcf_pgx_calling"]["runtime_status"]["ok"])
+        self.assertEqual(result["capability_axes"]["broad_vcf_pgx_calling"]["runtime_status"]["status"], "available")
         status.assert_called_once_with(timeout_seconds=3)
 
     def test_pgx_expanded_operations_include_runtime_tools(self) -> None:

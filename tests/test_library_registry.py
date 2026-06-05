@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from genomi.runtime.libraries import registry
+from genomi.operations.catalog import load_tool_catalog
+from genomi.runtime.libraries import manager, registry
 from genomi.runtime.libraries.spec import Freshness, Kind
 
 
@@ -44,12 +45,119 @@ class LibraryRegistryTests(unittest.TestCase):
 
     def test_online_specs_carry_api_base(self) -> None:
         online = [s for s in registry.all_specs() if s.kind is Kind.ONLINE]
-        self.assertEqual({s.id for s in online}, {"gnomad", "pgs-catalog", "clinpgx", "pgxdb", "fda-pgx"})
+        self.assertEqual(
+            {s.id for s in online},
+            {
+                "biogrid-orcs",
+                "chembl",
+                "clinpgx",
+                "depmap",
+                "fda-pgx",
+                "gnomad",
+                "gwas-catalog",
+                "hpa",
+                "kegg",
+                "ncbi-geo",
+                "opentargets",
+                "pgs-catalog",
+                "pgxdb",
+                "quickgo",
+                "reactome",
+            },
+        )
         for spec in online:
             self.assertTrue(spec.is_online)
             self.assertEqual(spec.freshness, Freshness.LIVE)
             self.assertTrue(spec.source.api_base, f"{spec.id} must declare an api_base")
             self.assertEqual(spec.required_paths, ())
+
+    def test_analytical_live_api_defaults_are_registry_owned(self) -> None:
+        from genomi.capabilities.analytical_grounding import entity_relationships
+
+        self.assertEqual(entity_relationships.QUICKGO_API_BASE, manager.api_base("quickgo"))
+        self.assertEqual(entity_relationships.REACTOME_CONTENT_SERVICE_BASE, manager.api_base("reactome"))
+        self.assertEqual(entity_relationships.KEGG_REST_API_BASE, manager.api_base("kegg"))
+        self.assertEqual(entity_relationships.HPA_API_BASE, manager.api_base("hpa"))
+        self.assertEqual(entity_relationships.HPA_TSV_DOWNLOAD_BASE, manager.source_url("hpa"))
+        self.assertEqual(entity_relationships.CHEMBL_API_BASE, manager.api_base("chembl"))
+
+    def test_functional_genomics_live_sources_are_registry_owned(self) -> None:
+        from genomi.capabilities.functional_genomics import screen
+
+        self.assertEqual(screen.BIOGRID_ORCS_API_BASE, manager.api_base("biogrid-orcs"))
+        self.assertEqual(screen.BIOGRID_ORCS_HOME_URL, manager.source_url("biogrid-orcs"))
+        self.assertEqual(
+            screen.SUPPORTED_NATIVE_SCREEN_SOURCES["biogrid_orcs"],
+            registry.get("biogrid-orcs").helps,
+        )
+        self.assertEqual(
+            screen.SUPPORTED_NATIVE_SCREEN_SOURCES["depmap"],
+            registry.get("depmap").helps,
+        )
+
+    def test_public_trait_live_sources_are_registry_owned(self) -> None:
+        from genomi.capabilities.functional_genomics import geo
+        from genomi.capabilities.gwas import gwas
+        from genomi.capabilities.nutrigenomics import source_context as nutrigenomics_source_context
+        from genomi.capabilities.phenotype import gene_identification, targets
+        from genomi.evidence import sources as evidence_sources
+        from genomi.evidence.store import constants as store_constants
+
+        self.assertEqual(store_constants.GNOMAD_API_URL, manager.api_base("gnomad"))
+        self.assertEqual(evidence_sources.SOURCE_HOME_URLS["gnomad"], manager.source_url("gnomad"))
+        self.assertEqual(
+            evidence_sources.SOURCE_HOME_URLS["opentargets"],
+            manager.source_url("opentargets"),
+        )
+        self.assertEqual(
+            evidence_sources.SOURCE_HOME_URLS["gwas_catalog"],
+            manager.source_url("gwas-catalog"),
+        )
+        self.assertEqual(
+            nutrigenomics_source_context.source_urls()["gwas_catalog"],
+            manager.source_url("gwas-catalog"),
+        )
+        self.assertEqual(gwas.GWAS_CATALOG_SOURCE_URL, manager.source_url("gwas-catalog"))
+        self.assertEqual(gwas.GWAS_CATALOG_API_URL, manager.source_url("gwas-catalog", 1))
+        self.assertEqual(gwas.GWAS_CATALOG_V2_API_URL, manager.api_base("gwas-catalog"))
+        self.assertEqual(
+            gene_identification.OPENTARGETS_GRAPHQL_API_URL,
+            manager.api_base("opentargets"),
+        )
+        self.assertEqual(targets.OPENTARGETS_GRAPHQL_API_URL, manager.api_base("opentargets"))
+        self.assertEqual(geo.NCBI_EUTILS_BASE, manager.api_base("ncbi-geo"))
+        self.assertEqual(geo.NCBI_GEO_FTP_BASE, manager.source_url("ncbi-geo"))
+
+    def test_public_source_schema_defaults_match_registry(self) -> None:
+        catalog = load_tool_catalog()
+
+        gnomad_properties = catalog["operations"]["gnomad.fetch_population_frequency"]["input_schema"][
+            "properties"
+        ]
+        gwas_variant_properties = catalog["operations"]["gwas.compare_variant_associations"]["input_schema"][
+            "properties"
+        ]
+        gwas_gene_properties = catalog["operations"]["gwas.compare_gene_associations"]["input_schema"][
+            "properties"
+        ]
+        trait_gene_properties = catalog["operations"]["phenotype.retrieve_trait_gene_records"]["input_schema"][
+            "properties"
+        ]
+        disease_target_properties = catalog["operations"]["phenotype.retrieve_disease_drug_targets"][
+            "input_schema"
+        ]["properties"]
+
+        self.assertEqual(gnomad_properties["api_url"]["default"], manager.api_base("gnomad"))
+        self.assertEqual(gwas_variant_properties["api_url"]["default"], manager.source_url("gwas-catalog", 1))
+        self.assertEqual(gwas_gene_properties["api_url"]["default"], manager.api_base("gwas-catalog"))
+        self.assertEqual(
+            trait_gene_properties["opentargets_api_url"]["default"],
+            manager.api_base("opentargets"),
+        )
+        self.assertEqual(
+            disease_target_properties["opentargets_api_url"]["default"],
+            manager.api_base("opentargets"),
+        )
 
     def test_pgx_online_source_urls_are_registry_owned(self) -> None:
         clinpgx = registry.get("clinpgx")
@@ -58,6 +166,42 @@ class LibraryRegistryTests(unittest.TestCase):
 
         pgxdb = registry.get("pgxdb")
         self.assertEqual(pgxdb.source.urls, ("https://pgx-db.org/swagger/",))
+
+    def test_pharmcat_documentation_urls_are_registry_owned(self) -> None:
+        spec = registry.get("pharmcat")
+        self.assertEqual(
+            spec.source.urls,
+            (
+                "https://pharmcat.clinpgx.org/",
+                "https://pharmcat.clinpgx.org/Genes-Drugs/",
+                "https://pharmcat.clinpgx.org/using/Calling-CYP2D6/",
+                "https://pharmcat.clinpgx.org/using/Outside-Call-Format/",
+                "https://pharmcat.clinpgx.org/using/Calling-HLA/",
+                "https://pharmcat.clinpgx.org/faqs/",
+                "https://pharmcat.clinpgx.org/using/Running-PharmCAT-Pipeline/",
+                "https://pharmcat.clinpgx.org/using/VCF-Requirements/",
+            ),
+        )
+
+    def test_pharmcat_capability_urls_follow_registry(self) -> None:
+        from genomi.capabilities.pharmacogenomics.pharmcat._common import (
+            PHARMCAT_DOCS,
+            PHARMCAT_GENES_DRUGS_URL,
+            PHARMCAT_HOME_URL,
+            PHARMCAT_VCF_REQUIREMENTS_URL,
+        )
+
+        spec = registry.get("pharmcat")
+        self.assertEqual(PHARMCAT_HOME_URL, spec.source.urls[0])
+        self.assertEqual(PHARMCAT_GENES_DRUGS_URL, spec.source.urls[1])
+        self.assertEqual(PHARMCAT_VCF_REQUIREMENTS_URL, spec.source.urls[7])
+        self.assertEqual({doc["url"] for doc in PHARMCAT_DOCS}, {spec.source.urls[0], spec.source.urls[6], spec.source.urls[7]})
+
+    def test_pharmcat_schema_default_matches_registry_url(self) -> None:
+        spec = registry.get("pharmcat")
+        catalog = load_tool_catalog()
+        properties = catalog["operations"]["pharmacogenomics.describe_gene_requirements"]["input_schema"]["properties"]
+        self.assertEqual(properties["pharmcat_genes_drugs_url"]["default"], spec.source.urls[1])
 
     def test_pgs_catalog_live_source_urls_are_registry_owned(self) -> None:
         spec = registry.get("pgs-catalog")

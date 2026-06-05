@@ -51,7 +51,6 @@ def pharmcat_status(
     )
     if managed_install is not None:
         return {
-            "ok": False,
             **managed_install,
             "availability": selected,
             "version_probe": version,
@@ -61,10 +60,15 @@ def pharmcat_status(
             },
         }
     available = selected.get("mode") != "unavailable"
-    version_ok = version.get("status") in {"completed", "skipped"}
-    status = "available" if available else "tool_unavailable"
+    if not available:
+        status = "tool_unavailable"
+    elif version.get("status") in {"completed", "skipped"}:
+        status = "available"
+    elif version.get("status") == "timeout":
+        status = "version_probe_timeout"
+    else:
+        status = "version_probe_failed"
     return {
-        "ok": bool(available and version_ok),
         "status": status,
         "availability": selected,
         "version_probe": version,
@@ -81,8 +85,8 @@ def pharmcat_preflight(*, agi_path: str | Path) -> JsonObject:
     agi = Path(agi_path).expanduser()
     if not agi.exists():
         return {
-            "ok": False,
             "status": "missing_active_genome_index",
+            "summary": {"record_count": 0},
             "input": {"hidden_agi_path": True},
             "message": "Select or parse an Active Genome Index before running PharmCAT.",
             "traceability": {
@@ -92,8 +96,8 @@ def pharmcat_preflight(*, agi_path: str | Path) -> JsonObject:
         }
     preflight = _input_preflight(agi)
     return {
-        "ok": preflight.get("status") == "completed",
         "status": preflight.get("status") or "unknown",
+        "summary": _preflight_summary(preflight),
         "input_preflight": preflight,
         "traceability": {
             "source_tool": "PharmCAT",
@@ -131,7 +135,6 @@ def run_pharmcat(
     if not agi.exists():
         return {
             **_base_result(
-                ok=False,
                 status="missing_active_genome_index",
                 agi_path=agi,
                 output_dir=output_dir,
@@ -152,22 +155,21 @@ def run_pharmcat(
     outside_call_validation = (
         pgx_outside_calls.validate_outside_call_file(outside_call_file)
         if outside_call_file
-        else {"ok": True, "status": "not_supplied"}
+        else {"status": "not_supplied"}
     )
     # Early gates that don't require touching the Active Genome Index or the intake source:
     # tool availability and outside-call validity. Surface these first so the
     # agent gets the right structured error without us needing to look at any
     # genomic data.
-    if outside_call_file and not outside_call_validation.get("ok"):
+    if outside_call_file and outside_call_validation.get("status") != "completed":
         return {
-            **_base_result(ok=False, status="invalid_outside_call_file", agi_path=agi, output_dir=out_dir, base_filename=base),
+            **_base_result(status="invalid_outside_call_file", agi_path=agi, output_dir=out_dir, base_filename=base),
             "outside_call_validation": outside_call_validation,
             "warnings": list(outside_call_validation.get("warnings") or []),
         }
     if outside_call_file and selected.get("mode") == "pipeline":
         return {
             **_base_result(
-                ok=False,
                 status="outside_call_file_not_supported_in_pipeline_mode",
                 agi_path=agi,
                 output_dir=out_dir,
@@ -192,7 +194,6 @@ def run_pharmcat(
         if managed_install is not None:
             return {
                 **_base_result(
-                    ok=False,
                     status=managed_install["status"],
                     agi_path=agi,
                     output_dir=out_dir,
@@ -226,7 +227,7 @@ def run_pharmcat(
     if not pharmcat_input.get("remediated") or not pharmcat_input.get("input_path"):
         prep_status = str(pharmcat_input.get("status") or "active_genome_index_input_unavailable")
         return {
-            **_base_result(ok=False, status=prep_status, agi_path=agi, output_dir=out_dir, base_filename=base),
+            **_base_result(status=prep_status, agi_path=agi, output_dir=out_dir, base_filename=base),
             "input_preflight": input_preflight,
             "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
@@ -275,8 +276,10 @@ def run_pharmcat(
             command_redactions[Path(private_value).expanduser()] = "[hidden_private_path]"
     redacted_command = _redact_command(command, command_redactions)
     if dry_run:
+        planned_artifacts = _summarize_outputs(out_dir, base)
         return {
-            **_base_result(ok=True, status="planned", agi_path=agi, output_dir=out_dir, base_filename=base),
+            **_base_result(status="planned", agi_path=agi, output_dir=out_dir, base_filename=base),
+            "summary": _pharmcat_run_summary([], planned_artifacts),
             "input_preflight": input_preflight,
             "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
@@ -288,7 +291,7 @@ def run_pharmcat(
                 "version_probe": version,
             },
             "warnings": warnings,
-            "artifacts": _summarize_outputs(out_dir, base),
+            "artifacts": planned_artifacts,
         }
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -303,7 +306,7 @@ def run_pharmcat(
         )
     except subprocess.TimeoutExpired as exc:
         return {
-            **_base_result(ok=False, status="timeout", agi_path=agi, output_dir=out_dir, base_filename=base),
+            **_base_result(status="timeout", agi_path=agi, output_dir=out_dir, base_filename=base),
             "input_preflight": input_preflight,
             "pharmcat_input": surfaced_pharmcat_input,
             "outside_call_validation": outside_call_validation,
@@ -329,12 +332,12 @@ def run_pharmcat(
     ]
     return {
         **_base_result(
-            ok=completed.returncode == 0,
             status="completed" if completed.returncode == 0 else "failed",
             agi_path=agi,
             output_dir=out_dir,
             base_filename=base,
         ),
+        "summary": _pharmcat_run_summary(record_payloads, artifacts),
         "input_preflight": input_preflight,
         "pharmcat_input": surfaced_pharmcat_input,
         "outside_call_validation": outside_call_validation,
@@ -410,7 +413,6 @@ def _explicit_pharmcat_unavailable_result(
 ) -> JsonObject:
     return {
         **_base_result(
-            ok=False,
             status="explicit_pharmcat_executable_unavailable",
             agi_path=agi_path,
             output_dir=output_dir,
@@ -565,7 +567,7 @@ def _unavailable_result(
     if sample_metadata:
         example.extend(["-sm", "[hidden_private_path]"])
     return {
-        **_base_result(ok=False, status="tool_unavailable", agi_path=agi_path, output_dir=output_dir, base_filename=base_filename),
+        **_base_result(status="tool_unavailable", agi_path=agi_path, output_dir=output_dir, base_filename=base_filename),
         "input_preflight": input_preflight,
         "pharmcat_input": pharmcat_input or {"status": "not_evaluated"},
         "outside_call_validation": outside_call_validation,
@@ -732,7 +734,6 @@ def _pharmcat_agi_export_readiness(agi_path: Path) -> JsonObject:
 
 def _base_result(
     *,
-    ok: bool,
     status: str,
     agi_path: Path,
     output_dir: str | Path | None,
@@ -741,7 +742,6 @@ def _base_result(
 ) -> JsonObject:
     out_dir = Path(output_dir).expanduser() if output_dir else _default_output_dir(agi_path)
     payload: JsonObject = {
-        "ok": ok,
         "status": status,
         "input": {
             "role": "active_genome_index_for_local_pharmcat",
@@ -758,6 +758,22 @@ def _base_result(
     if message:
         payload["message"] = message
     return payload
+
+
+def _preflight_summary(preflight: JsonObject) -> JsonObject:
+    scan = preflight.get("scan_summary") if isinstance(preflight.get("scan_summary"), dict) else {}
+    checks = preflight.get("pharmcat_requirement_checks") if isinstance(preflight.get("pharmcat_requirement_checks"), list) else []
+    return {
+        "record_count": int(scan.get("records_scanned") or 0),
+        "requirement_check_count": len(checks),
+    }
+
+
+def _pharmcat_run_summary(record_payloads: list[JsonObject], artifacts: JsonObject) -> JsonObject:
+    return {
+        "record_count": len(record_payloads),
+        "artifact_count": int((artifacts.get("file_count") or 0) if isinstance(artifacts, dict) else 0),
+    }
 
 
 def _resolve_executable(value: str | Path | None, *, default_name: str) -> str | None:
