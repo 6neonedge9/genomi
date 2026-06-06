@@ -2,12 +2,11 @@
   "capabilities": {
     "decode": {
       "title": "Genomi Dashboard (decode)",
-      "start_when": "The agent runs the /genomi decode kicker or otherwise needs to render the consolidated Genomi Dashboard HTML artifact from gathered panel evidence.",
+      "start_when": "The agent runs the /genomi decode kicker or otherwise needs Genomi to build and render the consolidated Genomi Dashboard HTML artifact.",
       "skill_documents": [
         "skills/decode/SKILL.md"
       ],
       "entry_operations": [
-        "decode.build_dashboard_evidence",
         "decode.render_dashboard"
       ],
       "operations": [
@@ -20,7 +19,7 @@
     "decode.build_dashboard_evidence": {
       "capability": "decode",
       "namespace": "decode",
-      "description": "Build Genomi Dashboard panel evidence from the approved Active Genome Index and existing capability operations. Returns render_params that can be passed to decode.render_dashboard.",
+      "description": "Build Genomi Dashboard panel states from the approved Active Genome Index and existing capability operations. Used by decode.render_dashboard; presented output reports panel readiness and gaps.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -83,8 +82,7 @@
         "active_genome_index"
       ],
       "produces": [
-        "dashboard_panel_evidence",
-        "dashboard_render_params"
+        "dashboard_panel_state"
       ],
       "context_optional": [
         "risk_score_ids",
@@ -105,79 +103,67 @@
         "public_catalog_metadata",
         "installed_public_reference_panel"
       ],
-      "discovery_role": "entry_tool"
+      "discovery_role": "support_tool"
     },
     "decode.render_dashboard": {
       "capability": "decode",
       "namespace": "decode",
-      "description": "Render the Genomi Dashboard self-contained HTML artifact. If evidence is omitted, the operation first builds dashboard evidence from the approved Active Genome Index.",
+      "description": "Build, shape, and render the Genomi Dashboard self-contained HTML artifact from the approved Active Genome Index.",
       "input_schema": {
         "type": "object",
         "properties": {
-          "evidence": {
-            "type": "object",
-            "description": "Dashboard panel evidence keyed by panel name. Omit this parameter to build evidence through decode.build_dashboard_evidence. In full mode, missing or empty panels render the 'Not gathered yet' placeholder. In update mode, omitted panels preserve previous evidence while explicitly empty panels clear stale evidence.",
-            "properties": {
-              "overview": {
-                "type": "object",
-                "description": "Active Genome Index summary: sampleId, genomeBuild, variantCount, genotypeQuality, meanDepth, genomeSource, parsedAt, sourceCoverage[]."
-              },
-              "variants": {
-                "type": "array",
-                "description": "Clinically significant (P/LP-highlighted) variants shown in the top 'Clinically Significant' section: rsid, gene, zygosity, chrom, pos, ref, alt, clinvarSignificance, conditionShort, evidenceQuality.",
-                "items": {"type": "object"}
-              },
-              "pgx": {
-                "oneOf": [
-                  {"type": "array", "items": {"type": "object"}},
-                  {"type": "object"}
-                ],
-                "description": "Pharmacogenomics evidence. Accepts native pharmacogenomics.run_pharmcat or pharmacogenomics.review_medication results, or dashboard rows with gene, diplotype, phenotype, impact, drugs[]."
-              },
-              "risk": {
-                "type": "array",
-                "description": "Polygenic risk score evidence. Pass native prs.calculate_score result objects; the renderer adapts trait, score, percentile, ancestryAdjusted, overlap, sources.",
-                "items": {"type": "object"}
-              },
-              "ancestry": {
-                "type": "object",
-                "description": "Ancestry context: dominantAncestry, neighbors[], pcaPoints[]."
-              },
-              "nutrigenomics": {
-                "type": "array",
-                "description": "Nutrigenomic markers: marker, gene, rsid, status, recommendation, evidenceTier.",
-                "items": {"type": "object"}
-              },
-              "journal": {
-                "type": "array",
-                "description": "Journal entries: ts, kind (observation|hypothesis|decision|question), title, body, tags, evidenceLinks.",
-                "items": {"type": "object"}
-              }
-            },
-            "additionalProperties": true
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["full", "update"],
-            "default": "full",
-            "description": "'full' rewrites the dashboard; 'update' merges supplied panels over the existing inlined evidence and applies explicit panel clears."
-          },
-          "clear_panels": {
+          "panels": {
             "type": "array",
-            "description": "Panel names to remove from the dashboard evidence during an update. Omitted panels are preserved; explicitly cleared panels render as placeholders.",
+            "description": "Optional subset of dashboard categories to gather and render. Omitted means every dashboard category.",
             "items": {
               "type": "string",
               "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal"]
             },
             "uniqueItems": true
           },
+          "include_pgx": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to run pharmacogenomics.run_pharmcat for the PGx panel."
+          },
+          "pgx_timeout_seconds": {
+            "type": "integer",
+            "default": 7200,
+            "minimum": 1,
+            "description": "Timeout forwarded to pharmacogenomics.run_pharmcat when PGx gathering is enabled."
+          },
+          "risk_score_ids": {
+            "type": "array",
+            "description": "Optional PGS IDs to score for the risk panel. Omitted means use imported local scores up to risk_score_limit.",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "risk_score_limit": {
+            "type": "integer",
+            "default": 5,
+            "minimum": 1,
+            "description": "Maximum imported local PGS scores to calculate when risk_score_ids is omitted."
+          },
+          "nutrigenomics_domain_ids": {
+            "type": "array",
+            "description": "Optional nutrigenomics domains to retrieve. Omitted means every declared in-scope domain.",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          },
+          "journal_limit": {
+            "type": "integer",
+            "default": 8,
+            "minimum": 1,
+            "description": "Maximum journal entries to gather for the journal panel."
+          },
+          "force": {
+            "type": "boolean",
+            "default": false,
+            "description": "Forwarded to ClinVar candidate scanning to refresh cached materialization."
+          },
           "output": {
             "$ref": "#/schema_fragments/properties/local_path",
             "description": "Optional override for the dashboard HTML path. Defaults to a transient path under the system temp dir: <tmp>/genomi-dashboards/<sample>/dashboard.html."
-          },
-          "variants_all_source": {
-            "type": "string",
-            "description": "Path to a ClinVar matches JSONL file (e.g. the clinvar.matches.jsonl written by clinvar.match_variants). Pass the file path here; the renderer reads and normalizes it server-side. Accepts both scan_candidates format ({variant, clinvar, genes}) and matches JSONL format ({sample_variant, clinvar})."
           }
         },
         "required": [],

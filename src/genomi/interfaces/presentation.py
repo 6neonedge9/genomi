@@ -22,11 +22,17 @@ from typing import Any
 JsonObject = dict[str, Any]
 
 MAX_LIST_ITEMS = 8
+_EMBEDDED_LOCAL_PATH_RE = re.compile(
+    r"(?P<prefix>^|[\s=([{'\"`])"
+    r"(?P<path>\$GENOMI_HOME/[^\s,;)'\"`]+|~/[^\s,;)'\"`]+|/(?=[^/\s,;)'\"`]+/)[^\s,;)'\"`]+)"
+)
 
 
 def present_result(operation: str, result: JsonObject) -> JsonObject:
     if operation == "genomi.parse_source":
         return _present_active_genome_index_parse(result)
+    if operation == "decode.build_dashboard_evidence":
+        return _present_decode_build_dashboard_evidence(result)
     if operation == "decode.render_dashboard":
         return _present_decode_dashboard(result)
     if operation == "pharmacogenomics.review_medication":
@@ -81,11 +87,44 @@ def _present_decode_dashboard(result: JsonObject) -> JsonObject:
     serve = result.get("serve") if isinstance(result.get("serve"), dict) else {}
     payload.update({
         "status": result.get("status"),
-        "mode": result.get("mode"),
         "dashboard_path": result.get("dashboard_path"),
         "panels_rendered": result.get("panels_rendered"),
         "panels_empty": result.get("panels_empty"),
+        "evidence_build": _compact_decode_evidence_build(result.get("evidence_build")),
         "serve": _select(serve, ("directory", "filename", "port", "url", "command", "note")),
+        "defaults_applied": result.get("defaults_applied"),
+    })
+    return _drop_none(payload)
+
+
+def _compact_decode_evidence_build(value: Any) -> JsonObject | None:
+    if not isinstance(value, dict):
+        return None
+    return _drop_none(
+        {
+            "panels_ready": value.get("panels_ready"),
+            "panels_empty": value.get("panels_empty"),
+            "panels_blocked": value.get("panels_blocked"),
+            "panel_states": _compact_generic_value(value.get("panel_states")),
+        }
+    )
+
+
+def _present_decode_build_dashboard_evidence(result: JsonObject) -> JsonObject:
+    envelope = _compact_envelope(result.get("evidence_envelope"))
+    payload: JsonObject = {}
+    headline = envelope.get("headline") if isinstance(envelope, dict) else None
+    if headline:
+        payload["headline"] = headline
+    if envelope:
+        payload["evidence_envelope"] = envelope
+    payload.update({
+        "status": result.get("status"),
+        "panels_requested": result.get("panels_requested"),
+        "panels_ready": result.get("panels_ready"),
+        "panels_empty": result.get("panels_empty"),
+        "panels_blocked": result.get("panels_blocked"),
+        "panel_states": _compact_generic_value(result.get("panel_states")),
         "defaults_applied": result.get("defaults_applied"),
     })
     return _drop_none(payload)
@@ -133,7 +172,11 @@ def _present_pgx_medication_review(result: JsonObject) -> JsonObject:
 def _present_risk_investigation(result: JsonObject) -> JsonObject:
     evidence = result.get("evidence_view") if isinstance(result.get("evidence_view"), dict) else {}
     source_plan = result.get("source_plan") if isinstance(result.get("source_plan"), dict) else {}
-    active_evidence = result.get("active_genome_index_evidence") if isinstance(result.get("active_genome_index_evidence"), dict) else {}
+    active_evidence = (
+        result.get("active_genome_index_evidence")
+        if isinstance(result.get("active_genome_index_evidence"), dict)
+        else {}
+    )
     envelope = _compact_envelope(result.get("evidence_envelope"))
     payload: JsonObject = {}
     headline = envelope.get("headline") if isinstance(envelope, dict) else None
@@ -147,10 +190,20 @@ def _present_risk_investigation(result: JsonObject) -> JsonObject:
         "target": result.get("target"),
         "defaults_applied": result.get("defaults_applied"),
         "source_plan": _compact_risk_source_plan(source_plan),
-        "stored_research_summary": (result.get("stored_research") or {}).get("summary") if isinstance(result.get("stored_research"), dict) else None,
-        "gene_context_summary": (result.get("gene_context") or {}).get("summary") if isinstance(result.get("gene_context"), dict) else None,
+        "stored_research_summary": (
+            (result.get("stored_research") or {}).get("summary")
+            if isinstance(result.get("stored_research"), dict)
+            else None
+        ),
+        "gene_context_summary": (
+            (result.get("gene_context") or {}).get("summary")
+            if isinstance(result.get("gene_context"), dict)
+            else None
+        ),
         "active_genome_index_evidence": _compact_active_risk_evidence(active_evidence),
-        "review_target_summary": _compact_review_target_summary(evidence.get("coverage") if isinstance(evidence, dict) else {}),
+        "review_target_summary": _compact_review_target_summary(
+            evidence.get("coverage") if isinstance(evidence, dict) else {}
+        ),
         "evidence_view": _compact_evidence_view(evidence),
         "next_actions": result.get("next_actions"),
         "warnings": result.get("warnings") or [],
@@ -277,7 +330,18 @@ def _compact_review_target_summary(summary: object) -> JsonObject:
 def _compact_evidence_view(evidence: JsonObject) -> JsonObject:
     compact = _select(evidence, ("agent_decision_required", "top_observed_candidate", "coverage", "warnings"))
     compact["rankings"] = [
-        _select(candidate, ("candidate_id", "candidate_type", "rank", "score", "evidence_support_level", "answerability", "best_evidence_lane"))
+        _select(
+            candidate,
+            (
+                "candidate_id",
+                "candidate_type",
+                "rank",
+                "score",
+                "evidence_support_level",
+                "answerability",
+                "best_evidence_lane",
+            ),
+        )
         for candidate in (evidence.get("rankings") or [])[:MAX_LIST_ITEMS]
         if isinstance(candidate, dict)
     ]
@@ -428,7 +492,19 @@ def _star_call_summaries(calls: list[object]) -> list[JsonObject]:
     for call in calls:
         if not isinstance(call, dict):
             continue
-        summary = _select(call, ("status", "gene", "genome_build", "definition_set", "definition_scope", "called_star_alleles", "diplotype", "warnings"))
+        summary = _select(
+            call,
+            (
+                "status",
+                "gene",
+                "genome_build",
+                "definition_set",
+                "definition_scope",
+                "called_star_alleles",
+                "diplotype",
+                "warnings",
+            ),
+        )
         marker_calls = []
         for marker in call.get("marker_calls") or []:
             marker_calls.append(
@@ -584,7 +660,7 @@ def _looks_like_local_path(value: str) -> bool:
 def _redact_embedded_local_paths(value: str) -> str:
     # Keep the surrounding structured error useful while removing host-local
     # path details from message/note strings.
-    return re.sub(r"(?<!:)($GENOMI_HOME/[^\s,;)'\"`]+|~/[^\s,;)'\"`]+|/[^\s,;)'\"`]+)", "[omitted_local_path]", value)
+    return _EMBEDDED_LOCAL_PATH_RE.sub(r"\g<prefix>[omitted_local_path]", value)
 
 
 def _drop_none(value: JsonObject) -> JsonObject:

@@ -10,8 +10,15 @@ from unittest import mock
 from genomi.active_genome_index.active_genome_index import create_active_genome_index
 from genomi.capabilities.decode import evidence_builder
 from genomi.evidence import init_evidence_db
+from genomi.interfaces.presentation import present_result
 from genomi.operations import OPERATIONS, TOOL_CATALOG, call_operation
+from genomi.operations.registry import handlers_screen_journal
 from genomi.runtime import context as runtime_context
+
+_DECODE_BUILDER_PATCH = (
+    "genomi.operations.registry.handlers_screen_journal."
+    "decode_evidence_builder.build_dashboard_evidence"
+)
 
 
 def _extract_evidence(html: str) -> dict:
@@ -124,12 +131,86 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
         self.assertEqual(overview["sample_slug"], "bam-fixture")
         self.assertNotIn("agi_path", overview)
 
+    def test_blocked_pgx_pharmcat_result_is_not_panel_ready(self) -> None:
+        calls: list[tuple[str, dict]] = []
+
+        def run(operation: str, params: dict) -> dict:
+            calls.append((operation, params))
+            if operation == "pharmacogenomics.run_pharmcat":
+                return {
+                    "status": "position_aware_pharmcat_export_required",
+                    "pharmcat_input": {"status": "position_aware_pharmcat_export_required"},
+                    "input_preflight": {"status": "completed"},
+                    "evidence_envelope": {
+                        "finding_state": "not_assessed",
+                        "answer_readiness": "cannot_answer_yet",
+                    },
+                }
+            raise AssertionError(f"unexpected operation {operation}")
+
+        result = evidence_builder.build_dashboard_evidence(
+            params={"panels": ["pgx"]},
+            run_operation=run,
+        )
+
+        self.assertNotIn("pgx", result["panels_ready"])
+        self.assertIn("pgx", result["panels_empty"])
+        self.assertIn("pgx", result["panels_blocked"])
+        self.assertEqual(result["panel_states"][0]["status"], "position_aware_pharmcat_export_required")
+        self.assertEqual(calls, [("pharmacogenomics.run_pharmcat", {})])
+
+    def test_decode_panel_runner_threads_target_agi_to_private_panels(self) -> None:
+        seen: list[tuple[str, dict]] = []
+
+        def fake_run(operation: str, params: dict | None = None) -> dict:
+            seen.append((operation, dict(params or {})))
+            return {"status": "completed"}
+
+        with mock.patch.object(handlers_screen_journal, "_run_decode_panel_operation", side_effect=fake_run):
+            run = handlers_screen_journal._decode_panel_runner_for_target("agi-target")
+            run("active_genome_index.summarize")
+            run("clinvar.scan_candidates", {"force": True})
+            run("journal.search_entries", {"limit": 1})
+
+        self.assertEqual(seen[0], ("active_genome_index.summarize", {"agi_id": "agi-target"}))
+        self.assertEqual(seen[1], ("clinvar.scan_candidates", {"force": True, "agi_id": "agi-target"}))
+        self.assertEqual(seen[2], ("journal.search_entries", {"limit": 1}))
+
     def test_catalog_exposes_builder(self) -> None:
         names = {op.name for op in OPERATIONS}
         self.assertIn("decode.build_dashboard_evidence", names)
         decode_capability = TOOL_CATALOG["capabilities"]["decode"]
-        self.assertIn("decode.build_dashboard_evidence", decode_capability["entry_operations"])
+        self.assertEqual(decode_capability["entry_operations"], ["decode.render_dashboard"])
         self.assertIn("decode.build_dashboard_evidence", decode_capability["operations"])
+
+    def test_presented_build_result_reports_panel_state_only(self) -> None:
+        raw = {
+            "status": "completed",
+            "panels_requested": ["overview", "variants_all"],
+            "panels_ready": ["overview", "variants_all"],
+            "panels_empty": ["pgx"],
+            "panels_blocked": ["pgx"],
+            "panel_states": [{"panel": "pgx", "status": "position_aware_pharmcat_export_required"}],
+            "render_params": {
+                "evidence": {
+                    "overview": {
+                        "active_genome_index": {
+                            "metadata": {"header": {"samples": ["HG"]}},
+                            "stats": {"variant_records": 1},
+                        }
+                    }
+                },
+                "variants_all_source": "/tmp/clinvar.matches.jsonl",
+            },
+        }
+
+        presented = present_result("decode.build_dashboard_evidence", raw)
+
+        self.assertEqual(
+            set(presented),
+            {"status", "panels_requested", "panels_ready", "panels_empty", "panels_blocked", "panel_states"},
+        )
+        self.assertEqual(presented["panels_ready"], ["overview", "variants_all"])
 
 
 class DecodeRenderAutoBuildTests(unittest.TestCase):
@@ -150,7 +231,7 @@ class DecodeRenderAutoBuildTests(unittest.TestCase):
         self._env.start()
         self.addCleanup(self._env.stop)
 
-    def test_render_without_evidence_uses_code_owned_builder(self) -> None:
+    def test_render_uses_code_owned_builder(self) -> None:
         with tempfile.TemporaryDirectory() as wd:
             wd_path = Path(wd)
             previous = os.getcwd()
@@ -188,16 +269,17 @@ class DecodeRenderAutoBuildTests(unittest.TestCase):
                     "panels_blocked": [],
                     "panel_states": [{"panel": "overview", "status": "data_returned"}],
                 }
-                with mock.patch(
-                    "genomi.operations.registry.handlers_screen_journal.decode_evidence_builder.build_dashboard_evidence",
-                    return_value=built,
-                ) as build:
-                    result = call_operation("decode.render_dashboard", {"mode": "full", "output": str(out)})
+                with mock.patch(_DECODE_BUILDER_PATCH, return_value=built) as build:
+                    result = call_operation(
+                        "decode.render_dashboard",
+                        {"output": str(out), "panels": ["overview"]},
+                    )
 
                 self.assertEqual(result["status"], "completed")
                 self.assertEqual(result["evidence_build"]["panels_ready"], ["overview"])
                 self.assertEqual(_extract_evidence(out.read_text(encoding="utf-8"))["overview"]["sampleId"], "BUILT")
                 build.assert_called_once()
+                self.assertEqual(build.call_args.kwargs["params"], {"output": str(out), "panels": ["overview"]})
             finally:
                 os.chdir(previous)
 

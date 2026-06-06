@@ -12,7 +12,6 @@ description: |
   self-contained Genomi Dashboard.html, then returns a localhost serve
   command the host agent runs in the background. Active genome required.
 tools:
-  - decode.build_dashboard_evidence
   - decode.render_dashboard
 mutating: true
 ---
@@ -29,10 +28,9 @@ genome", or asks for a one-shot full report.
 
 This skill requires an Active Genome Index session and explicit approval to
 read it. The same approval gate that protects `variant.resolve`, `clinvar.*`,
-and the PGx ops protects `decode.build_dashboard_evidence` and
-`decode.render_dashboard`. If no active genome is selected the op fails with
-`active_genome_index_required`; if approval has not been granted it fails with
-`active_genome_index_approval_required`.
+and the PGx ops protects `decode.render_dashboard`. If no active genome is
+selected the op fails with `active_genome_index_required`; if approval has not
+been granted it fails with `active_genome_index_approval_required`.
 
 ## Reconcile Active Genome Index lifecycle before gathering panels
 
@@ -55,46 +53,29 @@ Summary for decode:
 4. Only after `active_genome_index_readiness.status == "complete"` call the
    decode operation.
 
-## Default build
+## Dashboard Build
 
-For a brand-new dashboard, call `decode.render_dashboard` with no `evidence`
-parameter. The operation first runs the code-owned
-`decode.build_dashboard_evidence` path, then renders the returned
-`render_params`.
+Call `decode.render_dashboard`. Decode owns panel gathering, panel shaping,
+and rendering. The agent may choose dashboard categories through structured
+parameters such as `panels`, select declared score/domain options, and install
+optional libraries after approval. The agent does not assemble panel evidence.
 
-Call `decode.build_dashboard_evidence` directly only when you need to inspect
-or reuse the built panel states before rendering. It returns:
+The renderer normalizes native upstream-op shapes internally:
 
-- `render_params.evidence`
-- `render_params.variants_all_source` when ClinVar matches were materialized
-- `panel_states`, `panels_ready`, `panels_empty`, and `panels_blocked`
-
-Do not manually orchestrate the default seven-panel sweep in prompt text. Use
-explicit panel evidence only for a targeted refresh or user-supplied override.
-
-The renderer normalizes common upstream-op shapes automatically:
-
-- `overview` — pass `active_genome_index.summarize` output directly;
+- `overview` — adapts `active_genome_index.summarize` output;
   snake_case keys (`genome_build`, `nickname`, `active_genome_index_completed_at`,
   `nearest_reference_groups`) are mapped automatically.
-- `variants` — pass scan rows directly; both `clinvar.scan_candidates`
+- `variants` — adapts scan rows; both `clinvar.scan_candidates`
   shape (`{variant, clinvar, genes}`) and `clinvar.match_variants` JSONL
-  shape (`{sample_variant, clinvar}`) are handled by the normalizer.
-- `nutrigenomics` — pass the `markers` array from
-  `nutrigenomics.retrieve_domain_markers` directly; the normalizer extracts
+  shape (`{sample_variant, clinvar}`) are handled.
+- `nutrigenomics` — adapts `nutrigenomics.retrieve_domain_markers`; it extracts
   `gene.symbol`, `variant.rsid`, `established_effect.claim` (→ `recommendation`),
-  `evidence_tier`, and domain label (→ `marker`) from the nested catalog records.
-- `ancestry` — pass `ancestry.estimate_population_context` output directly.
-- `pgx` — pass `pharmacogenomics.run_pharmcat` output directly. The renderer
-  accepts native PharmCAT artifact summaries and medication-review results, then
-  adapts calls, phenotypes, diplotypes, and recommendations into PGx cards.
-- `risk` — pass the list of native `prs.calculate_score` results directly as
-  `evidence.risk`. The renderer adapts `polygenic_score`, `sample_qc`, and
-  `score_result` into risk-score cards.
-
-For the all-variants explorer panel, pass a file path via `variants_all_source`
-instead of the evidence dict — the renderer reads and normalizes the JSONL
-file server-side.
+  `evidence_tier`, and domain label (→ `marker`).
+- `ancestry` — adapts `ancestry.estimate_population_context`.
+- `pgx` — adapts native PharmCAT artifact summaries and medication-review
+  results into PGx cards.
+- `risk` — adapts native `prs.calculate_score` results into risk-score cards.
+- `variants_all` — uses the ClinVar matches JSONL path materialized by decode.
 
 If no PRS scores are installed in the user's library, the builder supplies a
 typed empty risk state so stale risk evidence is cleared rather than preserved.
@@ -107,34 +88,15 @@ The renderer's response is the source of truth:
 - `panels_empty`: panels with no usable evidence — they render as the
   "Not gathered yet" placeholder in the UI.
 
-A panel you omit (absent, or supplied as empty `{}`/`[]`) renders as the
-"Not gathered yet" placeholder — that is a valid partial dashboard. Read
-`panels_empty` before telling the user the dashboard is ready and surface
-those panels honestly ("PGx and Risk weren't gathered — ask if you want
-them next").
-
-A panel you supply with real content must satisfy the panel schema after
-normalization. Object panels require their key fields (overview:
-`sampleId` + `variantCount`; ancestry: `dominantAncestry` + `neighbors`);
-list panels require row objects with at least one recognized dashboard field.
-PGx rows also require `gene`; risk rows also require `trait`. If supplied
-content maps to none of those fields, the renderer raises
-`panel_schema_mismatch` naming the panel and missing field — it does not render
-a blank stat. When you hit it, fix the evidence mapping and re-render rather
-than dropping the panel.
+Read `panels_empty` and any `evidence_build.panel_states` before telling the
+user the dashboard is ready. Surface incomplete categories honestly with their
+typed state.
 
 ## Refresh vs. reuse
 
-If the current chat already holds materially current evidence for a panel
-(same active genome, no upstream library version bump, no user-driven change
-in question scope), reuse it directly — do not redispatch the upstream op.
-When only one or two panels need refresh, call `decode.render_dashboard` with
-`mode: "update"` and only the refreshed panels; the previously-inlined
-evidence for other panels is preserved.
-
-For a brand-new dashboard, call `mode: "full"` and omit `evidence` unless you
-are deliberately overriding the code-owned builder output. Panels not supplied
-render as empty cards with a "Not gathered yet" placeholder.
+Call `decode.render_dashboard` again to refresh the dashboard after installing
+libraries or changing category selections. Panels without usable evidence render
+as empty cards with a "Not gathered yet" placeholder.
 
 ## Output location
 
@@ -175,8 +137,7 @@ processes belong.
 ## Boundaries
 
 - Active Genome Index session approval is required.
-- Omitted `evidence` uses the code-owned builder path. Explicit `evidence`
-  remains supported for targeted updates and overrides.
+- Decode owns panel evidence collection and shaping for the dashboard artifact.
 - The artifact is a single self-contained HTML file that renders fully offline
   — React/ReactDOM and the precompiled app JS are inlined, no CDN, no
   in-browser Babel. (One optional Google Fonts stylesheet is referenced; it
@@ -187,15 +148,13 @@ processes belong.
 
 ### decode.build_dashboard_evidence
 
-Build dashboard panel evidence from the approved Active Genome Index using
-existing capability operations. Returns `render_params` plus panel state
-metadata.
+Support operation used by `decode.render_dashboard` to inspect panel readiness
+and gaps. Normal dashboard requests should call `decode.render_dashboard`.
 
 ### decode.render_dashboard
 
-Render the Genomi Dashboard HTML artifact. If `evidence` is omitted, it first
-builds panel evidence through `decode.build_dashboard_evidence`. Active genome
-required. Returns
+Build, shape, and render the Genomi Dashboard HTML artifact from the approved
+Active Genome Index. Returns
 `{ status, dashboard_path, panels_rendered, panels_empty, serve }` plus the
 standard `evidence_envelope`. The `serve` block tells the host agent how to
 expose the dashboard at a localhost URL — see the "Serving the dashboard"

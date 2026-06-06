@@ -5,6 +5,30 @@ from __future__ import annotations
 from typing import Any
 
 JsonObject = dict[str, Any]
+_EMPTY_NATIVE_STATUSES = {
+    "requires_library_install",
+    "source_unavailable",
+    "out_of_scope_for_input",
+    "skipped_missing_library",
+    "skipped_tool_unavailable",
+    "domain_id_required",
+    "unknown_domain",
+    "domain_out_of_scope_by_construction",
+    "invalid_evidence_tier",
+}
+_EMPTY_PGX_STATUSES = _EMPTY_NATIVE_STATUSES | {
+    "position_aware_pharmcat_export_required",
+    "no_pharmcat_vcf_records",
+    "active_genome_index_input_unavailable",
+    "explicit_pharmcat_executable_unavailable",
+    "no_pharmcat_artifacts",
+}
+_EMPTY_ENVELOPE_FINDING_STATES = {
+    "not_assessed",
+    "blocked_missing_library",
+    "materialization_incomplete",
+    "not_observed_in_consulted_scope",
+}
 
 
 class PanelNormalizationError(Exception):
@@ -76,17 +100,7 @@ def _native_nutrigenomics_rows(raw: JsonObject) -> list[JsonObject] | None:
 def _has_empty_native_status(raw: JsonObject) -> bool:
     status = str(raw.get("status") or "")
     coverage_state = str(raw.get("coverage_state") or "")
-    return status in {
-        "requires_library_install",
-        "source_unavailable",
-        "out_of_scope_for_input",
-        "skipped_missing_library",
-        "skipped_tool_unavailable",
-        "domain_id_required",
-        "unknown_domain",
-        "domain_out_of_scope_by_construction",
-        "invalid_evidence_tier",
-    } or coverage_state in {"in_scope_empty", "out_of_scope_for_input"}
+    return status in _EMPTY_NATIVE_STATUSES or coverage_state in {"in_scope_empty", "out_of_scope_for_input"}
 
 
 def _normalize_dashboard_pgx_list(raw: list[Any]) -> list[JsonObject] | None:
@@ -348,13 +362,10 @@ def _pgx_has_native_content(raw: JsonObject) -> bool:
 
 
 def _is_empty_pgx_result(raw: JsonObject) -> bool:
-    return str(raw.get("status") or "") in {
-        "requires_library_install",
-        "source_unavailable",
-        "out_of_scope_for_input",
-        "skipped_missing_library",
-        "skipped_tool_unavailable",
-    }
+    if str(raw.get("status") or "") in _EMPTY_PGX_STATUSES:
+        return True
+    envelope = _as_dict(raw.get("evidence_envelope"))
+    return str(envelope.get("finding_state") or "") in _EMPTY_ENVELOPE_FINDING_STATES
 
 
 def _pgx_review_has_mappable_content(raw: JsonObject) -> bool:

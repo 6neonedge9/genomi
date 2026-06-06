@@ -21,6 +21,14 @@ _BLOCKED_STATUSES = {
     "skipped_missing_library",
     "skipped_tool_unavailable",
     "tool_unavailable",
+    "position_aware_pharmcat_export_required",
+    "no_pharmcat_vcf_records",
+    "active_genome_index_input_unavailable",
+    "explicit_pharmcat_executable_unavailable",
+    "no_pharmcat_artifacts",
+    "not_assessed",
+    "blocked_missing_library",
+    "materialization_incomplete",
 }
 
 
@@ -225,7 +233,7 @@ def _overview_with_active_context(result: JsonObject, active: JsonObject | None)
     }
     if not context:
         return result
-    return {**context, **result}
+    return {**result, **context}
 
 
 def _panel_state(
@@ -252,6 +260,10 @@ def _panel_status(panel: str, value: Any) -> str:
             status = str(value.get("status") or value.get("coverage_state") or "")
             if status in _BLOCKED_STATUSES:
                 return status
+            envelope = value.get("evidence_envelope") if isinstance(value.get("evidence_envelope"), dict) else {}
+            finding_state = str(envelope.get("finding_state") or "")
+            if finding_state in _BLOCKED_STATUSES:
+                return finding_state
             if status:
                 return status
         return "in_scope_empty"

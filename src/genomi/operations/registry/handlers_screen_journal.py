@@ -6,8 +6,7 @@ from ...capabilities.functional_genomics import evidence_acquisition, geo, scree
 from ...capabilities.journal import journal
 from ...capabilities.research import intent_research
 from ...active_genome_index.active_genome_index import ActiveGenomeIndexNeed
-from ...runtime import context as runtime_context
-from .agi_access import open_agi
+from .agi_access import open_agi, resolve_agi_record
 from .coerce import (
     _bool,
     _int,
@@ -18,6 +17,25 @@ from .coerce import (
     _with_context,
 )
 from .errors import JsonObject, OperationError
+
+_DECODE_AGI_PANEL_OPERATIONS = {
+    "active_genome_index.summarize",
+    "clinvar.scan_candidates",
+    "pharmacogenomics.run_pharmcat",
+    "ancestry.estimate_population_context",
+    "prs.calculate_score",
+}
+_DECODE_BUILD_PARAM_KEYS = {
+    "force",
+    "include_pgx",
+    "journal_limit",
+    "nutrigenomics_domain_ids",
+    "output",
+    "panels",
+    "pgx_timeout_seconds",
+    "risk_score_ids",
+    "risk_score_limit",
+}
 
 
 def _screen_retrieve_experiment_records(params: JsonObject) -> JsonObject:
@@ -169,10 +187,20 @@ def _run_decode_panel_operation(name: str, params: JsonObject | None = None) -> 
     return call_operation(name, params or {})
 
 
+def _decode_panel_runner_for_target(agi_id: str | None):
+    def _run(name: str, params: JsonObject | None = None) -> JsonObject:
+        safe_params = dict(params or {})
+        if agi_id and name in _DECODE_AGI_PANEL_OPERATIONS:
+            safe_params.setdefault("agi_id", agi_id)
+        return _run_decode_panel_operation(name, safe_params)
+
+    return _run
+
+
 def _decode_build_dashboard_evidence(params: JsonObject) -> JsonObject:
     resolved = _with_context(params)
-    active = runtime_context.active_agi_record()
-    if active is None:
+    target = resolve_agi_record(params)
+    if target is None:
         raise OperationError(
             "active_genome_index_required",
             "Select or parse an Active Genome Index before building Genomi Dashboard evidence.",
@@ -183,11 +211,13 @@ def _decode_build_dashboard_evidence(params: JsonObject) -> JsonObject:
         params=params,
     )
     reader.ensure_ready()
+    target = resolve_agi_record(params, require_approved=True) or target
+    target_agi_id = str(target.get("agi_id") or "") or None
     try:
         return decode_evidence_builder.build_dashboard_evidence(
             params=resolved,
-            run_operation=_run_decode_panel_operation,
-            active_genome_index_context=active,
+            run_operation=_decode_panel_runner_for_target(target_agi_id),
+            active_genome_index_context=target,
         )
     except ValueError as exc:
         raise OperationError("invalid_params", str(exc)) from exc
@@ -199,8 +229,8 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
     # evidence. Require an Active Genome Index, then auth-gate via open_agi
     # (approves a supplied source, raises approval_required for a
     # selected-but-unapproved AGI) — the one central session gate.
-    active = runtime_context.active_agi_record()
-    if active is None:
+    target = resolve_agi_record(params)
+    if target is None:
         raise OperationError(
             "active_genome_index_required",
             "Select or parse an Active Genome Index before rendering the Genomi Dashboard.",
@@ -211,32 +241,29 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
         params=params,
     )
     reader.ensure_ready()
+    target = resolve_agi_record(params, require_approved=True) or target
 
     output = resolved.get("output")
     if not output:
-        work_dir = active.get("work_dir") if isinstance(active, dict) else None
+        work_dir = target.get("work_dir") if isinstance(target, dict) else None
         output = str(decode_dashboard.default_output_path(work_dir))
 
-    evidence = resolved.get("evidence")
-    if evidence is not None and not isinstance(evidence, dict):
-        raise OperationError("invalid_params", "evidence must be a JSON object.")
-    build_result: JsonObject | None = None
-    variants_all_source = resolved.get("variants_all_source")
-    if evidence is None:
-        build_result = _decode_build_dashboard_evidence(resolved)
-        render_params = build_result.get("render_params") if isinstance(build_result, dict) else None
-        if not isinstance(render_params, dict) or not isinstance(render_params.get("evidence"), dict):
-            raise OperationError("invalid_dashboard_evidence", "decode.build_dashboard_evidence did not return renderable evidence.")
-        evidence = render_params["evidence"]
-        variants_all_source = variants_all_source or render_params.get("variants_all_source")
+    build_result = _decode_build_dashboard_evidence(_decode_build_params(resolved))
+    render_params = build_result.get("render_params") if isinstance(build_result, dict) else None
+    if not isinstance(render_params, dict) or not isinstance(render_params.get("evidence"), dict):
+        raise OperationError(
+            "invalid_dashboard_evidence",
+            "decode.build_dashboard_evidence did not return renderable evidence.",
+        )
+    evidence = render_params["evidence"]
+    variants_all_source = render_params.get("variants_all_source")
 
     try:
         result = decode_dashboard.render_dashboard(
             evidence=evidence,
-            mode=_str(resolved, "mode", "full"),
+            mode="full",
             output=output,
             variants_all_source=variants_all_source,
-            clear_panels=resolved.get("clear_panels"),
         )
     except decode_dashboard.DashboardRenderError as exc:
         raise OperationError(exc.code, exc.message) from exc
@@ -248,3 +275,11 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
             "panel_states": build_result.get("panel_states", []),
         }
     return result
+
+
+def _decode_build_params(params: JsonObject) -> JsonObject:
+    return {
+        key: value
+        for key, value in params.items()
+        if key in _DECODE_BUILD_PARAM_KEYS
+    }

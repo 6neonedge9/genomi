@@ -22,6 +22,11 @@ from genomi.operations import (
 from genomi.interfaces.presentation import present_result
 from genomi.runtime import context as runtime_context
 
+_DECODE_BUILDER_PATCH = (
+    "genomi.operations.registry.handlers_screen_journal."
+    "decode_evidence_builder.build_dashboard_evidence"
+)
+
 
 def _extract_evidence(html: str) -> dict:
     marker = "window.__GENOMI_DASHBOARD__"
@@ -676,7 +681,7 @@ class RegistryGatingTests(unittest.TestCase):
         with self.assertRaises(OperationError) as ctx:
             call_operation(
                 "decode.render_dashboard",
-                {"evidence": {"overview": {"sampleId": "x"}}, "mode": "full"},
+                {},
             )
         self.assertEqual(ctx.exception.code, "active_genome_index_required")
 
@@ -713,15 +718,16 @@ class RegistryGatingTests(unittest.TestCase):
                     {"approved_by_user": True, "reason": "test"},
                 )
                 out = wd_path / "dash.html"
-                result = call_operation(
-                    "decode.render_dashboard",
-                    {
-                        "evidence": {"overview": {"sampleId": "ACTIVE",
-                                                  "variantCount": 1}},
-                        "mode": "full",
-                        "output": str(out),
-                    },
-                )
+                built = {
+                    "status": "completed",
+                    "render_params": {"evidence": {"overview": {"sampleId": "ACTIVE", "variantCount": 1}}},
+                    "panels_ready": ["overview"],
+                    "panels_empty": [],
+                    "panels_blocked": [],
+                    "panel_states": [{"panel": "overview", "status": "data_returned"}],
+                }
+                with mock.patch(_DECODE_BUILDER_PATCH, return_value=built):
+                    result = call_operation("decode.render_dashboard", {"output": str(out)})
                 self.assertEqual(result["status"], "completed")
                 self.assertTrue(out.is_file())
                 self.assertIn("evidence_envelope", result)
@@ -774,12 +780,7 @@ class RegistryGatingTests(unittest.TestCase):
                 with self.assertRaises(OperationError) as ctx:
                     call_operation(
                         "decode.render_dashboard",
-                        {
-                            "evidence": {"overview": {"sampleId": "ACTIVE",
-                                                      "variantCount": 1}},
-                            "mode": "full",
-                            "output": str(wd_path / "dash.html"),
-                        },
+                        {"output": str(wd_path / "dash.html")},
                     )
                 self.assertEqual(ctx.exception.code, "active_genome_index_incomplete")
             finally:
@@ -808,7 +809,10 @@ class DashboardOfflineAssetTests(unittest.TestCase):
             self.assertTrue((vendor / name).is_file(), f"missing vendored asset {name}")
         chunks = self._compiled_chunks()
         self.assertGreaterEqual(len(chunks), 1)
-        self.assertEqual([path.name for path in chunks], [f"dashboard.compiled.{i:03d}.js" for i in range(1, len(chunks) + 1)])
+        self.assertEqual(
+            [path.name for path in chunks],
+            [f"dashboard.compiled.{i:03d}.js" for i in range(1, len(chunks) + 1)],
+        )
         for path in chunks:
             self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 1000)
 
@@ -851,7 +855,20 @@ class DashboardCatalogTests(unittest.TestCase):
         decode_cap = TOOL_CATALOG["capabilities"]["decode"]
         self.assertIn("decode.render_dashboard", decode_cap["entry_operations"])
         schema_props = TOOL_CATALOG["operations"]["decode.render_dashboard"]["input_schema"]["properties"]
-        self.assertIn("clear_panels", schema_props)
+        self.assertEqual(
+            set(schema_props),
+            {
+                "force",
+                "include_pgx",
+                "journal_limit",
+                "nutrigenomics_domain_ids",
+                "output",
+                "panels",
+                "pgx_timeout_seconds",
+                "risk_score_ids",
+                "risk_score_limit",
+            },
+        )
 
 
 class DashboardPresentationTests(unittest.TestCase):
@@ -861,7 +878,13 @@ class DashboardPresentationTests(unittest.TestCase):
             "mode": "full",
             "dashboard_path": "/tmp/genomi-dashboards/sample/dashboard.html",
             "panels_rendered": ["overview"],
-            "panels_empty": [],
+            "panels_empty": ["pgx"],
+            "evidence_build": {
+                "panels_ready": ["overview"],
+                "panels_empty": ["pgx"],
+                "panels_blocked": ["pgx"],
+                "panel_states": [{"panel": "pgx", "status": "position_aware_pharmcat_export_required"}],
+            },
             "serve": {
                 "directory": "/tmp/genomi-dashboards/sample",
                 "filename": "dashboard.html",
@@ -876,11 +899,16 @@ class DashboardPresentationTests(unittest.TestCase):
 
         presented = present_result("decode.render_dashboard", raw)
 
+        self.assertEqual(
+            set(presented),
+            {"status", "dashboard_path", "panels_rendered", "panels_empty", "evidence_build", "serve"},
+        )
         self.assertEqual(presented["dashboard_path"], raw["dashboard_path"])
         self.assertEqual(presented["serve"]["directory"], raw["serve"]["directory"])
         self.assertEqual(presented["serve"]["command"], raw["serve"]["command"])
         self.assertEqual(presented["panels_rendered"], ["overview"])
-        self.assertEqual(presented["panels_empty"], [])
+        self.assertEqual(presented["panels_empty"], ["pgx"])
+        self.assertEqual(presented["evidence_build"]["panels_blocked"], ["pgx"])
 
 
 if __name__ == "__main__":
