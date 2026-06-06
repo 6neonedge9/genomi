@@ -13,9 +13,8 @@ from ....active_genome_index.genotype_qc import (
 )
 from ....active_genome_index.active_genome_index import (
     ActiveGenomeIndexNeed,
-    default_agi_path,
-    active_genome_index_summary,
     open_reader,
+    default_agi_path,
 )
 from ....active_genome_index.vcf import parse_region
 from ....evidence import (
@@ -328,10 +327,11 @@ def summarize_static_state(
 ) -> dict[str, Any]:
     db_path = Path(evidence_db) if evidence_db is not None else default_evidence_path(vcf)
     agi_path = Path(agi_path) if agi_path is not None else default_agi_path(vcf)
+    active_summary = open_reader(agi_path, need=ActiveGenomeIndexNeed.NONE).summary() if agi_path.exists() else None
     return {
         "workflow_area": WORKFLOW_AREA_ID,
         "contract": workflow_contract(),
-        "active_genome_index": active_genome_index_summary(agi_path) if agi_path.exists() else None,
+        "active_genome_index": active_summary,
         "evidence": evidence_summary(db_path) if db_path.exists() else None,
         "outputs": default_static_outputs(vcf),
         "evidence_context": evidence_context(
@@ -349,7 +349,7 @@ def summarize_static_state_from_agi(
 ) -> dict[str, Any]:
     agi_path = Path(agi_path)
     db_path = Path(evidence_db) if evidence_db is not None else agi_path.parent / "evidence.sqlite"
-    active_summary = active_genome_index_summary(agi_path) if agi_path.exists() else None
+    active_summary = open_reader(agi_path, need=ActiveGenomeIndexNeed.NONE).summary() if agi_path.exists() else None
     evidence = evidence_summary(db_path) if db_path.exists() else None
     _align_evidence_metadata_to_active_index(evidence, active_summary)
     return {

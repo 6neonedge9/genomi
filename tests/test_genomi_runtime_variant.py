@@ -220,6 +220,16 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
         unresolved = {item["component"]: item for item in no_target["unanswered_answer_components"]}
         self.assertEqual(unresolved["target_resolution"]["state"], "missing")
         self.assertIn("query", unresolved["target_resolution"]["missing_inputs"])
+        self.assertEqual(no_target["warnings"], ["no_variant_target_resolved:provide_rsid_allele_locus_or_region"])
+
+        invalid_region = call_operation("variant.resolve", {"region": "not-a-region"})
+        self.assertEqual(
+            invalid_region["warnings"],
+            [
+                "invalid_region_input:target_not_resolved",
+                "no_variant_target_resolved:provide_rsid_allele_locus_or_region",
+            ],
+        )
 
         no_context = call_operation("variant.resolve", {"rsid": "rs999999"})
 

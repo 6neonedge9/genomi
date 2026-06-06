@@ -172,10 +172,6 @@ def retrieve_trait_gene_records(
         },
         "source_coverage": source_coverage,
         "warnings": _trait_gene_records_warnings(status),
-        "decision_boundary": (
-            "This operation retrieves native trait-to-gene records from declared public sources. "
-            "The host agent decides how those records apply."
-        ),
         "telemetry": {
             "tool_family": "candidate_gene",
             "returned_answer": False,
@@ -589,8 +585,8 @@ def _trait_causal_record_for_comparison(record: dict[str, Any]) -> dict[str, Any
 
 def _trait_gene_records_warnings(status: str) -> list[str]:
     if status == "trait_gene_records_found":
-        return ["Trait-to-gene records were found in integrated sources; inspect evidence regimes before deciding how to use them."]
-    return ["No native trait-to-gene records were found in integrated sources."]
+        return ["trait_gene_records_found:inspect_evidence_regimes"]
+    return ["no_native_trait_gene_records:causal_gene_evidence_not_returned"]
 
 
 def _trait_causal_record_text(record: dict[str, Any]) -> str:

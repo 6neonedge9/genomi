@@ -625,13 +625,11 @@ def _warnings(
 ) -> list[str]:
     warnings = []
     if context_scope == "public_only":
-        warnings.append("Public-source planning only; run ClinVar candidate scanning on the Active Genome Index if user-specific ranking is needed.")
+        warnings.append("public_only_context:user_specific_ranking_not_assessed")
     if int((stored_research.get("summary") or {}).get("record_count") or 0) == 0:
-        warnings.append("No stored reviewed research was found for the selected public target.")
+        warnings.append("no_stored_reviewed_research:source_review_not_returned")
     if active_candidates.get("status") == "available" and int((active_candidates.get("summary") or {}).get("candidate_count") or 0) == 0:
-        warnings.append(
-            "No stored ClinVar candidate-inventory hits were present in the selected evidence groups."
-        )
+        warnings.append("no_clinvar_candidate_inventory_hits:review_selected_evidence_groups")
     return warnings
 
 

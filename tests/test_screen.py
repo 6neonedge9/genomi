@@ -139,6 +139,7 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(result["unmatched_candidates"], ["EGFR", "MYC"])
         self.assertEqual(result["evidence_view"]["coverage"]["candidate_count"], 2)
         self.assertIsNone(result["evidence_view"]["coverage"]["top_observed_candidate"])
+        self.assertEqual(result["warnings"], ["missing_source_records:ranking_requires_source_records"])
 
     def test_retrieve_public_screen_records_from_biogrid_orcs(self) -> None:
         def fake_fetch_json(url: str):
@@ -506,7 +507,25 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(acquisition["summary"]["source_record_count"], 2)
         self.assertEqual(acquisition["summary"]["direct_perturbation_source_record_count"], 1)
         self.assertEqual(acquisition["direct_perturbation_source_records"][0]["record_id"], "screen")
+        self.assertEqual(acquisition["next_actions"][0]["action"], "rank_verified_source_records")
+        self.assertEqual(acquisition["next_actions"][0]["operation"], "functional_genomics.compare_gene_perturbation")
         self.assertEqual(acquisition["rejected_or_limited_records"][0]["record_id"], "generic")
+
+    def test_acquire_perturbation_source_records_returns_structured_followups(self) -> None:
+        acquisition = acquire_perturbation_source_records(
+            context="A549 CRISPR dependency screen",
+            genes=["EGFR"],
+            cell_line="A549",
+            perturbation="CRISPR knockout",
+            phenotype="dependency",
+            source_records=[],
+        )
+
+        self.assertEqual(acquisition["status"], "no_source_records")
+        self.assertEqual(acquisition["next_actions"][0]["action"], "retrieve_perturbation_source_records")
+        self.assertEqual(acquisition["next_actions"][0]["operation"], "functional_genomics.retrieve_perturbation_records")
+        self.assertEqual(acquisition["next_actions"][0]["params"]["cell_line"], "A549")
+        self.assertEqual(acquisition["next_actions"][1]["action"], "add_source_verification_fields")
 
     def test_extract_screen_table_evidence_records_verifies_local_table_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -532,6 +551,7 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(extracted["summary"]["direct_perturbation_source_record_count"], 2)
         self.assertEqual(extracted["direct_perturbation_source_records"][0]["verification"]["status"], "verified")
         self.assertEqual(extracted["direct_perturbation_source_records"][0]["genes"], ["EGFR"])
+        self.assertEqual(extracted["next_actions"][0]["action"], "rank_verified_source_records")
 
     def test_screen_table_extract_operation_feeds_compare_operation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

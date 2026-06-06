@@ -73,6 +73,7 @@ class JournalTests(unittest.TestCase):
         self.assertEqual(session["notebook"]["scope"], "session")
         self.assertEqual(project["notebook"]["scope"], "project")
         self.assertEqual(session["entry"]["decision_status"], "unresolved")
+        self.assertEqual(session["warnings"], ["claim_like_entry_without_evidence_links:decision_status_set_unresolved"])
         self.assertTrue(session["entry"]["entry_id"].startswith("entry_"))
         self.assertTrue(project["entry"]["entry_id"].startswith("entry_"))
 

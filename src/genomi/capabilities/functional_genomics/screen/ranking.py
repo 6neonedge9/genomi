@@ -300,15 +300,15 @@ def _selection_warnings(
     records: list[dict[str, Any]],
 ) -> list[str]:
     if not records:
-        return ["No source records were supplied; the operation cannot rank genes from evidence."]
+        return ["missing_source_records:ranking_requires_source_records"]
     if not selected:
-        return ["No candidate gene was named in the supplied source records."]
+        return ["no_candidate_gene_named_in_source_records:ranked_output_unavailable"]
     warnings = []
     if selected["answerability"] != "direct_source_supported":
-        warnings.append("Selected candidate is not backed by direct perturbation-source context; treat as lower support.")
+        warnings.append("selected_candidate_without_direct_perturbation_support:keep_lower_support")
     direct_count = sum(1 for candidate in matrix if candidate["answerability"] == "direct_source_supported")
     if direct_count > 1:
-        warnings.append("Multiple candidate genes had direct source support; inspect supporting_evidence before finalizing.")
+        warnings.append("multiple_direct_source_supported_candidates:inspect_supporting_evidence")
     return warnings
 
 

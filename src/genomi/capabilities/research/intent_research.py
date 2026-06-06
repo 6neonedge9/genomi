@@ -203,10 +203,6 @@ def gather_allele_context(
         sample_limit=sample_limit,
     )
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command gathers already-structured evidence and stored research. If public population "
-        "frequency is missing, run gnomad.fetch_population_frequency rather than doing ad hoc web interpretation."
-    )
     payload["evidence_context"] = evidence_context(
         "research",
         reason="Variant context is assembled; record any reviewed-source findings before final interpretation.",
@@ -261,10 +257,6 @@ def compare_gwas_variant_context(
         kwargs["semantic_context"] = semantic_context
     payload = compare_gwas_variant_evidence(phenotype, variants, **kwargs)
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command queries a public association source for a focused phenotype and candidate rsID list. "
-        "Personal sample interpretation uses genotype support from the static stage."
-    )
     return payload
 
 
@@ -286,10 +278,6 @@ def compare_gwas_gene_context(
         kwargs["semantic_context"] = semantic_context
     payload = compare_gwas_gene_evidence(phenotype, genes, **kwargs)
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command queries or scores public GWAS association records for a focused phenotype and candidate gene list. "
-        "It is association evidence, not causal mechanism or personal interpretation."
-    )
     return payload
 
 
@@ -317,10 +305,6 @@ def compare_screen_gene_context(
         semantic_context=semantic_context,
     )
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command ranks candidate genes from supplied source records. The host agent is responsible "
-        "for obtaining complete source records through focused source review before relying on the ranking."
-    )
     return payload
 
 
@@ -424,10 +408,6 @@ def find_screen_gene_source_records_context(
                 limit=limit,
             )
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command verifies source-record fields for screen-gene ranking. It does not use answer keys "
-        "and does not treat unverified agent summaries as direct evidence."
-    )
     if native_retrieval is not None:
         payload["native_retrieval"] = native_retrieval
         payload["source_coverage"] = native_retrieval.get("source_coverage")
@@ -517,10 +497,6 @@ def answer_screen_gene_context(
         if ranking.get("status") == "no_source_records":
             ranking["coverage_state"] = acquisition["geo_retrieval"].get("coverage_state", ranking.get("coverage_state"))
             _sync_candidate_envelope_with_retrieval(ranking, acquisition["geo_retrieval"])
-    ranking["workflow_boundary"] = (
-        "This command first verifies source records, then returns candidate evidence. The agent chooses whether "
-        "the source evidence supports the requested answer."
-    )
     return ranking
 
 
@@ -649,10 +625,6 @@ def risk_investigation_context(
         search_stored_research=search_stored_research,
     )
     payload["workflow_area"] = WORKFLOW_AREA_ID
-    payload["workflow_boundary"] = (
-        "This command plans focused rare-disease or cancer-risk evidence review. It does not diagnose, "
-        "estimate personal risk, or turn GeneCards-style context into clinical validity by itself."
-    )
     payload["evidence_context"] = evidence_context(
         "research",
         reason="Risk investigation guidance is assembled; record reviewed source findings before final interpretation.",

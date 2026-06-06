@@ -247,7 +247,7 @@ class GwasCatalogTests(unittest.TestCase):
             " ".join(result["prior_fit"]["fits"]["gwas_catalog_association"]["cautions"]),
         )
         self.assertEqual(result["trait_gene_records"]["status"], "no_trait_gene_records")
-        self.assertIn("no native trait-to-gene", " ".join(result["warnings"]))
+        self.assertIn("no_native_trait_gene_records:causal_gene_evidence_not_returned", result["warnings"])
 
     def test_trait_gene_records_returns_empty_without_native_records(self) -> None:
         result = retrieve_trait_gene_records(

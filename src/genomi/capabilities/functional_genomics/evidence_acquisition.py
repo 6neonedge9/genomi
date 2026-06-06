@@ -729,18 +729,37 @@ def _source_gaps(
     ]
 
 
-def _next_actions(query: dict[str, Any], direct_ready: list[dict[str, Any]]) -> list[str]:
+def _next_actions(query: dict[str, Any], direct_ready: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if direct_ready:
-        return ["Call functional_genomics.compare_gene_perturbation with direct_perturbation_source_records or verified_source_records."]
-    context = ", ".join(str(query.get(field)) for field in ("cell_line", "perturbation", "assay", "phenotype") if query.get(field))
-    if context:
         return [
-            "Search primary perturbation experiment papers, supplementary tables, GEO/ArrayExpress/DepMap-style source tables, or stored reviewed research for the requested context: "
-            + context,
-            "Add support_spans or verified_fields showing where the source names the candidate gene and requested perturbation context.",
+            {
+                "action": "rank_verified_source_records",
+                "operation": "functional_genomics.compare_gene_perturbation",
+                "source_record_field": "direct_perturbation_source_records",
+            }
+        ]
+    context_params = {
+        field: query[field]
+        for field in ("context", "genes", "organism", "cell_line", "perturbation", "assay", "phenotype")
+        if query.get(field)
+    }
+    if any(query.get(field) for field in ("cell_line", "perturbation", "assay", "phenotype")):
+        return [
+            {
+                "action": "retrieve_perturbation_source_records",
+                "operation": "functional_genomics.retrieve_perturbation_records",
+                "params": context_params,
+            },
+            {
+                "action": "add_source_verification_fields",
+                "required_fields": ["support_spans", "verified_fields"],
+            },
         ]
     return [
-        "Collect primary perturbation records and include support_spans or verified_fields before ranking candidates.",
+        {
+            "action": "collect_primary_perturbation_source_records",
+            "required_fields": ["genes", "support_spans", "verified_fields"],
+        }
     ]
 
 

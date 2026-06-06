@@ -28,9 +28,9 @@ def _selected_runs(
         if isinstance(run, dict) and runtime_context.agi_access_approved(run):
             _append_run(selected, seen, run, "explicit_active_genome_index")
         elif isinstance(run, dict):
-            warnings.append(f"Known genomi agi is not approved for this session: {agi_id}")
+            warnings.append("active_genome_index_not_approved:request_session_access")
         else:
-            warnings.append(f"Known genomi agi not found: {agi_id}")
+            warnings.append("active_genome_index_not_found:check_agi_id")
 
     if include_active_genome_index and isinstance(active, dict) and runtime_context.agi_access_approved(active):
         _append_run(selected, seen, active, "active_genome_index")

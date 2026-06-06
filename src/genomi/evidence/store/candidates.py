@@ -359,7 +359,7 @@ def _clinvar_candidate_evidence_view(
     }
     warnings = []
     if not matrix:
-        warnings.append("No ClinVar candidate matched the selected evidence groups.")
+        warnings.append("no_clinvar_candidate_matches:selected_evidence_groups_empty")
     return evidence_view(
         task_profile=CLINVAR_CANDIDATE_SCAN,
         query={

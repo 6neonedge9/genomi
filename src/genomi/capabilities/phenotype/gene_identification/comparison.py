@@ -809,16 +809,16 @@ def _comparison_source_coverage(evidence_panels: dict[str, dict[str, Any]]) -> d
 def _warnings(evidence_panels: dict[str, dict[str, Any]], trait_gene_records: dict[str, Any] | None = None) -> list[str]:
     warnings: list[str] = []
     if not any(panel["ranking"] for panel in evidence_panels.values()):
-        warnings.append("No evidence prior returned a ranked candidate.")
+        warnings.append("no_evidence_prior_returned_ranked_candidate:review_source_coverage")
     if _cross_prior_summary(evidence_panels)["priors_disagree"]:
-        warnings.append("Evidence priors disagree; choose the prior that matches the question before answering.")
+        warnings.append("evidence_priors_disagree:choose_question_matched_prior")
     if isinstance(trait_gene_records, dict):
         status = trait_gene_records.get("status")
         evidence_state = trait_gene_records.get("evidence_state")
         if evidence_state == "association_only_not_causal":
-            warnings.append("Causal-gene context has only association-only evidence; do not answer from mapped/reported/nearest-gene support alone.")
+            warnings.append("association_only_trait_gene_evidence:do_not_treat_as_causal_gene_evidence")
         elif status == "no_trait_gene_records":
-            warnings.append("Causal-gene context has no native trait-to-gene records in integrated sources.")
+            warnings.append("no_native_trait_gene_records:causal_gene_evidence_not_returned")
     return warnings
 
 

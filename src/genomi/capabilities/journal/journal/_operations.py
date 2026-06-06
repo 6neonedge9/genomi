@@ -79,7 +79,7 @@ def append_entry(
     warnings: list[str] = []
     if normalized_type in CLAIM_LIKE_ENTRY_TYPES and not normalized_links and normalized_status is None:
         normalized_status = "unresolved"
-        warnings.append("Claim-like entry had no evidence links; decision_status was set to unresolved.")
+        warnings.append("claim_like_entry_without_evidence_links:decision_status_set_unresolved")
 
     entry_id = _new_id("entry")
     now = _now()

@@ -170,8 +170,8 @@ def _support_context(
                         str(target["ref"]),
                         str(target["alt"]),
                     )
-                except Exception as exc:
-                    warnings.append(f"Could not resolve genotype support from Active Genome Index {run.get('agi_id')}: {exc}")
+                except Exception:
+                    warnings.append("active_genome_index_genotype_support_failed:support_context_incomplete")
                     continue
                 row = _support_row_from_reader(
                     support,

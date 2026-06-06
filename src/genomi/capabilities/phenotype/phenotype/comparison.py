@@ -259,7 +259,11 @@ def compare_gene_hpo_evidence(
         "phenotype_normalization": normalized,
         "hpo_annotation_evidence": _hpo_public_summary(hpo_context),
         "source_records": records,
-        "summary": {**_summary(matrix, records), "comparable_candidate_evidence": comparable},
+        "summary": {
+            **_summary(matrix, records),
+            "comparable_candidate_evidence": comparable,
+            "uncovered_candidate_genes": _uncovered_candidate_genes(candidates, records),
+        },
         "source_review_plan": _source_review_plan("gene"),
         "record_research_templates": _record_templates(query, mode="gene"),
         "next_actions": _next_actions(query, mode="gene", direct=direct),
@@ -626,16 +630,16 @@ def _comparable_gene_evidence(
 def _coverage_warnings(candidates: list[str], records: list[dict[str, Any]], hpo_context: dict[str, Any], *, selected: dict[str, Any] | None = None) -> list[str]:
     if _comparable_gene_evidence(candidates, records, hpo_context, selected=selected):
         return []
+    return ["incomplete_candidate_evidence_coverage:review_uncovered_candidates"]
+
+
+def _uncovered_candidate_genes(candidates: list[str], records: list[dict[str, Any]]) -> list[str]:
     supported = {
         gene
         for record in records
         for gene in (record.get("verification", {}).get("verified_fields", {}).get("genes") or [])
     }
-    missing = [gene for gene in candidates if gene not in supported]
-    return [
-        "Candidate evidence coverage is incomplete; the ranked rows reflect supplied or stored records and should not be used for an identifier-only answer.",
-        "Uncovered candidate genes: " + ", ".join(missing[:10]),
-    ]
+    return [gene for gene in candidates if gene not in supported]
 
 
 def _candidate_verified(candidate: str, record: dict[str, Any], *, mode: str) -> bool:
@@ -727,11 +731,11 @@ def _decision_policy(mode: str) -> dict[str, Any]:
 def _warnings(records: list[dict[str, Any]], selected: dict[str, Any] | None, candidates: list[str], mode: str) -> list[str]:
     warnings = []
     if not candidates:
-        warnings.append(f"No candidate {mode}s were supplied or derived from source records.")
+        warnings.append(f"missing_candidate_{mode}s:ranking_requires_candidates")
     if not records:
-        warnings.append("No source records were supplied or found; ranking cannot create direct support.")
+        warnings.append("missing_source_records:ranking_requires_source_records")
     if selected and selected.get("answerability") != "direct_source_supported":
-        warnings.append("Selected candidate is not direct-source-supported; do not provide an identifier-only answer.")
+        warnings.append("selected_candidate_without_direct_source_support:keep_lower_support")
     return warnings
 
 

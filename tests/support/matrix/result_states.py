@@ -74,6 +74,8 @@ class DecodeDataReturnedCase:
     panel: str
     mode: str
     evidence: object
+    expected_payload_tokens: tuple[str, ...]
+    expected_ui_tokens: tuple[str, ...]
 
     @property
     def cell(self) -> tuple[str, str, str]:
@@ -98,10 +100,13 @@ class DecodeDataReturnedCase:
             mode=self.mode,
             output=out,
         )
-        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+        html = out.read_text(encoding="utf-8")
+        parsed = _extract_evidence(html)
         assert self.panel in parsed
         assert self.panel in result["panels_rendered"]
         assert self.panel not in result["panels_empty"]
+        _assert_panel_payload_tokens(parsed[self.panel], self.expected_payload_tokens)
+        _assert_html_tokens(html, self.expected_ui_tokens)
         return result
 
 
@@ -114,6 +119,17 @@ def _extract_evidence(html: str) -> JsonObject:
     parsed, _end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
     assert isinstance(parsed, dict), "__GENOMI_DASHBOARD__ is not an object"
     return parsed
+
+
+def _assert_panel_payload_tokens(panel_payload: object, tokens: tuple[str, ...]) -> None:
+    serialized = json.dumps(panel_payload, ensure_ascii=False, sort_keys=True)
+    missing = [token for token in tokens if token not in serialized]
+    assert not missing, f"panel payload missing expected token(s): {missing}; payload={serialized}"
+
+
+def _assert_html_tokens(html: str, tokens: tuple[str, ...]) -> None:
+    missing = [token for token in tokens if token not in html]
+    assert not missing, f"dashboard HTML missing expected UI token(s): {missing}"
 
 
 def _stale_panel(panel: str) -> object:
@@ -251,9 +267,52 @@ def _data_returned_evidence(panel: str) -> object:
     raise AssertionError(f"unknown panel: {panel}")
 
 
+def _data_returned_payload_tokens(panel: str) -> tuple[str, ...]:
+    if panel == "overview":
+        return ("HG-DATA", "10")
+    if panel in {"variants", "variants_all"}:
+        return ("rs900000001", "GENE1", "het")
+    if panel == "pgx":
+        return ("CYP2C19", "*1/*2", "Intermediate")
+    if panel == "risk":
+        return ("Synthetic common trait", "2.0", "PGS900001")
+    if panel == "ancestry":
+        return ("EUR", "0.9")
+    if panel == "nutrigenomics":
+        return ("Folate Metabolism", "MTHFR", "rs1801133")
+    if panel == "journal":
+        return ("observation", "Current note", "2026-05-25")
+    raise AssertionError(f"unknown panel: {panel}")
+
+
+def _data_returned_ui_tokens(panel: str) -> tuple[str, ...]:
+    if panel == "overview":
+        return ("Genomi Dashboard", "Variants Indexed")
+    if panel in {"variants", "variants_all"}:
+        return ("Variants", "All ClinVar Variants")
+    if panel == "pgx":
+        return ("Pharmacogenomics", "pgx-grid")
+    if panel == "risk":
+        return ("Polygenic Risk Scores", "risk-grid")
+    if panel == "ancestry":
+        return ("Ancestry Context", "Dominant Ancestry")
+    if panel == "nutrigenomics":
+        return ("Nutrigenomics", "nutri-card")
+    if panel == "journal":
+        return ("Investigation Journal", "journal-entry")
+    raise AssertionError(f"unknown panel: {panel}")
+
+
 def _data_returned_cases() -> tuple[DecodeDataReturnedCase, ...]:
     return tuple(
-        DecodeDataReturnedCase(DECODE_RESULT_STATE_OPERATION, panel, mode, _data_returned_evidence(panel))
+        DecodeDataReturnedCase(
+            DECODE_RESULT_STATE_OPERATION,
+            panel,
+            mode,
+            _data_returned_evidence(panel),
+            _data_returned_payload_tokens(panel),
+            _data_returned_ui_tokens(panel),
+        )
         for panel in sorted(decode_dashboard.PANEL_KEYS)
         for mode in ("full", "update")
     )

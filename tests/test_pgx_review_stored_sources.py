@@ -688,6 +688,15 @@ class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):
         self.assertEqual(result["evidence_envelope"]["finding_state"], "not_assessed")
         self.assertEqual(len(result["evidence_envelope"]["coverage"]["unavailable_sources"]), 2)
         self.assertEqual(result["traceability"]["source_availability"], availability)
+        self.assertEqual(
+            result["evidence_view"]["warnings"],
+            [
+                "no_source_supported_pgx_candidate_evidence:review_source_coverage",
+                "unresolved_pgx_evidence_components:inspect_unanswered_components",
+                "live_pgx_public_source_unavailable:report_answerability_gap",
+            ],
+        )
+        self.assertEqual(result["warnings"], result["evidence_view"]["warnings"])
         unanswered = {item["component"]: item for item in result["unanswered_answer_components"]}
         self.assertIn("public_pgx_evidence", unanswered)
 

@@ -90,14 +90,12 @@ def _evidence_route(
                 "HPO or single-subject phenotype context with a short candidate-gene list is phenotype-match evidence. "
                 "Population association, locus-to-gene, and drug-target priors are not run unless explicitly requested."
             ),
-            "decision_boundary": "Genomi returns phenotype/HPO evidence only; the host agent decides from the evidence rows.",
         }
     return {
         "mode": "multi_prior",
         "active_source_priors": list(EVIDENCE_PRIORS),
         "suppressed_source_priors": [],
         "reason": "No HPO-anchored single-subject boundary was detected, so source-prior evidence panels are available for host-agent prior selection.",
-        "decision_boundary": "Genomi returns source-prior evidence; the host agent chooses which source family fits the question.",
     }
 
 

@@ -359,7 +359,8 @@ class PhenotypePrioritizationTests(unittest.TestCase):
 
         self.assertIsNone(result["top_observed"])
         self.assertFalse(result["summary"]["comparable_candidate_evidence"])
-        self.assertIn("Candidate evidence coverage is incomplete", " ".join(result["warnings"]))
+        self.assertEqual(result["summary"]["uncovered_candidate_genes"], ["SPG7"])
+        self.assertIn("incomplete_candidate_evidence_coverage:review_uncovered_candidates", result["warnings"])
         spg7 = next(row for row in result["candidate_matrix"] if row["candidate_id"] == "SPG7")
         self.assertNotEqual(spg7["answerability"], "direct_source_supported")
 

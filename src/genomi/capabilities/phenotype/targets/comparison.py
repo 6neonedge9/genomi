@@ -588,13 +588,13 @@ def _decision_policy() -> dict[str, Any]:
 def _warnings(records: list[dict[str, Any]], selected: dict[str, Any] | None, candidates: list[str]) -> list[str]:
     warnings = []
     if not candidates:
-        warnings.append("No candidate genes were supplied or derived from source records.")
+        warnings.append("missing_candidate_genes:ranking_requires_candidates")
     if not records:
-        warnings.append("No source records were supplied or found; ranking cannot create direct drug-target support.")
+        warnings.append("missing_source_records:ranking_requires_drug_target_source_records")
     if selected and selected.get("answerability") != "direct_source_supported":
-        warnings.append("Selected candidate is not direct-source-supported; do not provide an identifier-only answer.")
+        warnings.append("selected_candidate_without_direct_source_support:keep_lower_support")
     if any(record.get("verification", {}).get("source_family") == "association_source" for record in records):
-        warnings.append("Association-only source records were capped below direct drug-target evidence.")
+        warnings.append("association_only_source_records:capped_below_direct_drug_target_evidence")
     return warnings
 
 

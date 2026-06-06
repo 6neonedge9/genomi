@@ -505,10 +505,6 @@ def _disease_drug_target_response(
             "gene_membership_count": len(gene_membership or []),
         },
         "source_coverage": source_coverage,
-        "decision_boundary": (
-            "This operation retrieves disease-scoped clinical drug-target evidence from declared sources. "
-            "It does not select a causal gene, infer treatment efficacy, or ingest agent-located evidence."
-        ),
         "telemetry": {
             "tool_family": "clinical_drug_target",
             "returned_answer": False,

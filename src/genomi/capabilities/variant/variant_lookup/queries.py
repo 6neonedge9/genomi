@@ -103,8 +103,8 @@ def _query_active_genome_index(
                 _enrich_active_genome_index_records(rows, run=run, selection=selection, target=target),
                 ("agi_id", "chrom", "pos", "ref", "alt", "rsid", "genotype", "filter"),
             )
-    except sqlite3.Error as exc:
-        warnings.append(f"Could not query Active Genome Index {run.get('agi_id')}: {exc}")
+    except sqlite3.Error:
+        warnings.append("active_genome_index_query_failed:sample_context_incomplete")
     return []
 
 
@@ -276,8 +276,8 @@ def _query_public_rows(path: Path, label: str, sql: str, params: list[Any], *, w
             if table_match and not _table_exists(connection, table_match.group(1)):
                 return []
             rows = [dict(row) for row in connection.execute(sql, params)]
-    except sqlite3.Error as exc:
-        warnings.append(f"Could not query evidence store {label}: {exc}")
+    except sqlite3.Error:
+        warnings.append("evidence_store_query_failed:public_context_incomplete")
         return []
     for row in rows:
         row["evidence_store"] = label

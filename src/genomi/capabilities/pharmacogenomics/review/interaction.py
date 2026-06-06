@@ -718,11 +718,11 @@ def _pgx_unanswered_counter_evidence(unanswered_answer_components: Any) -> list[
 def _pgx_candidate_warnings(row: JsonObject, unanswered_answer_components: Any, source_availability: JsonObject) -> list[str]:
     warnings = []
     if row["score"] <= 0:
-        warnings.append("No source-supported PGx candidate evidence was available for the selected medication target.")
+        warnings.append("no_source_supported_pgx_candidate_evidence:review_source_coverage")
     if unanswered_answer_components:
-        warnings.append("Some PGx evidence components remain unresolved; inspect unanswered_answer_components before synthesis.")
-    if source_availability.get("status") == "source_unavailable":
-        warnings.append("One or more live PGx public sources were unavailable.")
+        warnings.append("unresolved_pgx_evidence_components:inspect_unanswered_components")
+    if str(source_availability.get("status") or "").startswith("source_unavailable"):
+        warnings.append("live_pgx_public_source_unavailable:report_answerability_gap")
     return warnings
 
 

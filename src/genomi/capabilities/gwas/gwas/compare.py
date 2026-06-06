@@ -402,8 +402,8 @@ def _wrong_gwas_gene_evidence_regime(
         ),
     }
     warnings = [
-        "GWAS Catalog gene fields were not used to choose a candidate because the task asks for causal or locus-gene selection.",
-        "Use phenotype.retrieve_trait_gene_records for native trait-to-gene evidence before any cross-source comparator.",
+        "wrong_evidence_regime:gwas_gene_fields_not_used_for_causal_gene_selection",
+        "trait_gene_records_required:retrieve_native_trait_gene_evidence",
     ]
     view = evidence_view(
         task_profile=GWAS_GENE_PRIORITIZATION,

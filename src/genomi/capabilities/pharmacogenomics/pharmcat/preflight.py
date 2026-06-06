@@ -23,9 +23,7 @@ def _input_preflight(
         return {
             "status": "requires_active_genome_index",
             "input": {"hidden_agi_path": True},
-            "warnings": [
-                "No Active Genome Index is available; run genomi.parse_source first so PharmCAT preflight can read AGI records.",
-            ],
+            "warnings": ["missing_active_genome_index:run_parse_source_first"],
         }
     stats: dict[str, int] = {
         "records_scanned": 0,
@@ -66,27 +64,27 @@ def _input_preflight(
             stats["records_with_gt"] += int(bool(row["genotype"]))
             stats["records_with_dp"] += int(row["depth"] is not None)
             stats["records_with_gq"] += int(row["genotype_quality"] is not None)
-    except (OSError, ValueError, sqlite3.Error) as exc:
+    except (OSError, ValueError, sqlite3.Error):
         return {
             "status": "header_unavailable" if header is None else "scan_unavailable",
             "input": {"hidden_agi_path": True, "size_bytes": _size(agi_path)},
             "header": _header_preflight(header) if header is not None else None,
-            "warnings": [str(exc)],
+            "warnings": ["active_genome_index_preflight_read_failed:rerun_parse_source"],
         }
 
     warnings = []
     if not header.samples:
-        warnings.append("VCF has no sample columns; PharmCAT sample calling needs genotype columns.")
+        warnings.append("missing_sample_columns:pharmcat_sample_calling_requires_genotypes")
     if stats["records_scanned"] and not stats["records_with_gt"]:
-        warnings.append("Scanned records did not include GT sample fields.")
+        warnings.append("missing_gt_fields:pharmcat_sample_calling_requires_genotypes")
     if header.first_meta_value("reference") is None and header.first_meta_value("referenceInfo") is None:
-        warnings.append("VCF header is missing reference assembly metadata.")
+        warnings.append("missing_reference_metadata:confirm_grch38_before_pharmcat")
     if stats["non_pass_filter_records"]:
-        warnings.append("Scanned records include non-PASS filters; review QUAL and FILTER fields separately for sample quality context.")
+        warnings.append("non_pass_filter_records:review_quality_filter_context")
     if _chrom_style_from_header_or_records(header, stats) != "chr_prefixed":
-        warnings.append('PharmCAT expects CHROM values in "chr##" format; use the PharmCAT preprocessor when needed.')
+        warnings.append("non_chr_prefixed_chromosomes:normalize_for_pharmcat")
     if stats["indel_records"] or stats["symbolic_alt_records"]:
-        warnings.append("Scanned records include indels or symbolic ALT records; confirm PharmCAT normalization requirements before synthesis.")
+        warnings.append("complex_variant_representation:review_pharmcat_normalization_requirements")
     requirement_checks = _pharmcat_requirement_checks(header, stats)
     return {
         "status": "completed",

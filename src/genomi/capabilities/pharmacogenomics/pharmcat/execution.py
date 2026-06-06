@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from ....active_genome_index.export import export_variants
-from ....active_genome_index.active_genome_index import active_genome_index_summary
+from ....active_genome_index.active_genome_index import ActiveGenomeIndexNeed, open_reader
 from ....runtime.libraries import manager as library_manager
 from .. import pgx_outside_calls
 from ._common import (
@@ -701,7 +701,7 @@ def _surface_pharmcat_input(pharmcat_input: JsonObject) -> JsonObject:
 
 def _pharmcat_agi_export_readiness(agi_path: Path) -> JsonObject:
     try:
-        summary = active_genome_index_summary(agi_path)
+        summary = open_reader(agi_path, need=ActiveGenomeIndexNeed.NONE).summary()
     except (OSError, ValueError, sqlite_error_cls()) as exc:
         return {
             "status": "active_genome_index_input_unavailable",

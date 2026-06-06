@@ -342,10 +342,6 @@ def _primary_gene_disease_response(
             "association_count": len(associations),
         },
         "source_coverage": source_coverage,
-        "decision_boundary": (
-            "This operation retrieves primary gene-disease associations from declared sources. "
-            "It does not diagnose, rank phenotypes, or ingest agent-located evidence."
-        ),
         "telemetry": {
             "tool_family": "gene_disease",
             "returned_answer": False,

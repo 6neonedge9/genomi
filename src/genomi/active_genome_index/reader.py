@@ -29,6 +29,7 @@ from typing import Any, Iterator
 from ._agi_query import coverage_query, query_region, query_rsid_filtered, query_variant
 from ._agi_readiness import (
     REFERENCE_PENDING_NOTE,
+    active_genome_index_summary,
     active_genome_index_readiness,
     ensure_active_genome_index_complete,
 )
@@ -110,6 +111,9 @@ class ActiveGenomeIndexReader:
         return state
 
     # --- data access (the ONLY AGI read path) --------------------------
+    def summary(self) -> JsonObject:
+        return active_genome_index_summary(self.agi_path)
+
     def query_rsid(self, rsid: str, *, limit: int = 50, pass_only: bool = False) -> list[dict[str, Any]]:
         return query_rsid_filtered(self.agi_path, rsid, limit=limit, pass_only=pass_only)
 

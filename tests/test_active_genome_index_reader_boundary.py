@@ -20,6 +20,7 @@ FORBIDDEN_AGI_READ_PATTERNS = {
     r"\bconnect_existing_readonly\s*\(\s*agi_path": "read AGI SQLite through ActiveGenomeIndexReader",
     r"\bconnect_existing\s*\(\s*agi_path": "read AGI SQLite through ActiveGenomeIndexReader",
     r"\breader\.attach_to\s*\(": "stage AGI rows through an active-genome-index-owned helper",
+    r"\bactive_genome_index_summary\s*\(": "summarize AGI state through ActiveGenomeIndexReader.summary",
     r"sample_active_genome_index\.": "do not query attached AGI aliases outside active_genome_index",
     r"\bquery_variant\s*\(\s*vcf\b": "call ActiveGenomeIndexReader.query_variant from capability code",
     r"\bquery_region\s*\(\s*vcf\b": "call ActiveGenomeIndexReader.query_region from capability code",

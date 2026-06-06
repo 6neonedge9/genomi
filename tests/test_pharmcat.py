@@ -288,7 +288,13 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(checks["quality_filter_review"]["status"], "review_filtered_records")
         self.assertEqual(result["input_preflight"]["scan_summary"]["indel_records"], 1)
         self.assertEqual(result["input_preflight"]["scan_summary"]["non_pass_filter_records"], 1)
-        self.assertTrue(any("FILTER" in warning for warning in result["input_preflight"]["warnings"]))
+        self.assertEqual(
+            result["input_preflight"]["warnings"],
+            [
+                "non_pass_filter_records:review_quality_filter_context",
+                "complex_variant_representation:review_pharmcat_normalization_requirements",
+            ],
+        )
 
     def test_imports_existing_pharmcat_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

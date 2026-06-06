@@ -358,7 +358,7 @@ class DrugTargetEvidenceComparisonTests(unittest.TestCase):
 
         self.assertEqual(result["top_observed"]["candidate_id"], "ADRB2")
         self.assertEqual(result["top_observed"]["best_source_family"], "association_source")
-        self.assertIn("Association-only", " ".join(result["warnings"]))
+        self.assertIn("association_only_source_records:capped_below_direct_drug_target_evidence", result["warnings"])
 
     def test_target_rejects_indication_only_context(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires drug, drug_class, or mechanism"):

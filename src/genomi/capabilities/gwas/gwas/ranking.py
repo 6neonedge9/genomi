@@ -259,14 +259,14 @@ def _gene_why_not_selected(candidate: dict[str, Any], selected: dict[str, Any] |
 
 def _gene_selection_warnings(selected_candidate: dict[str, Any] | None, candidate_matrix: list[dict[str, Any]]) -> list[str]:
     if not selected_candidate:
-        return ["No candidate gene had source-supported GWAS Catalog phenotype evidence."]
+        return ["no_candidate_gene_with_gwas_phenotype_support:review_source_coverage"]
     if (selected_candidate.get("source_gene_match") or {}).get("field") == "mapped_genes":
-        return ["Selected gene is based on GWAS Catalog mapped_gene evidence, which is not causal-gene evidence."]
+        return ["selected_gene_from_mapped_gene_field:do_not_treat_as_causal_gene_evidence"]
     if selected_candidate["answerability"] != "direct_source_supported":
-        return ["Selected gene is based on adjacent GWAS trait evidence, not an exact source trait match."]
+        return ["selected_gene_from_adjacent_gwas_trait:keep_lower_support"]
     direct_count = sum(1 for candidate in candidate_matrix if candidate["answerability"] == "direct_source_supported")
     if direct_count > 1:
-        return ["Multiple candidate genes had exact GWAS trait support; inspect p-values and study contexts."]
+        return ["multiple_candidate_genes_with_exact_gwas_trait_support:inspect_p_values_and_study_contexts"]
     return []
 
 
@@ -436,13 +436,11 @@ def _why_not_selected(candidate: dict[str, Any], selected: dict[str, Any] | None
 
 def _selection_warnings(selected_candidate: dict[str, Any] | None, candidate_matrix: list[dict[str, Any]]) -> list[str]:
     if not selected_candidate:
-        return ["No candidate had source-supported GWAS Catalog phenotype evidence for the requested phenotype."]
+        return ["no_candidate_with_gwas_phenotype_support:review_source_coverage"]
     warnings = []
     if selected_candidate["answerability"] != "direct_source_supported":
-        warnings.append(
-            "Selected candidate is based on adjacent GWAS trait evidence, not an exact source trait match; treat as lower-support prioritization."
-        )
+        warnings.append("selected_candidate_from_adjacent_gwas_trait:keep_lower_support")
     direct_count = sum(1 for candidate in candidate_matrix if candidate["answerability"] == "direct_source_supported")
     if direct_count > 1:
-        warnings.append("Multiple candidates had direct source support; inspect p-values and study contexts before final interpretation.")
+        warnings.append("multiple_candidates_with_direct_gwas_support:inspect_p_values_and_study_contexts")
     return warnings

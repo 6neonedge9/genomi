@@ -54,8 +54,8 @@ def _resolve_targets(
     if region:
         try:
             reg_chrom, start, end = parse_region(region)
-        except ValueError as exc:
-            warnings.append(f"Could not parse region {region!r}: {exc}")
+        except ValueError:
+            warnings.append("invalid_region_input:target_not_resolved")
         else:
             targets.append(_region_target(_clean_chrom(reg_chrom), start, end, genome_build, source="parameters"))
 
@@ -101,7 +101,7 @@ def _resolve_targets(
 
     targets = _dedupe_targets(targets)
     if not targets:
-        warnings.append("No rsID, exact allele, locus, or region target was resolved from the input.")
+        warnings.append("no_variant_target_resolved:provide_rsid_allele_locus_or_region")
     return targets
 
 

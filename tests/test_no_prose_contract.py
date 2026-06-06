@@ -18,10 +18,12 @@ from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 FORBIDDEN_TOP_LEVEL_KEYS = {
     "agent_guidance",
+    "decision_boundary",
     "interpretation_boundary",
     "recommended_agent_action",
     "answer_affordance",
     "semantics",
+    "workflow_boundary",
 }
 
 
@@ -112,10 +114,10 @@ class NoProseContractTests(GenomiRuntimeTestCase):
         # into dict literal or assignment outputs.
         src_dir = Path(__file__).resolve().parents[1] / "src" / "genomi"
         dict_literal_pattern = re.compile(
-            r'^\s*"(agent_guidance|interpretation_boundary|recommended_agent_action|answer_affordance|semantics)"\s*:'
+            r'^\s*"(agent_guidance|decision_boundary|interpretation_boundary|recommended_agent_action|answer_affordance|semantics|workflow_boundary)"\s*:'
         )
         assignment_pattern = re.compile(
-            r'\[\s*"(agent_guidance|interpretation_boundary|recommended_agent_action|answer_affordance|semantics)"\s*\]\s*='
+            r'\[\s*"(agent_guidance|decision_boundary|interpretation_boundary|recommended_agent_action|answer_affordance|semantics|workflow_boundary)"\s*\]\s*='
         )
         offenders: list[str] = []
         for path in sorted(src_dir.rglob("*.py")):
