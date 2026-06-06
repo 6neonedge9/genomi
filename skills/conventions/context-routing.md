@@ -27,7 +27,7 @@ Start from the current session context:
    genome build from the selected Active Genome Index.
 3. If it has public-only context, keep public/source/GWAS/shared-evidence work
    available.
-4. If the user supplies a source path, read `skills/active-genome-index/SKILL.md`.
+4. If the user supplies a source path, load the Active Genome Index skill.
    The supplied path is approval to read that source for this session. Use
    `genomi.parse_source` when the question needs an Active Genome Index.
 5. If the user explicitly names a known `agi_id`, approve that specific Active Genome Index

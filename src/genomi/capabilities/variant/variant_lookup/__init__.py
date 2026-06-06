@@ -1,8 +1,7 @@
 """Variant lookup facade package.
 
-Splits the former single-module implementation into topical submodules while
-preserving the complete public surface and import paths. Importers continue to
-use ``from ..variant import variant_lookup`` and ``variant_lookup.lookup_variant``.
+This package exposes the current variant lookup surface across focused parsing,
+query, context, and run-summary modules.
 """
 
 from __future__ import annotations

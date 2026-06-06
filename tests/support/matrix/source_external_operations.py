@@ -90,6 +90,19 @@ def _assert_pgx_fetchers(testcase: SupportsAssertions, seen_operations: set[str]
 
 def _assert_gwas_fetcher(testcase: SupportsAssertions, seen_operations: set[str]) -> None:
     with mock.patch(
+        "genomi.operations.registry.handlers_evidence_phenotype.gene_identification.compare_gwas_catalog_gene_evidence",
+        return_value={
+            "status": "completed",
+            "top_observed_candidate": "PCSK9",
+            "association_records": [{"candidate": "PCSK9"}],
+        },
+    ):
+        gene = call_operation("gwas.compare_gene_associations", {"phenotype": "LDL cholesterol", "genes": ["PCSK9"]})
+    seen_operations.add("gwas.compare_gene_associations")
+    testcase.assertEqual(gene["status"], "completed")
+    testcase.assertEqual(gene["top_observed_candidate"], "PCSK9")
+
+    with mock.patch(
         "genomi.capabilities.research.intent_research.compare_gwas_variant_evidence",
         return_value={
             "status": "completed",

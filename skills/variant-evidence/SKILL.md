@@ -121,7 +121,7 @@ Resolve one variant target and return deterministic public, local sample, and st
   from `active_genome_index.classify_genotype_support` or a current private `genotype_support` row.
 - Negative or reference claims use `active_genome_index.classify_region_callability`.
 - Medical meaning beyond static rows uses the Journal source-review sub-skill
-  in `skills/source-research/SKILL.md` and reviewed findings stored with
+  in the source research skill and reviewed findings stored with
   `research.record`.
 - Gene/variant background with public-only context uses `research.list_sources`,
   `research.query`, `research.search`, or public research.

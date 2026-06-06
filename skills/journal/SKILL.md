@@ -42,7 +42,7 @@ reviewed source records passed only when a tool explicitly accepts them.
 
 - `session`: current chat/session notebook. It may link private/sample evidence
   only after scoped Active Genome Index access is approved for this session.
-- `project`: current workspace notebook. It is public/target-scoped in v1 and
+- `project`: current workspace notebook. It is public/target-scoped and
   rejects private/sample evidence links.
 
 ## Cross-Capability Synthesis

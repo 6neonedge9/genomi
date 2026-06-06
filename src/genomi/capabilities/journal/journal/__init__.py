@@ -1,8 +1,6 @@
 """Journal capability facade.
 
-This package preserves the public surface of the former ``journal.py`` module.
-All names previously importable from ``genomi.capabilities.journal.journal`` are
-re-exported here so existing import paths continue to work unchanged.
+This package exposes the current journal constants, helpers, and operations.
 """
 
 from __future__ import annotations

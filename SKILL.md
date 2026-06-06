@@ -71,8 +71,8 @@ registration. Ask the user to start a new session.
   or before making sample-specific claims. When you call it, inspect
   `active_response_profile.guidance`; the active profile id is persisted in
   the Genomi registry (set via `genomi.set_response_profile`) and falls back
-  to the catalog default in `src/genomi/runtime/host_response_profiles.json`
-  when none is set. Do not call it only to bootstrap a public-only question.
+  to the catalog default when none is set. Do not call it only to bootstrap a
+  public-only question.
 - Handle Active Genome Index lifecycle states yourself. When a read op's
   envelope or `genomi.describe_context` returns
   `active_genome_index_readiness.status == "needs_reparse"`, look up the recorded source
@@ -80,8 +80,8 @@ registration. Ask the user to start a new session.
   with it — routine maintenance, no user prompt needed. Only ask the user
   when `availability.agi_intake_source_path` is false (path moved or deleted) or the
   status is `schema_too_new` (Genomi runtime out of date). Never proceed
-  with a stale Active Genome Index while silently substituting placeholder data; see
-  `skills/active-genome-index/SKILL.md` for the full procedure.
+  with a stale Active Genome Index while silently substituting placeholder data;
+  use the Active Genome Index skill for the full procedure.
 - For search-like operations, pass host-inferred alternate wording in
   `semantic_context` when the current chat reasonably supports alternate
   biomedical wording. Send the user's original wording as `raw_query`, add
@@ -97,10 +97,8 @@ MCP `tools/list` returns only the base set:
 - `genomi.*` and `journal.*` ops (always direct-callable).
 - `genomi.invoke` — the dispatcher for every other capability tool.
 
-To use a non-base capability tool, read the matching
-`skills/<capability>/SKILL.md` (Anthropic Claude Code Skills auto-loads each
-as `~/.claude/skills/genomi-<capability>/SKILL.md` based on its frontmatter
-`description`), then call:
+To use a non-base capability tool, load the matching focused capability skill,
+then call:
 
 ```
 genomi.invoke({"tool": "<operation_name>", "params": {...}})
@@ -190,8 +188,8 @@ inside a zip/tar archive; or a `.genome` source archive such as
   tools — exactly the offer `INSTALL_FOR_AGENTS.md` Step 8 makes.
 
 The parse/digitize/user-management **workflow** (selecting users, approving
-access, assigning a genome to a profile, lifecycle reparse) lives in
-`skills/active-genome-index/SKILL.md`, which also owns the
+access, assigning a genome to a profile, lifecycle reparse) lives in the Active
+Genome Index skill, which also owns the
 `active_genome_index.*` interpretation tools.
 
 ## Journal
@@ -221,7 +219,7 @@ Active Genome Index:
 - `genomi.parse_source`
 
 All other `active_genome_index.*` tools are invoke-only: reach them via
-`genomi.invoke` after reading `skills/active-genome-index/SKILL.md`.
+`genomi.invoke` after loading the Active Genome Index skill.
 
 ClinVar:
 

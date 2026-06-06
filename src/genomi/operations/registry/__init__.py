@@ -1,18 +1,12 @@
 """Operation registry package.
 
-This package was split out of the former single-file
-``genomi/operations/registry.py``. The full public surface of that module is
-re-exported here so that ``from genomi.operations.registry import X`` and
-``import genomi.operations.registry as registry; registry.X`` keep working
-unchanged, including the capability submodules that tests patch via
-``genomi.operations.registry.<module>.<fn>``.
+This package exposes the operation catalog, handler table, coercion helpers,
+and capability module handles used by operation dispatch and tests.
 """
 
 from __future__ import annotations
 
-# --- Incidental module-level names the former monolithic module exposed via
-# its imports. Re-exported so dir(registry) (mirrored by operations/__init__)
-# stays a superset of the original surface. ---
+# --- Module-level names included in the current registry surface. ---
 import json
 from collections.abc import Callable
 from copy import deepcopy
@@ -27,9 +21,7 @@ from ...active_genome_index.active_genome_index import (
     ActiveGenomeIndexSchemaTooNew as _ActiveGenomeIndexSchemaTooNew,
 )
 
-# --- Re-exported third-party / capability module references (preserve the
-# module-level names the former monolithic module exposed; tests patch some of
-# these, e.g. genomi.operations.registry.geo.query_geo_datasets). ---
+# --- Capability module handles used by dispatch tests and handler patches. ---
 from ..catalog import TOOL_CATALOG_FILENAME, load_tool_catalog
 from ...active_genome_index import source_intake
 from ...active_genome_index.active_genome_index import default_agi_path

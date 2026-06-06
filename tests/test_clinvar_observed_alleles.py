@@ -62,7 +62,7 @@ class ClinvarObservedAlleleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing required match_basis"):
             match_basis_from_record({"sample_variant": {}, "clinvar": {}})
         with self.assertRaisesRegex(ValueError, "unknown ClinVar match_basis"):
-            match_basis_from_record({"match_provenance": {"match_basis": "legacy_exact"}})
+            match_basis_from_record({"match_provenance": {"match_basis": "unsupported_exact"}})
 
     def test_match_model_maps_active_genome_index_sample_modes_to_public_provenance(self) -> None:
         self.assertEqual(match_basis_for_sample_mode(MATCH_BASIS_EXACT_ALLELE), MATCH_BASIS_EXACT_ALLELE)

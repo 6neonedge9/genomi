@@ -34,9 +34,12 @@ jobs:
           python -m pip install uv
           uv lock --locked
           python -m pip install -e .
-          python -m pip install pytest
+          python -m pip install pytest ruff
+
+      - name: Run lint
+        run: ruff check src tests
 
       - name: Run tests
         env:
           PYTHONPATH: src:.
-        run: python -m pytest -q
+        run: python -m pytest -q -W error

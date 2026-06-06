@@ -8,6 +8,21 @@ from genomi.operations.catalog import load_tool_catalog
 from genomi.runtime.libraries import manager, registry
 from genomi.runtime.libraries.spec import Freshness, Kind
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src" / "genomi"
+RUNTIME_LIBRARIES_ROOT = SRC_ROOT / "runtime" / "libraries"
+ALLOWED_LIBRARY_MANAGER_INSTALL_CALLERS = {
+    SRC_ROOT / "operations" / "registry" / "handlers_admin.py",
+}
+FORBIDDEN_LIBRARY_OWNERSHIP_PATTERNS = {
+    "LibrarySpec(": "declare LibrarySpec entries only in genomi.runtime.libraries.registry",
+    "source_fetch.": "route source freshness/download through genomi.runtime.libraries.manager",
+    "library_manager.install(": "install libraries only through runtime library manager or genomi.install handler",
+    "library_manager.refresh(": "refresh libraries only through runtime library manager or genomi.install handler",
+    "manager.install(": "install libraries only through runtime library manager or genomi.install handler",
+    "manager.refresh(": "refresh libraries only through runtime library manager or genomi.install handler",
+}
+
 
 class LibraryRegistryTests(unittest.TestCase):
     def test_all_ids_unique_and_resolvable(self) -> None:
@@ -70,6 +85,25 @@ class LibraryRegistryTests(unittest.TestCase):
             self.assertEqual(spec.freshness, Freshness.LIVE)
             self.assertTrue(spec.source.api_base, f"{spec.id} must declare an api_base")
             self.assertEqual(spec.required_paths, ())
+
+    def test_runtime_libraries_own_library_specs_and_install_paths(self) -> None:
+        violations: list[str] = []
+        for path in sorted(SRC_ROOT.rglob("*.py")):
+            if path.is_relative_to(RUNTIME_LIBRARIES_ROOT):
+                continue
+            text = path.read_text(encoding="utf-8")
+            for pattern, reason in FORBIDDEN_LIBRARY_OWNERSHIP_PATTERNS.items():
+                if pattern not in text:
+                    continue
+                if path in ALLOWED_LIBRARY_MANAGER_INSTALL_CALLERS and pattern in {
+                    "library_manager.install(",
+                    "library_manager.refresh(",
+                    "manager.install(",
+                    "manager.refresh(",
+                }:
+                    continue
+                violations.append(f"{path.relative_to(REPO_ROOT)}: {reason}")
+        self.assertEqual(violations, [])
 
     def test_analytical_live_api_defaults_are_registry_owned(self) -> None:
         from genomi.capabilities.analytical_grounding import entity_relationships

@@ -1,7 +1,7 @@
 """No-prose contract tests.
 
-Asserts evidence-producing operation results never carry removed policy-prose
-fields, and that envelope.guidance is always typed codes.
+Asserts evidence-producing operation results use the current evidence envelope
+contract, and that envelope.guidance is always typed codes.
 """
 
 from __future__ import annotations
@@ -66,9 +66,9 @@ def _stub_dispatch(name: str, stub_result: dict[str, Any]) -> dict[str, Any]:
 
 
 class NoProseContractTests(GenomiRuntimeTestCase):
-    def test_dispatched_results_have_no_removed_top_level_prose(self) -> None:
-        # For every evidence-producing op, the dispatched result must not
-        # carry removed prose/anti-prompt fields at the top level.
+    def test_dispatched_results_keep_policy_state_in_envelope(self) -> None:
+        # For every evidence-producing op, the dispatched result keeps policy
+        # state in evidence_envelope instead of top-level prose directives.
         for name in sorted(ops.EVIDENCE_PRODUCING_OPERATIONS):
             with self.subTest(op=name):
                 result = _stub_dispatch(
@@ -108,8 +108,8 @@ class NoProseContractTests(GenomiRuntimeTestCase):
         self.assertEqual(offenders, [], "found forbidden operation produces metadata:\n" + "\n".join(offenders))
 
     def test_source_modules_dont_assign_forbidden_output_keys(self) -> None:
-        # Grep-style guard. No module may write these removed prose keys into
-        # dict literal or assignment outputs.
+        # Grep-style guard. No module may write top-level policy prose keys
+        # into dict literal or assignment outputs.
         src_dir = Path(__file__).resolve().parents[1] / "src" / "genomi"
         dict_literal_pattern = re.compile(
             r'^\s*"(agent_guidance|interpretation_boundary|recommended_agent_action|answer_affordance|semantics)"\s*:'
@@ -122,7 +122,7 @@ class NoProseContractTests(GenomiRuntimeTestCase):
             for lineno, line in enumerate(path.read_text().splitlines(), start=1):
                 if dict_literal_pattern.match(line) or assignment_pattern.search(line):
                     offenders.append(f"{path.relative_to(src_dir)}:{lineno}: {line.strip()}")
-        self.assertEqual(offenders, [], "found removed prose key assignments:\n" + "\n".join(offenders))
+        self.assertEqual(offenders, [], "found top-level policy prose key assignments:\n" + "\n".join(offenders))
 
 
 if __name__ == "__main__":

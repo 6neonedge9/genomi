@@ -1,18 +1,13 @@
 """PharmCAT runtime/execution and artifact-import facade package.
 
-This package replaces the former ``pharmcat.py`` module. It preserves the full
-public surface at ``genomi.capabilities.pharmacogenomics.pharmcat`` so imports
-and test monkeypatches keep working — including patches that target
-``pharmcat.shutil.which`` and ``pharmcat.subprocess.run`` (the ``shutil`` and
-``subprocess`` standard-library modules are re-exported here as package
-attributes; the execution submodule resolves ``shutil``/``subprocess`` at call
-time, so patching the shared module objects takes effect).
+This package exposes PharmCAT preflight, execution, artifact import, and record
+payload helpers. ``shutil`` and ``subprocess`` are package attributes because
+execution resolves them at call time and tests patch those module handles.
 """
 
 from __future__ import annotations
 
-# Standard-library modules preserved as package attributes for monkeypatching
-# (``patch("...pharmcat.shutil.which")`` / ``patch("...pharmcat.subprocess.run")``).
+# Standard-library module handles used by execution and tests.
 import os  # noqa: F401
 import shutil  # noqa: F401
 import subprocess  # noqa: F401

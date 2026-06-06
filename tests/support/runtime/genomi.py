@@ -9,12 +9,11 @@ from unittest import mock
 from genomi.operations import call_operation
 from genomi.runtime import context as runtime_context
 
-# After the dispatcher refactor, default tools/list returns ops in the two
-# base capabilities (`genomi` and `journal`) plus the genomi.invoke
-# dispatcher. The journal capability owns the research.* ops. gnomad is its
-# own capability now and reaches the agent only after a skill read +
-# genomi.invoke. All other capabilities (clinvar, pharmacogenomics, etc.)
-# are likewise hidden behind the dispatcher.
+# Default tools/list returns ops in the two base capabilities (`genomi` and
+# `journal`) plus the genomi.invoke dispatcher. The journal capability owns the
+# research.* ops. gnomad is its own capability and reaches the agent only after
+# a skill read + genomi.invoke. Other focused capabilities follow the same
+# point-of-need disclosure contract.
 DEFAULT_TASK_ENTRY_TOOLS = {
     "genomi.check_background_job",
     "genomi.check_libraries",

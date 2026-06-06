@@ -1,9 +1,7 @@
 """GWAS Catalog comparison capability.
 
-This package was split from a single ``gwas.py`` module. The public surface
-(both the two entry points and every previously module-level helper/constant)
-is re-exported here so existing import paths and attribute accesses keep
-working unchanged.
+This package exposes GWAS Catalog comparison entry points and their focused
+parsing, phenotype-match, ranking, and text helpers.
 """
 
 from __future__ import annotations

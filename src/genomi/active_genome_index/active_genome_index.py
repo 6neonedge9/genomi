@@ -1,9 +1,8 @@
 """Active Genome Index public hub.
 
 The implementation lives in cohesive sibling modules (``_agi_schema``,
-``_agi_readiness``, ``_agi_query``, ``_agi_build``); this module re-exports the
-public and cross-referenced names so ``from genomi.active_genome_index.
-active_genome_index import X`` keeps working unchanged.
+``_agi_readiness``, ``_agi_query``, ``_agi_build``); this module defines the
+current public hub for build, readiness, and query helpers.
 """
 
 from __future__ import annotations

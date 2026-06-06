@@ -406,7 +406,7 @@ def iter_sample_records(path: str | Path, limit: int | None = None) -> Iterator[
     # Bgzipped + indexed (a `.gzi` sibling exists) → capture BGZF virtual
     # offsets so capability tools can seek into the canonical without
     # reopening the intake. Plain or unindexed gzip falls through to the
-    # legacy byte-offset path.
+    # line-length offset path used for unindexed text streams.
     path_obj = Path(path)
     if Path(str(path_obj) + ".gzi").exists():
         yield from iter_sample_records_bgzf(path_obj, limit=limit)

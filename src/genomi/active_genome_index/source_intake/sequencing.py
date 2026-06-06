@@ -97,9 +97,7 @@ def parse_bam_source(
 
     resolved_reference_fasta = Path(reference_fasta) if reference_fasta is not None else None
     if resolved_reference_fasta is None and auto_reference_fasta:
-        dependency = library_manager.refresh(
-            f"reference-{effective_build.lower()}", force=force
-        )
+        dependency = _installed_reference_fasta(effective_build)
         steps.append(
             {
                 "name": "ensure-reference-fasta",
@@ -107,7 +105,22 @@ def parse_bam_source(
                 "reason": "BAM variant calling needs the matching reference FASTA.",
             }
         )
-        resolved_reference_fasta = Path(dependency["output"])
+        if dependency.get("status") == "requires_library_install":
+            return _missing_reference_result(
+                source_path,
+                source_format="bam",
+                source_kind=detection.source_kind,
+                sample_slug=sample_slug_from_source(source_path, source_format="bam"),
+                genome_build=effective_build,
+                db_path=db_path,
+                shared_db=shared_db,
+                project_dir=project_dir,
+                work_dir=work_dir,
+                evidence_dir=evidence_dir,
+                reference_dir=reference_dir,
+                steps=steps,
+            )
+        resolved_reference_fasta = Path(str(dependency["reference_fasta"]))
     if resolved_reference_fasta is None:
         raise ValueError("BAM source parsing requires reference_fasta or auto_reference_fasta=true.")
 
@@ -356,9 +369,7 @@ def parse_fastq_source(
         }
     ]
     if resolved_reference_fasta is None and auto_reference_fasta:
-        dependency = library_manager.refresh(
-            f"reference-{effective_build.lower()}", force=force
-        )
+        dependency = _installed_reference_fasta(effective_build)
         steps.append(
             {
                 "name": "ensure-reference-fasta",
@@ -366,7 +377,23 @@ def parse_fastq_source(
                 "reason": "FASTQ alignment needs the matching reference FASTA before reads can be placed.",
             }
         )
-        resolved_reference_fasta = Path(dependency["output"])
+        if dependency.get("status") == "requires_library_install":
+            return _missing_reference_result(
+                source_path,
+                source_format="fastq",
+                source_kind=detection.source_kind,
+                sample_slug=sample_slug_from_source(source_path, source_format="fastq"),
+                genome_build=effective_build,
+                db_path=db_path,
+                shared_db=shared_db,
+                project_dir=project_dir,
+                work_dir=work_dir,
+                evidence_dir=evidence_dir,
+                reference_dir=reference_dir,
+                steps=steps,
+                extra={"fastq": {"r1": str(r1_path), "r2": str(r2_path)}},
+            )
+        resolved_reference_fasta = Path(str(dependency["reference_fasta"]))
     if resolved_reference_fasta is None:
         raise ValueError(
             "FASTQ source parsing requires reference_fasta or auto_reference_fasta=true."
@@ -464,3 +491,72 @@ def parse_fastq_source(
         "outputs": outputs,
         "steps": steps,
     }
+
+
+def _installed_reference_fasta(genome_build: str) -> JsonObject:
+    library = f"reference-{genome_build.lower()}"
+    status = library_manager.status(library)
+    if not status.get("installed"):
+        request = library_manager.missing_request(
+            library,
+            intent="reference FASTA for sequencing source parsing",
+            operation="genomi.parse_source",
+            genome_build=genome_build,
+        )
+        return {
+            "status": "requires_library_install",
+            "library": library,
+            "library_install_request": request,
+            "missing_library": request["missing_library"],
+            "ask_user": request["ask_user"],
+        }
+    required_paths = status.get("required_paths") or []
+    reference_fasta = str(required_paths[0]) if required_paths else ""
+    return {
+        "status": "installed",
+        "library": library,
+        "reference_fasta": reference_fasta,
+        "library_status": status,
+    }
+
+
+def _missing_reference_result(
+    source_path: Path,
+    *,
+    source_format: str,
+    source_kind: str,
+    sample_slug: str,
+    genome_build: str,
+    db_path: Path,
+    shared_db: Path,
+    project_dir: Path,
+    work_dir: Path,
+    evidence_dir: Path,
+    reference_dir: Path,
+    steps: list[JsonObject],
+    extra: JsonObject | None = None,
+) -> JsonObject:
+    dependency = steps[-1]["result"] if steps else {}
+    payload: JsonObject = {
+        "workflow_area": "active-genome-index",
+        "status": "requires_library_install",
+        "source": str(source_path),
+        "source_format": source_format,
+        "source_kind": source_kind,
+        "sample_slug": sample_slug,
+        "genome_build": genome_build,
+        "evidence_db": str(db_path),
+        "shared_evidence_db": str(shared_db),
+        "project_dir": str(project_dir),
+        "work_dir": str(work_dir),
+        "evidence_dir": str(evidence_dir),
+        "reference_dir": str(reference_dir),
+        "missing_libraries": [dependency.get("missing_library")],
+        "library_install_request": dependency.get("library_install_request"),
+        "ask_user": dependency.get("ask_user"),
+        "message": f"{dependency.get('library')} is not installed; sequencing parse cannot derive calls without a reference FASTA.",
+        "steps": steps,
+    }
+    if extra:
+        payload.update(extra)
+    return payload

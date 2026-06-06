@@ -222,9 +222,9 @@ def refresh_or_download(
     base_payload = base_payload or {}
     manifest = read_manifest(manifest_path)
     file_exists = output.exists()
-    # A present manifest must still match (catches a source_url bump); a library
-    # that never wrote one (e.g. legacy HPO/GenCC) is trusted by file presence.
-    manifest_ok = manifest is None or all(manifest.get(key) == value for key, value in expected.items())
+    # A cached library is valid only when its manifest records the requested
+    # source identity. File presence alone cannot prove the current contract.
+    manifest_ok = manifest is not None and all(manifest.get(key) == value for key, value in expected.items())
 
     def _result(status: str, **extra: Any) -> dict[str, Any]:
         return {

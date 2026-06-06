@@ -126,7 +126,7 @@ local unless the user explicitly chooses broader sharing.
 For source-backed interpretation, store a reviewed finding JSON file or an
 inline payload returned by a Genomi source tool:
 
-- `research.record` with `{"db":"$GENOMI_HOME/sample/evidence/evidence.sqlite","input":"finding.json","scope":"shared"}`
+- `research.record` with `{"input":"finding.json","scope":"shared"}`
 - `research.record` with `{"payload":{"target":{"type":"drug","drug":"clopidogrel"},"source":{"title":"CPIC","url":"https://cpicpgx.org/guidelines/"},"finding":{"type":"pgx_guideline","text":"short reviewed finding"}},"scope":"shared"}`
 
 With public-only context, `db` can be omitted and Genomi will use the shared

@@ -122,6 +122,34 @@ class GenomiRuntimeSequencingIntakeTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_fastq_parse_reports_missing_reference_library_without_refreshing(self) -> None:
+        from genomi.active_genome_index import source_intake
+
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                r1 = Path("sample_R1_001.fastq")
+                r2 = Path("sample_R2_001.fastq")
+                record = "@r\nACGT\n+\nIIII\n"
+                r1.write_text(record, encoding="utf-8")
+                r2.write_text(record, encoding="utf-8")
+
+                with mock.patch("genomi.runtime.libraries.manager.refresh") as refresh:
+                    result = source_intake.parse_source(
+                        r1,
+                        genome_build="GRCh37",
+                        auto_reference_fasta=True,
+                    )
+
+                refresh.assert_not_called()
+                self.assertEqual(result["status"], "requires_library_install")
+                self.assertEqual(result["source_format"], "fastq")
+                self.assertEqual(result["missing_libraries"][0]["library"], "reference-grch37")
+                self.assertIn("--libraries reference-grch37", result["ask_user"]["install_command"])
+            finally:
+                os.chdir(previous)
+
     def test_fastq_parse_materializes_paired_reads_from_zip_archive_pair(self) -> None:
         from genomi.active_genome_index import source_intake
 

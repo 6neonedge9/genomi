@@ -202,7 +202,7 @@ Set the default user/profile for this GENOMI_HOME.
 - If the user supplied a user nickname, call `active_genome_index.select_user` for metadata
   selection, then call `active_genome_index.approve_access` if sample evidence is needed
   and the selected user is not the default user.
-- For interpretation work, read the matching `skills/<capability>/SKILL.md` and call its capability tools through `genomi.invoke`.
+- For interpretation work, load the matching focused capability skill and call its capability tools through `genomi.invoke`.
 
 ## Boundaries
 
@@ -218,7 +218,7 @@ Set the default user/profile for this GENOMI_HOME.
 - Consumer array calls support rsID/locus presence checks. Sequencing depth,
   genotype quality, phasing, and region callability come from sequencing-derived sources.
 - If the user asks a tiny factual question and an Active Genome Index already exists, prefer
-  `variant.resolve` from `skills/variant-evidence/SKILL.md` to resolve the
+  `variant.resolve` from the variant evidence skill to resolve the
   target and query the Active Genome Index.
 - If parsing already succeeded, the original file is an intake source. Future
   inquiries should normally use the Active Genome Index.
@@ -251,10 +251,10 @@ waiting on reference-coverage answers.
 
 Select the focused skill from the user intent:
 
-- ClinVar discovery: `skills/clinvar/SKILL.md`
-- Specific variant/gene/rsID: `skills/variant-evidence/SKILL.md`
-- GWAS phenotype plus rsIDs: `skills/gwas-catalog/SKILL.md`
-- All-at-once dashboard / one-shot rundown: `skills/decode/SKILL.md`
+- ClinVar discovery: ClinVar skill
+- Specific variant/gene/rsID: variant evidence skill
+- GWAS phenotype plus rsIDs: GWAS Catalog skill
+- All-at-once dashboard / one-shot rundown: decode skill
 
 ## Lifecycle: handle `needs_reparse` and `schema_too_new` automatically
 

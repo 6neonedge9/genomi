@@ -63,14 +63,13 @@ PUBLIC_DETERMINISTIC_CAPABILITIES = frozenset(
     {
         "analytical-grounding",
         "functional-genomics",
-        "gwas-catalog",
         "nutrigenomics",
         "phenotype-gene",
         "sequence",
     }
 )
 
-EXTERNAL_SOURCE_CAPABILITIES = frozenset({"gnomad"})
+EXTERNAL_SOURCE_CAPABILITIES = frozenset({"gnomad", "gwas-catalog"})
 STATEFUL_RUNTIME_CAPABILITIES = frozenset({"genomi", "journal"})
 
 SOURCE_FORMAT_MATRIX_OPERATIONS = frozenset(
@@ -152,6 +151,7 @@ EXTERNAL_SOURCE_OPERATION_RATIONALES = {
     "functional_genomics.query_geo": "live NCBI GEO query",
     "functional_genomics.retrieve_perturbation_records": "live public screen-source retrieval",
     "gnomad.fetch_population_frequency": "live gnomAD/static-population fetch",
+    "gwas.compare_gene_associations": "live GWAS Catalog gene association query",
     "gwas.compare_variant_associations": "live GWAS Catalog variant association query",
     "pharmacogenomics.fetch_clinpgx": "live ClinPGx source fetch",
     "pharmacogenomics.fetch_fda_labels": "live FDA label source fetch",
@@ -262,7 +262,6 @@ def _gwas_gene_params(_ctx: MatrixCaseContext) -> JsonObject:
     return {
         "phenotype": "LDL cholesterol",
         "genes": ["APOB", "PCSK9"],
-        "source_records": [_gwas_association("rs1", "LDL cholesterol", "PCSK9")],
     }
 
 
@@ -519,7 +518,6 @@ PUBLIC_DETERMINISTIC_OPERATION_CASES = (
     OperationCase("region.retrieve_features", "public_deterministic", _region_params, _assert_region),
     OperationCase("functional_genomics.import_perturbation_table", "public_deterministic", _screen_import_params, _assert_screen_import),
     OperationCase("functional_genomics.compare_gene_perturbation", "public_deterministic", _screen_compare_params, _assert_screen_compare),
-    OperationCase("gwas.compare_gene_associations", "public_deterministic", _gwas_gene_params, _assert_gwas_gene),
     OperationCase("nutrigenomics.build_source_context", "public_deterministic", _empty_params, _assert_nutrigenomics_context),
     OperationCase("nutrigenomics.list_domains", "public_deterministic", _empty_params, _assert_nutrigenomics_domains),
     OperationCase("nutrigenomics.retrieve_domain_markers", "public_deterministic", _nutrigenomics_domain_params, _assert_nutrigenomics_domain),

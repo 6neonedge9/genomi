@@ -101,9 +101,7 @@
           "genes"
         ],
         "additionalProperties": false,
-        "x_genomi_property_groups": [
-          "source_records"
-        ]
+        "x_genomi_property_groups": []
       },
       "skill": "skills/gwas-catalog/SKILL.md",
       "area": "gwas_catalog",

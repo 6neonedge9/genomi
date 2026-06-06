@@ -11,9 +11,8 @@ command names, local paths, and provenance mechanics after the meaning.
 ## Response Depth
 
 Follow the user's current-chat response-depth preference when one is known.
-Use the host response profiles in
-`src/genomi/runtime/host_response_profiles.json` when available. If none is
-known, use the default profile without asking a standalone style question.
+Use the active host response profile when available. If none is known, use the
+default profile without asking a standalone style question.
 
 Style never overrides evidence limits, answer-confidence judgments, privacy
 boundaries, or clinical-confirmation language.

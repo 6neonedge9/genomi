@@ -310,7 +310,6 @@ def _gwas_compare_trait_gene_evidence(params: JsonObject) -> JsonObject:
         _list_str(params, "genes"),
         api_url=_str(params, "api_url", gwas.GWAS_CATALOG_V2_API_URL),
         association_limit=_int(params, "association_limit", 200),
-        source_records=_list_dict(params, "source_records") if params.get("source_records") is not None else None,
         task_text=params.get("task_text") or params.get("question") or params.get("text"),
         evidence_intent=evidence_intent,
         semantic_context=params.get("semantic_context"),

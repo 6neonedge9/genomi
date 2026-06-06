@@ -45,7 +45,7 @@ Contract:
 1. Use `genomi.describe_context` when the Active Genome Index is unknown.
 2. Extract obvious fields from the user request: `source`, `agi_id`, user/profile
    nickname, `rsid`, `gene`, exact allele, phenotype, drug, condition, or topic.
-3. Read the most specific `skills/<capability>/SKILL.md` (auto-loaded by Anthropic Claude Code Skills as `~/.claude/skills/genomi-<capability>/`), then call its capability tools through `genomi.invoke`.
+3. Load the most specific focused capability skill, then call its capability tools through `genomi.invoke`.
 4. Call one narrow tool and inspect its output before selecting additional
    evidence operations.
 
@@ -98,13 +98,13 @@ Surface the original intake file path for rebuild or validation work.
   Hallmark pathway member genes; `cell_type.retrieve_markers` for HPA,
   CellMarker, PanglaoDB, or ENCODE marker sources; and
   `region.retrieve_features` for local GENCODE/ENCODE interval overlaps.
-- GWAS phenotype plus candidate rsIDs: read `skills/gwas-catalog/SKILL.md`, call
+- GWAS phenotype plus candidate rsIDs: load the GWAS Catalog skill, call
   `gwas.compare_variant_associations`, then select additional operations from the returned
   evidence. Variant lookup, ClinVar, Mendelian, sample, same-gene, or pathway
   context is follow-up context only; it cannot override the population-trait
   GWAS Catalog rsID ranking.
-- Functional-genomics perturbation context plus candidate genes: read
-  `skills/functional-genomics/SKILL.md`, call
+- Functional-genomics perturbation context plus candidate genes: load the
+  functional genomics skill, call
   `functional_genomics.compare_gene_perturbation` for the normal native-retrieve,
   verify, and compare flow, and answer from verified perturbation-source evidence
   rather than generic co-mention.

@@ -71,6 +71,36 @@ class SourceFetchTests(unittest.TestCase):
         self.assertEqual(result["status"], "downloaded")
         self.assertEqual(download.call_args.kwargs["timeout"], 120)
 
+    def test_existing_file_without_manifest_is_downloaded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "library.dat"
+            output.write_text("untracked cached bytes", encoding="utf-8")
+            manifest = output.with_name(output.name + ".genomi-manifest.json")
+            expected = {
+                "library": "example",
+                "source_url": "https://example.test/library.dat",
+                "output": str(output),
+            }
+
+            def _download(_url, target, *, timeout, user_agent=None):
+                Path(target).write_text("downloaded", encoding="utf-8")
+                return {"etag": "new"}
+
+            with mock.patch.object(source_fetch, "download", side_effect=_download) as download:
+                result = source_fetch.refresh_or_download(
+                    expected["source_url"],
+                    output,
+                    manifest,
+                    expected=expected,
+                    force=False,
+                    refresh=False,
+                )
+
+            self.assertEqual(result["status"], "downloaded")
+            self.assertEqual(output.read_text(encoding="utf-8"), "downloaded")
+            self.assertEqual(download.call_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -175,12 +175,16 @@ class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):
         self.assertIn("records_by_gene", trait_gene_records["produces"])
 
         gwas_gene = by_name["gwas.compare_gene_associations"]["annotations"]
+        gwas_schema = by_name["gwas.compare_gene_associations"]["inputSchema"]
+        self.assertNotIn("source_records", gwas_schema["properties"])
         self.assertNotIn("answer", gwas_gene["produces"])
         self.assertIn("evidence_records", gwas_gene["produces"])
         self.assertIn("coverage", gwas_gene["produces"])
 
         drug_gene = by_name["phenotype.compare_drug_target_evidence"]["annotations"]
         self.assertEqual(drug_gene["toolCapability"], "phenotype-gene")
+        drug_schema = by_name["phenotype.compare_drug_target_evidence"]["inputSchema"]
+        self._assert_source_records_require_source_verification(drug_schema)
         self.assertNotIn("answer", drug_gene["produces"])
         self.assertIn("drug_or_drug_class_or_mechanism", drug_gene["requires"])
 
@@ -195,6 +199,8 @@ class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):
         phenotype_gene = by_name["phenotype.compare_gene_hpo_evidence"]["annotations"]
         self.assertEqual(phenotype_gene["toolCapability"], "phenotype-gene")
         self.assertEqual(phenotype_gene["externalIO"], ["hpo_public_annotation_files"])
+        phenotype_schema = by_name["phenotype.compare_gene_hpo_evidence"]["inputSchema"]
+        self._assert_source_records_require_source_verification(phenotype_schema)
         self.assertNotIn("answer", phenotype_gene["produces"])
         self.assertIn("evidence_records", phenotype_gene["produces"])
 
@@ -211,6 +217,8 @@ class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):
         self.assertEqual(disease["externalIO"], ["hpo_public_annotation_files", "gencc_public_download"])
         self.assertIn("selected_public_targets", disease["dataAccess"])
         self.assertIn("candidate_diseases_or_genes_or_source_records", disease["requires"])
+        disease_schema = by_name["phenotype.compare_disease_evidence"]["inputSchema"]
+        self._assert_source_records_require_source_verification(disease_schema)
         self.assertIn("hpo_disease_annotation_evidence", disease["produces"])
 
         primary_gene_disease = by_name["phenotype.retrieve_gene_disease_associations"]["annotations"]
@@ -236,6 +244,8 @@ class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):
             ["biogrid_orcs_api", "depmap_public_download", "ncbi_geo_eutilities", "ncbi_geo_ftp"],
         )
         self.assertIn("selected_public_targets", screen["dataAccess"])
+        screen_schema = by_name["functional_genomics.compare_gene_perturbation"]["inputSchema"]
+        self._assert_source_records_require_source_verification(screen_schema)
 
         screen_retrieve = by_name["functional_genomics.retrieve_perturbation_records"]["annotations"]
         self.assertEqual(screen_retrieve["operationScope"], "read")
@@ -312,6 +322,17 @@ class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):
         record = by_name["research.record"]["annotations"]
         self.assertEqual(record["operationScope"], "write")
         self.assertTrue(record["mutating"])
+
+    def _assert_source_records_require_source_verification(self, schema: dict) -> None:
+        source_records = schema["properties"]["source_records"]
+        verifier_keys = {
+            tuple(option["required"])
+            for option in source_records["items"]["anyOf"]
+        }
+        self.assertEqual(
+            verifier_keys,
+            {("verified_fields",), ("support_spans",), ("verification",)},
+        )
 
     def test_agi_consuming_operation_schemas_use_agi_path(self) -> None:
         by_name = {tool["name"]: tool for tool in all_operations()}

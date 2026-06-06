@@ -39,8 +39,8 @@ is `needs_reparse` or `schema_too_new`, **handle the lifecycle before
 gathering any panel evidence** — do not proceed with a stale Active Genome Index and
 silently bound the panels.
 
-The full procedure lives in `skills/active-genome-index/SKILL.md` under
-*"Lifecycle: handle `needs_reparse` and `schema_too_new` automatically"*.
+The full procedure lives in the Active Genome Index skill under the lifecycle
+guidance for `needs_reparse` and `schema_too_new`.
 Summary for decode:
 
 1. If `needs_reparse` and `availability.agi_intake_source_path` is true, call

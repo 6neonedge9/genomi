@@ -43,12 +43,12 @@ class GenomiRuntimeCatalogTests(GenomiRuntimeTestCase):
                 self.assertTrue(operation["description"].strip(), operation_name)
 
         self.assertEqual(grouped_names, registered_names)
-        # After the dispatcher refactor, default tools/list is only the base
-        # capabilities (genomi + journal namespaces) plus the dispatcher.
+        # The default tools/list contract exposes base capabilities plus the
+        # dispatcher; focused capability tools are loaded at the point of need.
         listed = {tool["name"] for tool in list_operations()}
         self.assertEqual(listed, DEFAULT_TASK_ENTRY_TOOLS)
 
-    def test_refactored_package_layout_preserves_public_imports(self) -> None:
+    def test_package_surface_exposes_current_public_imports(self) -> None:
         catalog_base = importlib_resources.files("genomi.operations").joinpath("catalog_base.json")
         self.assertTrue(catalog_base.is_file())
         pgx_catalog = importlib_resources.files("genomi.capabilities.pharmacogenomics").joinpath("tool_catalog.json")

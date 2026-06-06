@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from tests.support.capabilities.candidates import compare_candidate_payload
 from tests.support.capabilities.gwas import _association, _v2_association
@@ -518,33 +519,60 @@ class GwasCatalogTests(unittest.TestCase):
                 })
 
     def test_gwas_gene_list_can_use_source_specific_ranker(self) -> None:
-        result = call_operation(
-            "gwas.compare_gene_associations",
-            {
-                "phenotype": "LDL cholesterol",
-                "genes": ["PCSK9"],
-                "source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
-            },
+        result = compare_gwas_gene_evidence(
+            "LDL cholesterol",
+            ["PCSK9"],
+            source_records=[_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
         )
 
         self.assertNotIn("answer", result)
         self.assertEqual(result["top_observed_candidate"], "PCSK9")
-        self.assertEqual(result["source_prior"], "gwas_catalog_association")
-        self.assertEqual(result["ranking"][0]["candidate"], "PCSK9")
-        self.assertEqual(result["evidence_records"][0]["candidate"], "PCSK9")
+        self.assertEqual(result["rankings"][0]["candidate_id"], "PCSK9")
+        self.assertEqual(result["association_records"][0]["genes"], ["PCSK9"])
         self.assertEqual(result["evidence_envelope"]["finding_state"], "evidence_present")
         self.assertEqual(result["evidence_envelope"]["operation"], "gwas.compare_gene_associations")
         self.assertEqual(result["evidence_envelope"]["observations"]["top_observed_candidate"], "PCSK9")
 
+    def test_gwas_gene_operation_uses_native_contract(self) -> None:
+        native_result = {
+            "status": "completed",
+            "source_prior": "gwas_catalog_association",
+            "top_observed_candidate": "PCSK9",
+        }
+        with mock.patch(
+            "genomi.operations.registry.handlers_evidence_phenotype.gene_identification.compare_gwas_catalog_gene_evidence",
+            return_value=native_result,
+        ) as compare:
+            result = call_operation(
+                "gwas.compare_gene_associations",
+                {
+                    "phenotype": "LDL cholesterol",
+                    "genes": ["PCSK9"],
+                },
+            )
+
+        compare.assert_called_once()
+        self.assertNotIn("source_records", compare.call_args.kwargs)
+        self.assertEqual(result["top_observed_candidate"], "PCSK9")
+
     def test_gwas_gene_operation_defaults_to_gene_field_intent(self) -> None:
-        result = call_operation(
-            "gwas.compare_gene_associations",
-            {
-                "phenotype": "LDL cholesterol",
-                "genes": ["PCSK9"],
-                "source_records": [_association("rs1", "LDL cholesterol", 2e-9, "rs1-A", "PCSK9", "GCST11", "111")],
-            },
-        )
+        native_result = {
+            "status": "completed",
+            "source_prior": "gwas_catalog_association",
+            "top_observed_candidate": "PCSK9",
+        }
+        with mock.patch(
+            "genomi.operations.registry.handlers_evidence_phenotype.gene_identification.compare_gwas_catalog_gene_evidence",
+            return_value=native_result,
+        ):
+            result = call_operation(
+                "gwas.compare_gene_associations",
+                {
+                    "phenotype": "LDL cholesterol",
+                    "genes": ["PCSK9"],
+                },
+            )
+
         self.assertEqual(result["source_prior"], "gwas_catalog_association")
         self.assertEqual(result["top_observed_candidate"], "PCSK9")
 

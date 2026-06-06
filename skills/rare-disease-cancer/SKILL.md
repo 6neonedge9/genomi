@@ -64,9 +64,9 @@ For phenotype-first questions, normalize and rank the public targets:
 
 - `phenotype.normalize_terms` with `{"text":"ataxia; microcephaly; seizures; HP:0001250"}`
 - `phenotype.retrieve_gene_disease_associations` with `{"genes":["PIEZO2"]}`
-- `phenotype.compare_disease_evidence` with `{"phenotypes":["ataxia","microcephaly","seizures"],"candidate_diseases":["condition A","condition B"],"source_records":[...]}`
+- `phenotype.compare_disease_evidence` with `{"phenotypes":["ataxia","microcephaly","seizures"],"candidate_diseases":["condition A","condition B"],"source_records":[{"diseases":["condition A"],"verified_fields":{"diseases":["condition A"],"phenotypes":["ataxia"]},"support_spans":[{"field":"phenotypes","text":"source-backed ataxia text"}]}]}`
 - `phenotype.compare_disease_evidence` with `{"hpo_ids":["HP:0000822","HP:0001965"],"genes":["PIEZO2"]}`
-- `phenotype.compare_gene_hpo_evidence` with `{"phenotypes":["ataxia","microcephaly"],"genes":["PNKP","SPG7"],"source_records":[...]}`
+- `phenotype.compare_gene_hpo_evidence` with `{"phenotypes":["ataxia","microcephaly"],"genes":["PNKP","SPG7"],"source_records":[{"genes":["PNKP"],"verified_fields":{"genes":["PNKP"],"phenotypes":["ataxia","microcephaly"]},"support_spans":[{"field":"genes","text":"source-backed PNKP text"}]}]}`
 
 Use `phenotype.compare_disease_evidence` when the answer choices are diseases or syndromes.
 Also use it when the input is HPO terms plus known or candidate genes but the

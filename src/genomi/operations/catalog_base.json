@@ -15,7 +15,24 @@
         "type": "array",
         "items": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "anyOf": [
+            {
+              "required": [
+                "verified_fields"
+              ]
+            },
+            {
+              "required": [
+                "support_spans"
+              ]
+            },
+            {
+              "required": [
+                "verification"
+              ]
+            }
+          ]
         }
       },
       "semantic_context": {

@@ -50,7 +50,7 @@ class, or mechanism.
 Example:
 
 - `phenotype.retrieve_disease_drug_targets` with `{"disease":"asthma","genes":["ADRB2","IL13"]}`
-- `phenotype.compare_drug_target_evidence` with `{"drug_class":"beta agonist","phenotype":"asthma","genes":["ADRB2","IL13"],"source_records":[...]}`
+- `phenotype.compare_drug_target_evidence` with `{"drug_class":"beta agonist","phenotype":"asthma","genes":["ADRB2","IL13"],"source_records":[{"genes":["ADRB2"],"drug_class":"beta agonist","verified_fields":{"genes":["ADRB2"],"drug_class":"beta agonist"},"support_spans":[{"field":"genes","text":"source-backed ADRB2 text"}]}]}`
 
 ## Source Records
 

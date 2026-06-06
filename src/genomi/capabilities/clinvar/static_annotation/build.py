@@ -75,7 +75,7 @@ def build_static_annotation(
 ) -> dict[str, Any]:
     """Run raw VCF intake into an AGI-backed static evidence workflow.
 
-    ``vcf`` is the raw intake source for this legacy static workflow. After the
+    ``vcf`` is the raw intake source for this static evidence workflow. After the
     Active Genome Index is built, sample-level matching and QC read through the
     AGI reader boundary; public ``clinvar_vcf`` and ``population_vcf`` inputs
     remain true static-source VCF imports.
@@ -127,6 +127,48 @@ def build_static_annotation(
                 ],
             )
         )
+
+    def require_installed_library_step(
+        name: str,
+        library: str,
+        *,
+        reason: str,
+        intent: str,
+        commands: list[str],
+    ) -> dict[str, Any] | None:
+        status = library_manager.status(library)
+        if status["installed"]:
+            result = {
+                "status": "installed",
+                "library": library,
+                "library_status": status,
+            }
+            steps.append(workflow_step(name, result, "static", reason=reason, commands=commands))
+            return status
+        request = library_manager.missing_request(
+            library,
+            intent=intent,
+            operation="genomi.parse_source",
+            genome_build=effective_genome_build,
+        )
+        warnings.append(
+            {
+                "stage": name,
+                "status": "requires_library_install",
+                "message": f"{library} is not installed; static annotation did not materialize this evidence.",
+                "library_install_request": request,
+            }
+        )
+        steps.append(
+            workflow_step(
+                name,
+                request,
+                "static",
+                reason=reason,
+                commands=[request["missing_library"]["install_command"]],
+            )
+        )
+        return None
 
     steps.append(
         workflow_step(
@@ -180,24 +222,21 @@ def build_static_annotation(
     resolved_genotype_reference_fasta = Path(genotype_reference_fasta) if genotype_reference_fasta is not None else None
     if auto_reference_fasta and resolved_genotype_reference_fasta is None:
         if allow_long_running_static:
-            dependency = library_manager.refresh(
-                f"reference-{effective_genome_build.lower()}", force=force
+            reference_status = require_installed_library_step(
+                "ensure-reference-fasta",
+                f"reference-{effective_genome_build.lower()}",
+                reason="The matching reference FASTA must be installed for genotype-support resolution of gVCF reference blocks.",
+                intent="reference FASTA for genotype-support resolution of gVCF reference blocks",
+                commands=[
+                    "genomi call active_genome_index.classify_genotype_support --params '{\"agi_path\":\"<agi.sqlite>\",\"chrom\":\"<chrom>\",\"pos\":123,\"ref\":\"<ref>\",\"alt\":\"<alt>\",\"reference_fasta\":\"<reference.fa>\"}'",
+                    "genomi call genomi.parse_source --params '{\"source\":\"<vcf>\"}'",
+                ],
             )
-            steps.append(
-                workflow_step(
-                    "ensure-reference-fasta",
-                    dependency,
-                    "static",
-                    reason="The matching reference FASTA is cached for genotype-support resolution of gVCF reference blocks.",
-                    commands=[
-                        "genomi call active_genome_index.classify_genotype_support --params '{\"agi_path\":\"<agi.sqlite>\",\"chrom\":\"<chrom>\",\"pos\":123,\"ref\":\"<ref>\",\"alt\":\"<alt>\",\"reference_fasta\":\"<reference.fa>\"}'",
-                        "genomi call genomi.parse_source --params '{\"source\":\"<vcf>\"}'",
-                    ],
-                )
-            )
-            resolved_genotype_reference_fasta = Path(dependency["output"])
-            if resolved_reference_fasta is None:
-                resolved_reference_fasta = resolved_genotype_reference_fasta
+            if reference_status is not None:
+                reference_paths = reference_status.get("required_paths") or []
+                resolved_genotype_reference_fasta = Path(str(reference_paths[0]))
+                if resolved_reference_fasta is None:
+                    resolved_reference_fasta = resolved_genotype_reference_fasta
         else:
             defer_long_running_step(
                 "ensure-reference-fasta",
@@ -274,17 +313,15 @@ def build_static_annotation(
                 )
             )
         elif allow_long_running_static:
-            dependency = library_manager.refresh(clinvar_library, force=public_force)
-            steps.append(
-                workflow_step(
-                    "ensure-clinvar",
-                    dependency,
-                    "static",
-                    reason="The matching ClinVar VCF is cached in the shared library and can be imported into the shared static evidence DB.",
-                    commands=["genomi call genomi.parse_source --params '{\"source\":\"<vcf>\"}'"],
-                )
+            clinvar_status = require_installed_library_step(
+                "ensure-clinvar",
+                clinvar_library,
+                reason="The matching ClinVar VCF must be installed before it can be imported into the shared static evidence DB.",
+                intent="exact ClinVar annotation for variants in the Active Genome Index",
+                commands=["genomi call genomi.parse_source --params '{\"source\":\"<vcf>\"}'"],
             )
-            clinvar_vcf = Path(library_manager.status(clinvar_library)["required_paths"][0])
+            if clinvar_status is not None:
+                clinvar_vcf = Path(str(clinvar_status["required_paths"][0]))
         else:
             request = library_manager.missing_request(
                 clinvar_library,
