@@ -334,18 +334,22 @@ def envelope_from_evidence_view(
     consulted = []
     unavailable = []
     if isinstance(source_coverage, dict):
-        for key in ("consulted", "checked", "queried", "available"):
+        for key in ("consulted", "checked", "queried", "available", "sources_consulted", "sources_consulted_and_empty"):
             for item in source_coverage.get(key) or []:
                 if isinstance(item, str):
                     consulted.append(item)
                 elif isinstance(item, dict) and item.get("source_id"):
                     consulted.append(str(item["source_id"]))
-        for key in ("unavailable", "missing", "not_integrated"):
+                elif isinstance(item, dict) and item.get("source"):
+                    consulted.append(str(item["source"]))
+        for key in ("unavailable", "missing", "not_integrated", "sources_consulted_but_unavailable"):
             for item in source_coverage.get(key) or []:
                 if isinstance(item, str):
                     unavailable.append(item)
                 elif isinstance(item, dict) and item.get("source_id"):
                     unavailable.append(str(item["source_id"]))
+                elif isinstance(item, dict) and item.get("source"):
+                    unavailable.append(str(item["source"]))
 
     coverage_payload = coverage or _env._coverage(
         libraries=library_uses or [],
@@ -377,6 +381,16 @@ def envelope_from_evidence_view(
             personal_context=personal_context,
             coverage=coverage_payload,
             observations=observations,
+        )
+    if coverage_state == "source_unavailable":
+        return _env.not_assessed(
+            operation=operation,
+            reason="Candidate-evidence source coverage is unavailable.",
+            query_scope=query_scope,
+            personal_context=personal_context,
+            coverage=coverage_payload,
+            observations=observations,
+            guidance=["source_unavailable:retry_or_use_alternate_source"],
         )
     return _env.not_assessed(
         operation=operation,

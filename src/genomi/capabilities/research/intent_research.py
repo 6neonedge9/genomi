@@ -7,6 +7,7 @@ from typing import Any
 
 from ...evidence import (
     default_evidence_path,
+    envelope as evidence_envelope,
     fetch_gene_evidence,
     gather_variant_evidence,
     init_evidence_db,
@@ -16,6 +17,7 @@ from ...evidence import (
     research_target_type_choices,
     search_research_findings,
 )
+from ...evidence.candidate_evidence import envelope_from_evidence_view
 from ...evidence.investigation import prepare_investigation_packet
 from ...evidence.sources import evidence_source_catalog
 from ...runtime.handoff import attach_evidence_context, evidence_context
@@ -126,7 +128,49 @@ def evidence_packet(
             "genomi call research.record --params '{\"db\":\"<evidence.sqlite>\",\"input\":\"<finding.json>\",\"scope\":\"shared\"}'",
         ],
     )
+    payload["evidence_envelope"] = _target_packet_envelope(payload)
     return payload
+
+
+def _target_packet_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    stored_research = payload.get("stored_research") if isinstance(payload.get("stored_research"), dict) else {}
+    source_catalog = payload.get("source_catalog") if isinstance(payload.get("source_catalog"), dict) else {}
+    source_summary = source_catalog.get("summary") if isinstance(source_catalog.get("summary"), dict) else {}
+    available_operations = payload.get("available_operations") if isinstance(payload.get("available_operations"), list) else []
+    source_count = int(source_summary.get("source_count") or 0)
+    stored_count = int(stored_research.get("count") or 0)
+    operation_count = len(available_operations)
+    observations = {
+        "stored_research_count": stored_count,
+        "source_catalog_count": source_count,
+        "available_operation_count": operation_count,
+    }
+    source_ids = [
+        str(item.get("source_id"))
+        for item in (source_catalog.get("sources") or [])
+        if isinstance(item, dict) and item.get("source_id")
+    ]
+    coverage = {
+        "libraries": [],
+        "consulted_sources": source_ids,
+        "unavailable_sources": [],
+        "materialization": [],
+    }
+    if source_count or stored_count or operation_count:
+        return evidence_envelope.evidence_present(
+            operation="research.build_target_packet",
+            query_scope=target,
+            coverage=coverage,
+            observations=observations,
+            answer_readiness=evidence_envelope.SCOPED_ANSWER_ONLY,
+        )
+    return evidence_envelope.empty_consulted_scope(
+        operation="research.build_target_packet",
+        query_scope=target,
+        coverage=coverage,
+        observations=observations,
+    )
 
 
 def gather_allele_context(
@@ -466,16 +510,40 @@ def answer_screen_gene_context(
         if ranking.get("status") == "no_source_records":
             ranking["coverage_state"] = acquisition["native_retrieval"].get("coverage_state", ranking.get("coverage_state"))
             ranking["source_coverage"] = acquisition["native_retrieval"].get("source_coverage", ranking.get("source_coverage"))
+            _sync_candidate_envelope_with_retrieval(ranking, acquisition["native_retrieval"])
     if acquisition.get("geo_retrieval"):
         ranking["geo_retrieval"] = acquisition["geo_retrieval"]
         ranking["source_coverage"] = acquisition["geo_retrieval"].get("source_coverage", ranking.get("source_coverage"))
         if ranking.get("status") == "no_source_records":
             ranking["coverage_state"] = acquisition["geo_retrieval"].get("coverage_state", ranking.get("coverage_state"))
+            _sync_candidate_envelope_with_retrieval(ranking, acquisition["geo_retrieval"])
     ranking["workflow_boundary"] = (
         "This command first verifies source records, then returns candidate evidence. The agent chooses whether "
         "the source evidence supports the requested answer."
     )
     return ranking
+
+
+def _sync_candidate_envelope_with_retrieval(ranking: dict[str, Any], retrieval: dict[str, Any]) -> None:
+    coverage_state = retrieval.get("coverage_state")
+    if coverage_state not in {"in_scope_empty", "source_unavailable"}:
+        return
+    source_coverage = retrieval.get("source_coverage") if isinstance(retrieval.get("source_coverage"), dict) else None
+    if coverage_state == "source_unavailable":
+        ranking["status"] = "source_unavailable"
+    ranking["coverage_state"] = coverage_state
+    if source_coverage is not None:
+        ranking["source_coverage"] = source_coverage
+    view = ranking.get("evidence_view")
+    if not isinstance(view, dict):
+        return
+    view["coverage_state"] = coverage_state
+    if source_coverage is not None:
+        view["source_coverage"] = source_coverage
+    ranking["evidence_envelope"] = envelope_from_evidence_view(
+        view,
+        operation="functional_genomics.compare_gene_perturbation",
+    )
 
 
 def _stored_screen_research_records(

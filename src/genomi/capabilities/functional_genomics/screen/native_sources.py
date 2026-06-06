@@ -148,8 +148,8 @@ def retrieve_public_screen_records(
         coverage_state = "in_scope_empty"
         empty_reason = "Native functional-genomics perturbation sources were consulted but returned no records for the supplied genes and context."
     else:
-        status = "perturbation_sources_unavailable"
-        coverage_state = "out_of_scope_for_input"
+        status = "source_unavailable"
+        coverage_state = "source_unavailable"
         empty_reason = "No native functional-genomics perturbation source could be queried for this input."
     return _public_screen_response(
         query=query,

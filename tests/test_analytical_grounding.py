@@ -5,6 +5,7 @@ import io
 import os
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 from pathlib import Path
 from unittest import mock
@@ -87,6 +88,18 @@ class AnalyticalGroundingTests(unittest.TestCase):
         self.assertNotIn("members", result)
         self.assertTrue(result["resolution_candidates"])
 
+    def test_pathway_source_failure_reports_source_unavailable(self) -> None:
+        result = analytical_grounding.retrieve_pathway_member_genes(
+            pathway_id_or_name="R-HSA-70635",
+            source="reactome",
+            fetch_json=_raise_url_error,
+        )
+
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        self.assertEqual(result["source_coverage"]["coverage_state"], "source_unavailable")
+        self.assertTrue(result["source_coverage"]["sources_consulted_but_unavailable"])
+
     def test_hpa_cell_type_markers_project_marker_records(self) -> None:
         result = analytical_grounding.retrieve_canonical_markers(
             cell_type_id_or_name="hepatocytes",
@@ -117,6 +130,19 @@ class AnalyticalGroundingTests(unittest.TestCase):
         self.assertEqual(result["coverage_state"], "data_returned")
         accepted = {item["text"] for item in result["semantic_context"]["term_matches"]}
         self.assertIn("hepatocytes", accepted)
+
+    def test_cell_marker_source_failure_reports_source_unavailable(self) -> None:
+        result = analytical_grounding.retrieve_canonical_markers(
+            cell_type_id_or_name="hepatocytes",
+            source="hpa",
+            fetch_json=_raise_url_error,
+            fetch_bytes=_fake_fetch_bytes,
+        )
+
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        self.assertEqual(result["source_coverage"]["coverage_state"], "source_unavailable")
+        self.assertTrue(result["source_coverage"]["sources_consulted_but_unavailable"])
 
     def test_table_cell_type_markers_return_clean_empty_for_in_scope_absence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -197,9 +223,10 @@ class AnalyticalGroundingTests(unittest.TestCase):
             gencode_gtf="/definitely/not/here.gtf",
         )
 
-        self.assertEqual(result["coverage_state"], "out_of_scope_for_input")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
         self.assertEqual(result["status"], "source_unavailable")
         self.assertEqual(result["features"], [])
+        self.assertEqual(result["source_coverage"]["coverage_state"], "source_unavailable")
         self.assertTrue(result["source_coverage"]["sources_consulted_but_unavailable"])
 
     def test_region_feature_annotation_uses_installed_default_sources(self) -> None:
@@ -386,6 +413,10 @@ def _fake_fetch_bytes(url: str) -> bytes:
             "Cell type\tCell type group\tCell type class\nhepatocytes\thepatocytes\tspecialized epithelial cells\n",
         )
     raise AssertionError(f"Unexpected URL: {url}")
+
+
+def _raise_url_error(_url: str):
+    raise urllib.error.URLError("source down")
 
 
 def _zip_bytes(name: str, text: str) -> bytes:

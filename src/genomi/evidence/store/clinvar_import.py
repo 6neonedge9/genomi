@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from ...active_genome_index.vcf import parse_info
 from ...runtime.external import file_metadata, utc_now
+from ...runtime.libraries.transforms import file_lock
 
 from .constants import (
     CLINVAR_RSID_INDEX_RULE_SET_VERSION,
@@ -30,8 +31,33 @@ from .connection import (
 )
 
 
+def _clinvar_materialization_lock(evidence_db: Path) -> file_lock:
+    evidence_db.parent.mkdir(parents=True, exist_ok=True)
+    return file_lock(evidence_db.with_name(evidence_db.name + ".clinvar.lock"))
+
 
 def import_clinvar_vcf(
+    clinvar_vcf: str | Path,
+    evidence_db: str | Path,
+    *,
+    genome_build: str = "GRCh38",
+    source_version: str | None = None,
+    max_records: int | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    evidence_db = Path(evidence_db)
+    with _clinvar_materialization_lock(evidence_db):
+        return _import_clinvar_vcf_unlocked(
+            clinvar_vcf,
+            evidence_db,
+            genome_build=genome_build,
+            source_version=source_version,
+            max_records=max_records,
+            force=force,
+        )
+
+
+def _import_clinvar_vcf_unlocked(
     clinvar_vcf: str | Path,
     evidence_db: str | Path,
     *,
@@ -170,6 +196,16 @@ def build_clinvar_gene_index(
     force: bool = False,
 ) -> dict[str, Any]:
     evidence_db = Path(evidence_db)
+    with _clinvar_materialization_lock(evidence_db):
+        return _build_clinvar_gene_index_unlocked(evidence_db, force=force)
+
+
+def _build_clinvar_gene_index_unlocked(
+    evidence_db: str | Path,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    evidence_db = Path(evidence_db)
     if not evidence_db.exists():
         raise FileNotFoundError(evidence_db)
 
@@ -232,6 +268,16 @@ def build_clinvar_gene_index(
 
 
 def build_clinvar_rsid_index(
+    evidence_db: str | Path,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    evidence_db = Path(evidence_db)
+    with _clinvar_materialization_lock(evidence_db):
+        return _build_clinvar_rsid_index_unlocked(evidence_db, force=force)
+
+
+def _build_clinvar_rsid_index_unlocked(
     evidence_db: str | Path,
     *,
     force: bool = False,

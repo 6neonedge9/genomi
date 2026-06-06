@@ -132,7 +132,11 @@ def _with_context(
         or matches
         or reference_fasta
     )
-    active = runtime_context.active_accessible_agi_record() if needs_agi_side_context else None
+    active = None
+    if needs_agi_side_context:
+        from .agi_access import resolve_agi_record
+
+        active = resolve_agi_record(resolved, require_approved=True)
     if active is not None:
         if db and not resolved.get("db"):
             resolved["db"] = active.get("evidence_db")

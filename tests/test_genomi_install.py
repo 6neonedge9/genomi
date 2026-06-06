@@ -380,4 +380,4 @@ class GenomiShimTests(GenomiRuntimeTestCase):
             shim = install_lib.install_genomi_command_shim()
 
         content = shim.read_text(encoding="utf-8")
-        self.assertEqual(content.splitlines()[2], f"exec {venv_python} -m genomi \"$@\"")
+        self.assertIn(f"exec {venv_python} -m genomi \"$@\"", content.splitlines())

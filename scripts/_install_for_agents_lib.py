@@ -67,7 +67,10 @@ def install_genomi_command_shim() -> Path:
     # git pull" and would defeat self-update for this git checkout.
     content = (
         "#!/usr/bin/env sh\n"
-        f"export GENOMI_HOME={shlex.quote(str(genomi_home))}\n"
+        'if [ -z "${GENOMI_HOME:-}" ]; then\n'
+        f"  GENOMI_HOME={shlex.quote(str(genomi_home))}\n"
+        "fi\n"
+        "export GENOMI_HOME\n"
         f"exec {shlex.quote(str(python))} -m genomi \"$@\"\n"
     )
     shim.write_text(content, encoding="utf-8")

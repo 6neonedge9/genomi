@@ -246,12 +246,12 @@ def retrieve_gene_relationships(
         return payload
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _empty_response(
-            coverage_state="out_of_scope_for_input",
+            coverage_state="source_unavailable",
             status="source_unavailable",
             query=_query_payload(query_name, query_id, inferred_type, requested_sources, taxon_id, species, relationship_types, evidence_classes),
             empty_reason="A declared controlled-entity source was unavailable.",
             source_coverage=_source_coverage(
-                "out_of_scope_for_input",
+                "source_unavailable",
                 consulted=[],
                 unavailable=[{"source": "controlled entity relationship source", "error": str(exc)}],
             ),

@@ -82,6 +82,41 @@ def _registered_run_for_agi_path(agi_path: object) -> JsonObject | None:
     return None
 
 
+def resolve_agi_record(
+    params: JsonObject | None = None,
+    *,
+    agi_id: str | None = None,
+    require_approved: bool = False,
+) -> JsonObject | None:
+    """Resolve the AGI record targeted by params without opening the index.
+
+    Mirrors ``open_agi`` target precedence so side resources (evidence DB,
+    matches path, genome build) stay bound to the same run as the reader:
+    explicit ``agi_path`` / ``agi_id`` first, then the session/default active
+    AGI. When ``require_approved`` is true, unapproved records are hidden.
+    """
+    params = params or {}
+    explicit_path = params.get("agi_path")
+    if explicit_path not in (None, "") and not agi_id and not params.get("agi_id"):
+        run = _registered_run_for_agi_path(explicit_path)
+        if isinstance(run, dict):
+            return run if not require_approved or runtime_context.agi_access_approved(run) else None
+        if require_approved:
+            return None
+        return {"agi_path": str(expand_user_path(str(explicit_path)))}
+
+    named = agi_id or params.get("agi_id")
+    if named:
+        run = runtime_context.find_agi(str(named))
+    else:
+        run = runtime_context.active_agi_record()
+    if not isinstance(run, dict):
+        return None
+    if require_approved and not runtime_context.agi_access_approved(run):
+        return None
+    return run
+
+
 def open_agi(
     *,
     need: ActiveGenomeIndexNeed,

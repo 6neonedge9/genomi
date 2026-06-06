@@ -146,11 +146,11 @@ def retrieve_pathway_member_genes(
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _pathway_empty(
             status="source_unavailable",
-            coverage_state="out_of_scope_for_input",
+            coverage_state="source_unavailable",
             query=query,
             empty_reason="A declared pathway membership source was unavailable.",
             source_coverage=_source_coverage(
-                "out_of_scope_for_input",
+                "source_unavailable",
                 consulted=[],
                 unavailable=[{"source": _pathway_source_label(source_key), "error": str(exc)}],
                 not_integrated=NOT_INTEGRATED_PATHWAY_SOURCES,
@@ -252,11 +252,11 @@ def retrieve_canonical_markers(
     except (urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError, TypeError) as exc:
         return _cell_marker_empty(
             status="source_unavailable",
-            coverage_state="out_of_scope_for_input",
+            coverage_state="source_unavailable",
             query=query,
             empty_reason="A declared cell-type marker source was unavailable.",
             source_coverage=_source_coverage(
-                "out_of_scope_for_input",
+                "source_unavailable",
                 consulted=[],
                 unavailable=[{"source": _cell_marker_source_label(source_key), "error": str(exc)}],
                 not_integrated=NOT_INTEGRATED_CELL_MARKER_SOURCES,
@@ -366,11 +366,11 @@ def retrieve_region_feature_annotation(
     if not features and not nearest_tss and unavailable:
         return _region_empty(
             status="source_unavailable",
-            coverage_state="out_of_scope_for_input",
+            coverage_state="source_unavailable",
             query={**query, "assembly": assembly_label},
             empty_reason="One or more declared annotation files could not be read, so Genomi cannot report a clean in-scope empty result.",
             source_coverage=_source_coverage(
-                "out_of_scope_for_input",
+                "source_unavailable",
                 consulted=consulted,
                 unavailable=unavailable,
                 not_integrated=NOT_INTEGRATED_REGION_SOURCES,

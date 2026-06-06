@@ -196,6 +196,21 @@ class ScreenGeneTests(unittest.TestCase):
         self.assertEqual(result["source_records"][0]["genes"], ["EGFR"])
         self.assertEqual(result["source_records"][0]["source_type"], "DepMap CRISPR screen")
 
+    def test_retrieve_public_screen_records_reports_missing_native_sources_as_unavailable(self) -> None:
+        result = retrieve_public_screen_records(
+            context="A549 CRISPR dependency",
+            genes=["EGFR", "MYC"],
+            cell_line="A549",
+            perturbation="CRISPR knockout",
+            phenotype="dependency",
+            sources=["depmap"],
+        )
+
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        unavailable = result["source_coverage"]["sources_consulted_but_unavailable"]
+        self.assertEqual(unavailable[0]["source"], "DepMap CRISPR gene effect")
+
     def test_query_geo_parses_accession_metadata_and_table_records(self) -> None:
         seen_urls: list[str] = []
 
@@ -410,7 +425,14 @@ class ScreenGeneTests(unittest.TestCase):
                 },
             )
 
-        self.assertEqual(result["status"], "no_source_records")
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        self.assertEqual(result["evidence_view"]["coverage_state"], "source_unavailable")
+        envelope = result["evidence_envelope"]
+        self.assertEqual(envelope["finding_state"], "not_assessed")
+        self.assertIn("source_unavailable:retry_or_use_alternate_source", envelope["guidance"])
+        self.assertIn("DepMap CRISPR gene effect", envelope["coverage"]["unavailable_sources"])
+        self.assertNotIn("unexpected coverage_state", " ".join(envelope["notes"]))
         query_geo.assert_not_called()
 
     def test_compare_screen_experiment_evidence_does_not_treat_unverified_generic_literature_as_direct(self) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import io
+import os
 import tarfile
 import tempfile
 import unittest
@@ -108,6 +109,35 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(sorted(extracted), sorted(names))
         for name in names:
             self.assertTrue((target / name).is_file())
+
+
+class LibraryFileLockTests(unittest.TestCase):
+    def test_file_lock_recovers_stale_pid_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            lock = Path(temp) / "reference.fa.lock"
+            stale_pid = 999_999_999
+            lock.write_text(str(stale_pid), encoding="ascii")
+
+            with transforms.file_lock(lock):
+                self.assertEqual(lock.read_text(encoding="ascii"), str(os.getpid()))
+
+            self.assertFalse(lock.exists())
+
+    def test_stale_lock_helper_keeps_live_pid_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            lock = Path(temp) / "reference.fa.lock"
+            lock.write_text(str(os.getpid()), encoding="ascii")
+
+            self.assertFalse(transforms._remove_stale_pid_lock(lock))
+            self.assertTrue(lock.exists())
+
+    def test_stale_lock_helper_keeps_unparseable_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            lock = Path(temp) / "reference.fa.lock"
+            lock.write_text("not-a-pid", encoding="ascii")
+
+            self.assertFalse(transforms._remove_stale_pid_lock(lock))
+            self.assertTrue(lock.exists())
 
 
 if __name__ == "__main__":

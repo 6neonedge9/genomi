@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import unittest
+import urllib.error
 import zipfile
 
 from genomi.capabilities.analytical_grounding import entity_relationships
@@ -55,6 +56,17 @@ class EntityRelationshipTests(unittest.TestCase):
         self.assertTrue(result["resolution_candidates"])
         self.assertEqual(result["source_coverage"]["sources_consulted"], [])
         self.assertNotIn("gene_relationship_records", result)
+
+    def test_declared_entity_source_failure_reports_source_unavailable(self) -> None:
+        result = entity_relationships.retrieve_gene_relationships(
+            entity_id="GO:0000086",
+            fetch_json=_raise_entity_url_error,
+        )
+
+        self.assertEqual(result["status"], "source_unavailable")
+        self.assertEqual(result["coverage_state"], "source_unavailable")
+        self.assertEqual(result["source_coverage"]["coverage_state"], "source_unavailable")
+        self.assertTrue(result["source_coverage"]["sources_consulted_but_unavailable"])
 
     def test_unsupported_source_refuses_without_shape_mimicry(self) -> None:
         result = entity_relationships.retrieve_gene_relationships(
@@ -454,6 +466,10 @@ def _fake_entity_fetch_bytes(url: str) -> bytes:
             "Cell type\tCell type group\tCell type class\nhepatocytes\thepatocytes\tspecialized epithelial cells\npodocytes\tkidney epithelial cells\tepithelial cells\n",
         )
     raise AssertionError(f"Unexpected URL: {url}")
+
+
+def _raise_entity_url_error(_url: str):
+    raise urllib.error.URLError("source down")
 
 
 def _zip_bytes(name: str, text: str) -> bytes:

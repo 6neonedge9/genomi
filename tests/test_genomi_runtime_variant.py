@@ -415,6 +415,9 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
                 self.assertEqual(packet["target"]["topic"], "rs429358")
                 self.assertIn("stored_research", packet)
                 self.assertIn("source_catalog", packet)
+                self.assertEqual(packet["evidence_envelope"]["finding_state"], "evidence_present")
+                self.assertEqual(packet["evidence_envelope"]["answer_readiness"], "scoped_answer_only")
+                self.assertGreater(packet["evidence_envelope"]["observations"]["source_catalog_count"], 0)
             finally:
                 os.chdir(previous)
 

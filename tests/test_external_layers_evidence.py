@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from genomi.active_genome_index.active_genome_index import ActiveGenomeIndexIncomplete, ActiveGenomeIndexNeed, open_reader
+from genomi.evidence.store import clinvar_import as clinvar_import_module
 from tests._external_layers_helpers import (
     SQLITE_BUSY_TIMEOUT_SECONDS,
     TINY_CLINVAR,
@@ -47,6 +51,43 @@ from tests._external_layers_helpers import (
 
 
 class EvidenceImportTests(EvidenceImportTestBase):
+    def test_clinvar_rsid_index_materialization_is_serialized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            active_calls = 0
+            max_active_calls = 0
+            guard = threading.Lock()
+
+            def slow_unlocked(evidence_db: str | Path, *, force: bool = False) -> dict:
+                nonlocal active_calls, max_active_calls
+                with guard:
+                    active_calls += 1
+                    max_active_calls = max(max_active_calls, active_calls)
+                try:
+                    time.sleep(0.05)
+                    return {"status": "completed", "evidence_db": str(evidence_db), "force": force}
+                finally:
+                    with guard:
+                        active_calls -= 1
+
+            with mock.patch.object(clinvar_import_module, "_build_clinvar_rsid_index_unlocked", side_effect=slow_unlocked):
+                errors: list[BaseException] = []
+
+                def run_builder() -> None:
+                    try:
+                        clinvar_import_module.build_clinvar_rsid_index(db)
+                    except BaseException as exc:
+                        errors.append(exc)
+
+                threads = [threading.Thread(target=run_builder), threading.Thread(target=run_builder)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+
+            self.assertEqual(errors, [])
+            self.assertEqual(max_active_calls, 1)
+
     def test_evidence_connections_wait_for_parallel_shared_writers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "evidence.sqlite"

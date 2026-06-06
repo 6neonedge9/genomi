@@ -144,6 +144,30 @@ class GenomiRuntimeContextTests(GenomiRuntimeTestCase):
         self.assertNotIn("gencode_gtf", presented["evidence_envelope"].get("query_scope", {}))
         self.assertIn("[omitted_local_path]", text)
 
+    def test_presentation_redaction_preserves_genotype_tokens(self) -> None:
+        presented = present_result(
+            "active_genome_index.classify_genotype_support",
+            {
+                "status": "completed",
+                "observed_genotype": "1/1",
+                "array_genotype": "C/C",
+                "message": "Observed 0/1 and C/C; log at /tmp/genomi/private/jobs/missing.json",
+                "evidence_boundaries": [
+                    "Negative/absence claims still need coverage evidence",
+                    "Use genotype/reference blocks cautiously",
+                ],
+            },
+        )
+
+        text = json.dumps(presented)
+        self.assertIn("1/1", text)
+        self.assertIn("0/1", text)
+        self.assertIn("C/C", text)
+        self.assertIn("Negative/absence", text)
+        self.assertIn("genotype/reference", text)
+        self.assertNotIn("/tmp/genomi/private", text)
+        self.assertIn("[omitted_local_path]", text)
+
     # NOTE: test_panel_tools_are_agent_native_and_hide_intake_source was
     # removed when nutrition_core/common_risk_core panels were deleted (their
     # content moved into the nutrigenomics capability). Re-add when a new

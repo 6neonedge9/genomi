@@ -38,6 +38,8 @@ class file_lock:
                 os.write(self.fd, str(os.getpid()).encode("ascii"))
                 return self
             except FileExistsError as exc:
+                if _remove_stale_pid_lock(self.path):
+                    continue
                 if time.monotonic() - started > self.timeout_seconds:
                     raise TimeoutError(f"timed out waiting for library lock: {self.path}") from exc
                 time.sleep(2)
@@ -48,6 +50,37 @@ class file_lock:
             self.fd = None
         with contextlib.suppress(FileNotFoundError):
             self.path.unlink()
+
+
+def _remove_stale_pid_lock(path: Path) -> bool:
+    """Remove an advisory lock left by a process that is no longer alive."""
+
+    try:
+        raw_pid = path.read_text(encoding="ascii", errors="ignore").strip()
+    except OSError:
+        return False
+    if not raw_pid.isdigit():
+        return False
+    pid = int(raw_pid)
+    if pid <= 0 or _process_is_alive(pid):
+        return False
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _process_is_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def sha256_file(path: Path) -> str:

@@ -64,6 +64,11 @@ def start_operation_job(operation: str, params: JsonObject) -> JsonObject:
     active = find_active_job(operation, digest)
     if active is not None:
         active["reused_existing"] = True
+        if active.get("job_path"):
+            try:
+                write_job(active["job_path"], active)
+            except OSError:
+                pass
         return active
 
     job_root = jobs_dir()
@@ -76,6 +81,7 @@ def start_operation_job(operation: str, params: JsonObject) -> JsonObject:
         "operation": operation,
         "params": safe_params,
         "params_digest": digest,
+        "context_fingerprint": operation_context_fingerprint(operation, safe_params),
         "status": "queued",
         "created_at": utc_now(),
         "updated_at": utc_now(),
@@ -249,8 +255,98 @@ def public_job_status(job: JsonObject, *, timeout_seconds: float | None = None) 
 
 
 def operation_params_digest(operation: str, params: JsonObject) -> str:
-    encoded = json.dumps({"operation": operation, "params": params}, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    encoded = json.dumps(
+        {
+            "operation": operation,
+            "params": params,
+            "context_fingerprint": operation_context_fingerprint(operation, params),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def operation_context_fingerprint(operation: str, params: JsonObject) -> JsonObject | None:
+    target_operation, target_params = _effective_operation(operation, params)
+    if not _operation_reads_active_genome_index(target_operation, target_params):
+        return None
+    from . import context as runtime_context
+
+    run = _target_agi_record(target_params)
+    if not isinstance(run, dict):
+        return {
+            "context_scope": runtime_context.context_scope(),
+            "active_agi_id": None,
+        }
+    return {
+        "context_scope": runtime_context.context_scope(),
+        "active_agi_id": run.get("agi_id"),
+        "sample_slug": run.get("sample_slug"),
+        "agi_path": run.get("agi_path"),
+    }
+
+
+def _effective_operation(operation: str, params: JsonObject) -> tuple[str, JsonObject]:
+    if operation == "genomi.invoke":
+        tool = params.get("tool")
+        inner = params.get("params")
+        if isinstance(tool, str) and isinstance(inner, dict):
+            return tool, dict(inner)
+    return operation, params
+
+
+def _operation_reads_active_genome_index(operation: str, params: JsonObject) -> bool:
+    if operation in {
+        "active_genome_index.summarize",
+        "clinvar.match_variants",
+        "clinvar.scan_candidates",
+        "pharmacogenomics.run_pharmcat",
+        "pharmacogenomics.preflight_pharmcat",
+        "decode.build_dashboard_evidence",
+        "decode.render_dashboard",
+    }:
+        return True
+    if operation == "pharmacogenomics.review_medication":
+        if any(params.get(key) not in (None, "") for key in ("agi_id", "agi_path", "db", "matches")):
+            return True
+        if "include_active_genome_index" in params:
+            return bool(params.get("include_active_genome_index"))
+        from . import context as runtime_context
+
+        return runtime_context.active_agi_record() is not None
+    try:
+        from ..operations import get_operation
+
+        registered = get_operation(operation)
+    except Exception:
+        return False
+    return bool(registered.agi_need)
+
+
+def _target_agi_record(params: JsonObject) -> JsonObject | None:
+    from . import context as runtime_context
+
+    agi_path = params.get("agi_path")
+    if agi_path not in (None, ""):
+        target = str(Path(str(agi_path)).expanduser().resolve(strict=False))
+        context = runtime_context.load_context()
+        registry = runtime_context.load_registry()
+        for container in (context.get("agis"), registry.get("agis")):
+            if not isinstance(container, dict):
+                continue
+            for run in container.values():
+                if not isinstance(run, dict) or not run.get("agi_path"):
+                    continue
+                if str(Path(str(run["agi_path"])).expanduser().resolve(strict=False)) == target:
+                    return run
+        return {"agi_path": target}
+
+    agi_id = params.get("agi_id")
+    if agi_id not in (None, ""):
+        return runtime_context.find_agi(str(agi_id))
+    return runtime_context.active_agi_record()
 
 
 def find_active_job(operation: str, params_digest: str) -> JsonObject | None:
