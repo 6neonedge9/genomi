@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 DEFAULT_BUSY_TIMEOUT_SECONDS = 30
-LONG_WRITE_BUSY_TIMEOUT_SECONDS = 300
+LONG_WRITE_BUSY_TIMEOUT_SECONDS = 1800
 
 
 class ClosingConnection(sqlite3.Connection):
