@@ -6,12 +6,14 @@ import unittest
 from pathlib import Path
 
 from genomi.evidence import (
+    _ensure_schema,
     evidence_summary,
     init_evidence_db,
     query_genotype_support,
     query_region_callability_for_locus,
     query_sample_qc,
 )
+from genomi.runtime.sqlite_support import connect_sqlite
 
 
 class EvidenceDbCurrentContractTests(unittest.TestCase):
@@ -32,6 +34,28 @@ class EvidenceDbCurrentContractTests(unittest.TestCase):
             self.assertEqual(support["count"], 0)
             self.assertEqual(sample_qc["count"], 0)
             self.assertEqual(callability["count"], 0)
+
+    def test_current_schema_check_does_not_need_write_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "evidence.sqlite"
+            init_evidence_db(db)
+
+            writer = sqlite3.connect(db, timeout=1)
+            try:
+                writer.execute("pragma journal_mode = wal")
+                writer.execute("begin immediate")
+                writer.execute(
+                    "insert or replace into metadata(key, value) values('lock_holder', 'true')"
+                )
+
+                with connect_sqlite(db, timeout_seconds=1, wal=True) as connection:
+                    _ensure_schema(connection)
+                    row = connection.execute("select count(*) from genotype_support").fetchone()
+
+                self.assertEqual(row[0], 0)
+            finally:
+                writer.rollback()
+                writer.close()
 
 
 def _write_noncurrent_private_tables(db: Path) -> None:

@@ -4,12 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 from typing import Any
-from ...runtime.external import file_metadata, matching_manifest, utc_now
-from ...runtime.sqlite_support import (
-    LONG_WRITE_BUSY_TIMEOUT_SECONDS,
-    connect_readonly_sqlite,
-    connect_sqlite,
-)
+from ...runtime.external import file_metadata
+from ...runtime.sqlite_support import connect_sqlite
 
 from .constants import (
     RESEARCH_FINDING_COLUMNS,
@@ -274,6 +270,9 @@ def _private_sample_context_identity(connection: sqlite3.Connection) -> dict[str
 
 def _ensure_schema(connection: sqlite3.Connection) -> None:
     _drop_linked_shared_views(connection)
+    if _schema_is_current(connection):
+        _install_linked_shared_views(connection)
+        return
     _drop_noncurrent_private_sample_context_tables(connection)
     connection.executescript(
         """
@@ -381,8 +380,42 @@ def _ensure_schema(connection: sqlite3.Connection) -> None:
     )
     _ensure_private_sample_context_tables(connection)
     _ensure_research_finding_columns(connection)
-    connection.execute("delete from main.metadata where key = 'schema_version'")
+    if _metadata_key_exists(connection, "schema_version"):
+        connection.execute("delete from main.metadata where key = 'schema_version'")
     _install_linked_shared_views(connection)
+
+
+def _schema_is_current(connection: sqlite3.Connection) -> bool:
+    if not _table_has_columns(connection, "metadata", ("key", "value")):
+        return False
+    if _metadata_key_exists(connection, "schema_version"):
+        return False
+    for table in ("clinvar_variants", "clinvar_variant_genes", "clinvar_variant_rsids", "population_frequencies"):
+        if not _table_has_any_columns(connection, table):
+            return False
+    if not _table_has_columns(connection, "research_findings", RESEARCH_FINDING_COLUMNS):
+        return False
+    for table in _PRIVATE_SAMPLE_CONTEXT_TABLES:
+        if not _table_has_columns(connection, table, _private_sample_context_column_names(table)):
+            return False
+    return True
+
+
+def _table_has_any_columns(connection: sqlite3.Connection, table: str) -> bool:
+    return bool(tuple(row["name"] for row in connection.execute(f"pragma table_info({table})")))
+
+
+def _table_has_columns(connection: sqlite3.Connection, table: str, columns: tuple[str, ...]) -> bool:
+    existing = {str(row["name"]) for row in connection.execute(f"pragma table_info({table})")}
+    return bool(existing) and set(columns).issubset(existing)
+
+
+def _metadata_key_exists(connection: sqlite3.Connection, key: str) -> bool:
+    try:
+        row = connection.execute("select 1 from main.metadata where key = ? limit 1", (key,)).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return row is not None
 
 
 def _drop_noncurrent_private_sample_context_tables(connection: sqlite3.Connection) -> None:
