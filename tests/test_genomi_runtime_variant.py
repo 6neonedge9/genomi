@@ -119,6 +119,35 @@ class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):
             finally:
                 os.chdir(previous)
 
+    def test_variant_resolve_treats_unfiltered_dot_rows_as_passing_sample_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                vcf = Path("sample.vcf")
+                vcf.write_text(
+                    "##fileformat=VCFv4.2\n"
+                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample1\n"
+                    "1\t251\trs251\tG\tA\t.\t.\t.\tGT:DP:GQ\t1/1:12:36\n",
+                    encoding="utf-8",
+                )
+                index = Path("active-genome-index.sqlite")
+                create_active_genome_index(vcf, index, reuse_existing=False)
+                db = Path("evidence.sqlite")
+                init_evidence_db(db)
+
+                call_operation(
+                    "active_genome_index.assign_user_genome",
+                    {"nickname": "u", "source": str(vcf), "agi_path": str(index), "db": str(db), "genome_build": "GRCh37"},
+                )
+                result = call_operation("variant.resolve", {"query": "chr1:251:G:A", "genome_build": "GRCh37"})
+
+                self.assertEqual(result["sample_context"]["count"], 1, result)
+                self.assertEqual(result["sample_context"]["matches"][0]["filter"], ".")
+                self.assertEqual(result["support_context"]["genotype_support"][0]["support_status"], "supported")
+            finally:
+                os.chdir(previous)
+
     def test_vcf_no_call_alt_row_is_not_reference_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.getcwd()

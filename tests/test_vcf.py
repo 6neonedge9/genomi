@@ -782,6 +782,34 @@ class IndexTests(unittest.TestCase):
             self.assertEqual(cached["status"], "cached")
             self.assertEqual(cached["exported_records"], 2)
 
+    def test_unfiltered_dot_variant_is_passing_for_reader_and_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf_path = Path(tmp) / "dot-filter.vcf"
+            agi_path = Path(tmp) / "dot-filter.sqlite"
+            output_path = Path(tmp) / "variants.vcf"
+            vcf_path.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1",
+                        "1\t251\trs251\tG\tA\t.\t.\t.\tGT:DP:GQ\t1/1:12:36",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            create_active_genome_index(vcf_path, agi_path)
+
+            pass_only_records = query_region(agi_path, "1", 251, 251, variants_only=True, pass_only=True)
+            self.assertEqual([record["filter"] for record in pass_only_records], ["."])
+
+            batches = list(open_reader(agi_path, need=ActiveGenomeIndexNeed.VARIANT).iter_pass_variant_rsid_batches(batch_size=10))
+            self.assertEqual(batches[0]["rs251"][0]["filter"], ".")
+
+            result = export_variants(agi_path, output_path, pass_only=True)
+            self.assertEqual(result["exported_records"], 1)
+            self.assertIn("\t.\t.\t", output_path.read_text(encoding="utf-8"))
+
     def test_export_variants_can_rewrite_chr_prefixed_contigs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "chr.vcf"

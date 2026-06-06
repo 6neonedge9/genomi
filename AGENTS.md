@@ -179,12 +179,18 @@ Edit this section only with explicit owner approval.
    Remove redundant provenance, duplicated labels, and parallel ways to express
    the same state.
 
-27. Keep files below 1000 lines.
-   No tracked text file should exceed 1000 lines. If a change would push a file
-   past that limit, refactor into focused modules before adding the new
-   behavior. Existing over-limit files should be split when touched for
-   substantive work in that area; generated bundles need to be split at the
-   generation step rather than edited by hand.
+27. Design file layout before size becomes the problem.
+   A file reaching the several-hundred-line range is a design signal, not a
+   formatting target. Before adding more behavior to a large file, inspect what
+   responsibilities are accumulating and decide how they should be positioned
+   across Genomi's package structure: shared runtime contracts, Active Genome
+   Index intake/reader code, capability-owned logic, test fixtures, matrix case
+   declarations, or assertion helpers. Extract only when there is a natural
+   ownership, data-contract, call-flow, or reuse boundary, and name the new
+   module for that responsibility. Do not split a file merely to satisfy a
+   numeric threshold, move random helpers into junk modules, or create
+   abstractions that only hide length. Generated bundles should still be split
+   at the generation step when they become too large to review.
 
 28. Tests must assert behavior, not refactor artifacts.
    Do not write `assertNotIn`/negative-string tests or before/after snapshots

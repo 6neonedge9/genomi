@@ -39,6 +39,20 @@ SOURCE_FORMAT_MATRIX_CAPABILITIES = frozenset(
     }
 )
 
+SOURCE_FORMAT_MATRIX_SOURCE_FORMATS = frozenset(
+    {
+        "23andme",
+        "ancestrydna",
+        "bam",
+        "fastq",
+        "ftdna",
+        "gvcf",
+        "livingdna",
+        "myheritage",
+        "vcf",
+    }
+)
+
 PUBLIC_DETERMINISTIC_CAPABILITIES = frozenset(
     {
         "analytical-grounding",
@@ -103,6 +117,31 @@ SOURCE_FORMAT_SUPPORT_OPERATION_RATIONALES = {
 }
 SOURCE_FORMAT_SUPPORT_OPERATIONS = frozenset(SOURCE_FORMAT_SUPPORT_OPERATION_RATIONALES)
 
+SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS = frozenset(
+    {
+        "active_genome_index.approve_access",
+        "active_genome_index.assign_user_genome",
+        "active_genome_index.clear_default_user",
+        "active_genome_index.clear_selection",
+        "active_genome_index.list_users",
+        "active_genome_index.rename_user",
+        "active_genome_index.revoke_access",
+        "active_genome_index.select_user",
+        "active_genome_index.set_default_user",
+        "ancestry.build_source_context",
+        "ancestry.list_reference_panels",
+        "decode.build_dashboard_evidence",
+        "pharmacogenomics.describe_gene_requirements",
+        "pharmacogenomics.preflight_pharmcat",
+        "pharmacogenomics.prepare_outside_call_tsv",
+        "pharmacogenomics.validate_outside_call_tsv",
+        "prs.build_source_context",
+        "prs.list_imported_scores",
+        "variant.gather_allele_context",
+        "variant.gather_gene_context",
+    }
+)
+
 EXTERNAL_SOURCE_OPERATION_RATIONALES = {
     "functional_genomics.query_geo": "live NCBI GEO query",
     "functional_genomics.retrieve_perturbation_records": "live public screen-source retrieval",
@@ -115,6 +154,7 @@ EXTERNAL_SOURCE_OPERATION_RATIONALES = {
     "phenotype.retrieve_trait_gene_records": "live Open Targets trait-gene query",
 }
 EXTERNAL_SOURCE_OPERATIONS = frozenset(EXTERNAL_SOURCE_OPERATION_RATIONALES)
+EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS = EXTERNAL_SOURCE_OPERATIONS
 
 STATEFUL_RUNTIME_OPERATION_RATIONALES = {
     "genomi.check_background_job": "background job polling state",
@@ -137,6 +177,7 @@ STATEFUL_RUNTIME_OPERATION_RATIONALES = {
     "research.search": "reviewed-research store search",
 }
 STATEFUL_RUNTIME_OPERATIONS = frozenset(STATEFUL_RUNTIME_OPERATION_RATIONALES)
+STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS = STATEFUL_RUNTIME_OPERATIONS - {"genomi.install"}
 
 def _empty_params(_ctx: MatrixCaseContext) -> JsonObject:
     return {}
@@ -492,6 +533,32 @@ PUBLIC_DETERMINISTIC_OPERATION_CASES = (
     OperationCase("sequence.translate", "public_deterministic", _translate_params, _assert_translate),
 )
 PUBLIC_DETERMINISTIC_OPERATIONS = frozenset(case.operation for case in PUBLIC_DETERMINISTIC_OPERATION_CASES)
+
+SOURCE_FORMAT_MATRIX_CELLS = frozenset(
+    (source_format, operation)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for operation in SOURCE_FORMAT_MATRIX_OPERATIONS
+)
+PUBLIC_DETERMINISTIC_SOURCE_INVARIANT_CELLS = frozenset(
+    (source_format, operation)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for operation in PUBLIC_DETERMINISTIC_OPERATIONS
+)
+SOURCE_FORMAT_SUPPORT_EXECUTABLE_CELLS = frozenset(
+    (source_format, operation)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for operation in SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS
+)
+EXTERNAL_SOURCE_EXECUTABLE_CELLS = frozenset(
+    (source_format, operation)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for operation in EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS
+)
+STATEFUL_RUNTIME_EXECUTABLE_CELLS = frozenset(
+    (source_format, operation)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for operation in STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS
+)
 
 COVERAGE_OPERATION_CLASSES = (
     SOURCE_FORMAT_MATRIX_OPERATIONS,

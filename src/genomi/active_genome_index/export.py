@@ -12,6 +12,7 @@ from .active_genome_index import (
     connect,
     read_header_from_active_genome_index,
 )
+from .filtering import passing_filter_sql
 
 PRIMARY_CONTIGS_GRCH38 = tuple([str(number) for number in range(1, 23)] + ["X", "Y", "MT"])
 PRIMARY_CONTIGS_GRCH38_WITH_ALIASES = tuple(
@@ -166,7 +167,7 @@ def _where_clause(*, pass_only: bool, contigs: list[str] | None) -> tuple[str, t
     clauses = ["is_variant = 1"]
     params: list[Any] = []
     if pass_only:
-        clauses.append("filter = 'PASS'")
+        clauses.append(passing_filter_sql())
     if contigs:
         placeholders = ", ".join("?" for _ in contigs)
         clauses.append(f"chrom in ({placeholders})")

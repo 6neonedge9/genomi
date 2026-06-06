@@ -9,6 +9,7 @@ import json
 import sqlite3
 from ._agi_readiness import ensure_active_genome_index_complete
 from ._agi_schema import connect_existing_readonly
+from .filtering import is_passing_filter, passing_filter_sql
 from .record_kinds import is_reference_block_record
 
 
@@ -26,7 +27,7 @@ def query_rsid_filtered(
     sql = "select offset, sample_index from records where rsid = ?"
     params: list[Any] = [rsid]
     if pass_only:
-        sql += " and filter = 'PASS'"
+        sql += f" and {passing_filter_sql()}"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
     return _query_offsets(agi_path, sql, params)
@@ -48,7 +49,7 @@ def query_variant(
     """
     params: list[Any] = [chrom, pos, ref, alt]
     if pass_only:
-        sql += " and filter = 'PASS'"
+        sql += f" and {passing_filter_sql()}"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
     return _query_offsets(agi_path, sql, params)
@@ -82,7 +83,7 @@ def query_region(
     if variants_only:
         sql += " and is_variant = 1"
     if pass_only:
-        sql += " and filter = 'PASS'"
+        sql += f" and {passing_filter_sql()}"
     sql += " order by chrom_sort, pos limit ?"
     params.append(limit)
     return _query_offsets(agi_path, sql, params)
@@ -98,7 +99,7 @@ def coverage_query(
     records = query_region(agi_path, chrom, start, end, variants_only=False, limit=limit)
     covered_segments: list[tuple[int, int]] = []
     for record in records:
-        if record["filter"] != "PASS" or not is_reference_block_record(record):
+        if not is_passing_filter(record.get("filter")) or not is_reference_block_record(record):
             continue
         segment_start = max(start, int(record["pos"]))
         segment_end = min(end, int(record["end"]))
@@ -157,7 +158,7 @@ def _query_point_region(
     if variants_only:
         exact_sql += " and is_variant = 1"
     if pass_only:
-        exact_sql += " and filter = 'PASS'"
+        exact_sql += f" and {passing_filter_sql()}"
     exact_sql += " order by chrom_sort, pos limit ?"
     exact_params.append(limit)
 
@@ -231,7 +232,7 @@ def _point_spanning_offset_rows_from_spans(
     if variants_only:
         sql += " and r.is_variant = 1"
     if pass_only:
-        sql += " and r.filter = 'PASS'"
+        sql += f" and {passing_filter_sql('r.filter')}"
     sql += " order by s.pos desc limit ?"
     params.append(limit)
     try:
@@ -259,7 +260,7 @@ def _point_spanning_offset_rows_from_records(
     if variants_only:
         covering_sql += " and is_variant = 1"
     if pass_only:
-        covering_sql += " and filter = 'PASS'"
+        covering_sql += f" and {passing_filter_sql()}"
     covering_sql += " order by pos desc limit ?"
     covering_params.append(max(limit, 25))
     return [

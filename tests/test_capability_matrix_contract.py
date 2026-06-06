@@ -4,20 +4,30 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from genomi.active_genome_index.source_intake import SUPPORTED_SOURCE_FORMATS
 from genomi.operations import TOOL_CATALOG, call_operation
 
 from _capability_matrix_contract import (
     COVERAGE_OPERATION_CLASSES,
     EXTERNAL_SOURCE_CAPABILITIES,
+    EXTERNAL_SOURCE_EXECUTABLE_CELLS,
+    EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS,
     EXTERNAL_SOURCE_OPERATION_RATIONALES,
     MatrixCaseContext,
     PUBLIC_DETERMINISTIC_CAPABILITIES,
     PUBLIC_DETERMINISTIC_OPERATION_CASES,
     PUBLIC_DETERMINISTIC_OPERATIONS,
+    PUBLIC_DETERMINISTIC_SOURCE_INVARIANT_CELLS,
     SOURCE_FORMAT_MATRIX_CAPABILITIES,
+    SOURCE_FORMAT_MATRIX_CELLS,
     SOURCE_FORMAT_MATRIX_OPERATIONS,
+    SOURCE_FORMAT_MATRIX_SOURCE_FORMATS,
+    SOURCE_FORMAT_SUPPORT_EXECUTABLE_CELLS,
+    SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS,
     SOURCE_FORMAT_SUPPORT_OPERATION_RATIONALES,
     STATEFUL_RUNTIME_CAPABILITIES,
+    STATEFUL_RUNTIME_EXECUTABLE_CELLS,
+    STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS,
     STATEFUL_RUNTIME_OPERATION_RATIONALES,
 )
 
@@ -39,6 +49,60 @@ class CapabilityMatrixContractTests(unittest.TestCase):
         for operation in SOURCE_FORMAT_MATRIX_OPERATIONS:
             with self.subTest(operation=operation):
                 self.assertIn(operation, operations)
+
+    def test_source_format_matrix_declares_every_supported_runtime_format(self) -> None:
+        self.assertEqual(SOURCE_FORMAT_MATRIX_SOURCE_FORMATS, set(SUPPORTED_SOURCE_FORMATS))
+
+    def test_source_format_matrix_cells_are_complete_products(self) -> None:
+        self.assertEqual(
+            SOURCE_FORMAT_MATRIX_CELLS,
+            {
+                (source_format, operation)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for operation in SOURCE_FORMAT_MATRIX_OPERATIONS
+            },
+        )
+        self.assertEqual(
+            PUBLIC_DETERMINISTIC_SOURCE_INVARIANT_CELLS,
+            {
+                (source_format, operation)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for operation in PUBLIC_DETERMINISTIC_OPERATIONS
+            },
+        )
+        self.assertEqual(
+            SOURCE_FORMAT_SUPPORT_EXECUTABLE_CELLS,
+            {
+                (source_format, operation)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for operation in SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS
+            },
+        )
+        self.assertEqual(
+            EXTERNAL_SOURCE_EXECUTABLE_CELLS,
+            {
+                (source_format, operation)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for operation in EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS
+            },
+        )
+        self.assertEqual(
+            STATEFUL_RUNTIME_EXECUTABLE_CELLS,
+            {
+                (source_format, operation)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for operation in STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS
+            },
+        )
+
+    def test_executable_source_support_operations_are_source_support_operations(self) -> None:
+        self.assertLessEqual(SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS, set(SOURCE_FORMAT_SUPPORT_OPERATION_RATIONALES))
+
+    def test_executable_external_operations_are_external_source_operations(self) -> None:
+        self.assertEqual(EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS, set(EXTERNAL_SOURCE_OPERATION_RATIONALES))
+
+    def test_executable_stateful_runtime_operations_are_stateful_runtime_operations(self) -> None:
+        self.assertLessEqual(STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS, set(STATEFUL_RUNTIME_OPERATION_RATIONALES))
 
     def test_every_catalog_operation_has_one_explicit_coverage_class(self) -> None:
         catalog_operations = set(TOOL_CATALOG["operations"])

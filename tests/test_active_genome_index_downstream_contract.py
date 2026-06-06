@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
 import json
 import os
 import tempfile
@@ -10,11 +8,15 @@ from pathlib import Path
 from unittest import mock
 
 from genomi.active_genome_index.active_genome_index import active_genome_index_readiness
-from genomi.active_genome_index.source_intake.arrays import SUPPORTED_CONSUMER_ARRAY_FORMATS
 from genomi.evidence import build_clinvar_rsid_index, import_clinvar_vcf
 from genomi.operations import call_operation
 from genomi.operations.registry import handlers_screen_journal
 
+from _active_genome_index_contract_cases import (
+    LOCUS_CONTRACTS,
+    UNREPRESENTED_LOCUS,
+    SourceContractCase,
+)
 from _active_genome_index_contract_fixtures import (
     EXPECTED_CLINVAR_MATCHED_ALLELES,
     EXPECTED_RAW_SCORE,
@@ -22,7 +24,18 @@ from _active_genome_index_contract_fixtures import (
     ActiveGenomeIndexContractFixtureMixin,
 )
 from _capability_matrix_contract import SOURCE_FORMAT_MATRIX_OPERATIONS
+from _capability_matrix_contract import (
+    EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS,
+    MatrixCaseContext,
+    PUBLIC_DETERMINISTIC_OPERATION_CASES,
+    PUBLIC_DETERMINISTIC_OPERATIONS,
+    SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS,
+    STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS,
+)
 from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from _source_matrix_external_operations import assert_external_source_operations
+from _source_matrix_runtime_operations import assert_stateful_runtime_operations
+from _source_matrix_support_operations import assert_source_support_operations
 
 
 def _extract_dashboard_evidence(html: str) -> dict[str, object]:
@@ -34,109 +47,6 @@ def _extract_dashboard_evidence(html: str) -> dict[str, object]:
     parsed, _end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
     assert isinstance(parsed, dict), "__GENOMI_DASHBOARD__ is not an object"
     return parsed
-
-
-@dataclass(frozen=True)
-class SourceContractCase:
-    case_id: str
-    expected_format: str
-    writer: Callable[[Path], Path]
-    parse_overrides: dict[str, object] | None = None
-
-    @property
-    def is_consumer_array(self) -> bool:
-        return self.expected_format in SUPPORTED_CONSUMER_ARRAY_FORMATS
-
-    @property
-    def expected_record_stats(self) -> dict[str, int]:
-        if self.is_consumer_array:
-            return {
-                "total_records": len(LOCUS_MODEL),
-                "variant_records": 0,
-                "reference_records": 0,
-                "pass_records": len(LOCUS_MODEL),
-                "fail_records": 0,
-            }
-        if self.expected_format == "gvcf":
-            return {
-                "total_records": len(LOCUS_MODEL) + 1,
-                "variant_records": 2,
-                "reference_records": 3,
-                "pass_records": len(LOCUS_MODEL) + 1,
-                "fail_records": 0,
-            }
-        return {
-            "total_records": len(LOCUS_MODEL),
-            "variant_records": 2,
-            "reference_records": 2,
-            "pass_records": len(LOCUS_MODEL),
-            "fail_records": 0,
-        }
-
-    @property
-    def expected_callability_for_called_site(self) -> str:
-        if self.is_consumer_array:
-            return "unknown_no_reference_blocks"
-        return "unknown_missing_depth"
-
-    @property
-    def expected_callability_for_unrepresented_site(self) -> str:
-        if self.is_consumer_array:
-            return "unknown_no_reference_blocks"
-        return "not_callable"
-
-    @property
-    def expected_clinvar_scanned_records(self) -> int:
-        if self.is_consumer_array:
-            return len(LOCUS_MODEL)
-        return EXPECTED_CLINVAR_MATCHED_ALLELES
-
-    @property
-    def expected_clinvar_queried_alleles(self) -> int:
-        if self.is_consumer_array:
-            return sum(len(set(str(locus["bases"]))) for locus in LOCUS_MODEL)
-        return EXPECTED_CLINVAR_MATCHED_ALLELES
-
-    @property
-    def expected_source_kind(self) -> str:
-        return {
-            "bam": "alignment_reads",
-            "fastq": "paired_reads_input",
-        }.get(
-            self.expected_format,
-            "consumer_genotype_array" if self.is_consumer_array else "variant_callset",
-        )
-
-
-@dataclass(frozen=True)
-class LocusContract:
-    rsid: str
-    chrom: str
-    pos: int
-    ref: str
-    alt: str
-    expected_alt_observed: bool
-    expected_alt_count: int | None
-    expected_zygosity: str
-
-
-LOCUS_CONTRACTS = (
-    LocusContract("rs900000001", "1", 100, "A", "C", True, 2, "homozygous_alternate"),
-    LocusContract("rs900000002", "1", 200, "T", "G", True, 1, "heterozygous"),
-    LocusContract("rs900000003", "1", 300, "A", "G", False, 0, "reference_or_other_alternate"),
-    LocusContract("rs900000004", "1", 400, "C", "T", False, 0, "reference_or_other_alternate"),
-)
-
-UNREPRESENTED_LOCUS = LocusContract(
-    rsid="rs900000099",
-    chrom="1",
-    pos=500,
-    ref="A",
-    alt="G",
-    expected_alt_observed=False,
-    expected_alt_count=None,
-    expected_zygosity="unknown",
-)
 
 
 class ActiveGenomeIndexDownstreamContractTests(
@@ -255,6 +165,62 @@ class ActiveGenomeIndexDownstreamContractTests(
             finally:
                 os.chdir(previous)
 
+    def test_representative_supported_sources_do_not_break_source_invariant_capabilities(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            previous = os.getcwd()
+            os.chdir(tmp)
+            try:
+                for contract, stem, needs_fastq_alignment in self._representative_source_contract_cases():
+                    with self.subTest(source_format=contract.expected_format):
+                        source = contract.writer(stem)
+                        with ExitStack() as stack:
+                            stack.enter_context(self._mock_derived_vcf_materialization())
+                            if needs_fastq_alignment:
+                                stack.enter_context(
+                                    mock.patch(
+                                        "genomi.active_genome_index.source_intake.sequencing.align_fastq_to_bam",
+                                        side_effect=self._fake_align_fastq_to_bam,
+                                    )
+                                )
+                            parsed = self._parse_contract_source(source, contract=contract)
+                            self._assert_parse_ready(parsed, contract)
+
+                        seen_operations: set[str] = set()
+                        ctx = MatrixCaseContext(Path(tmp) / f"public-deterministic-{contract.expected_format}")
+                        ctx.tmp_path.mkdir(exist_ok=True)
+                        for case in PUBLIC_DETERMINISTIC_OPERATION_CASES:
+                            with self.subTest(source_format=contract.expected_format, operation=case.operation):
+                                result = call_operation(case.operation, case.params(ctx))
+                                case.assert_result(result, ctx)
+                                seen_operations.add(case.operation)
+                        self.assertEqual(seen_operations, PUBLIC_DETERMINISTIC_OPERATIONS)
+                        support_operations = assert_source_support_operations(
+                            self,
+                            contract,
+                            ctx,
+                            source,
+                            parsed,
+                            allele_locus=LOCUS_CONTRACTS[1],
+                        )
+                        self.assertEqual(support_operations, SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS)
+                        external_operations = assert_external_source_operations(
+                            self,
+                            contract,
+                            ctx,
+                            allele_locus=LOCUS_CONTRACTS[1],
+                        )
+                        self.assertEqual(external_operations, EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS)
+                        runtime_operations = assert_stateful_runtime_operations(
+                            self,
+                            contract,
+                            source,
+                            parsed,
+                            allele_locus=LOCUS_CONTRACTS[1],
+                        )
+                        self.assertEqual(runtime_operations, STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS)
+            finally:
+                os.chdir(previous)
+
     def _write_23andme_no_call_source(self, stem: Path) -> Path:
         path = stem.with_name("genome_no_call.txt")
         path.write_text(
@@ -271,6 +237,36 @@ class ActiveGenomeIndexDownstreamContractTests(
             SourceContractCase(case_id=case_id, expected_format=expected_format, writer=writer)
             for case_id, expected_format, writer in self._source_cases()
         ]
+
+    def _representative_source_contract_cases(self) -> list[tuple[SourceContractCase, Path, bool]]:
+        reference = self._write_reference_fasta(Path("representative-reference.fa"))
+        representatives: dict[str, tuple[SourceContractCase, Path, bool]] = {}
+        for case_id, expected_format, writer in self._source_cases():
+            representatives.setdefault(
+                expected_format,
+                (SourceContractCase(case_id=case_id, expected_format=expected_format, writer=writer), Path(case_id), False),
+            )
+        representatives["bam"] = (
+            SourceContractCase(
+                case_id="bam",
+                expected_format="bam",
+                writer=self._write_bam_source,
+                parse_overrides={"reference_fasta": str(reference)},
+            ),
+            Path("Nebula_Genomics_BAM_format.bam"),
+            False,
+        )
+        representatives["fastq"] = (
+            SourceContractCase(
+                case_id="fastq",
+                expected_format="fastq",
+                writer=self._write_fastq_sources,
+                parse_overrides={"reference_fasta": str(reference)},
+            ),
+            Path("PGP_PUBLIC_SA_L001_R1_001.fastq.gz"),
+            True,
+        )
+        return [representatives[source_format] for source_format in sorted(representatives)]
 
     def _assert_source_contract(
         self,

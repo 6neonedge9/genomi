@@ -33,6 +33,7 @@ from ._agi_readiness import (
     ensure_active_genome_index_complete,
 )
 from ._agi_schema import connect_existing_readonly, read_header_from_active_genome_index
+from .filtering import passing_filter_sql
 from .dosage import dosage_for_variants as _dosage_for_variants
 from .genotype_resolver import resolve_locus_genotype as _resolve_locus_genotype
 
@@ -146,13 +147,13 @@ class ActiveGenomeIndexReader:
         sample_by_rsid: dict[str, list[dict[str, Any]]] = {}
         with self.connect() as connection:
             for row in connection.execute(
-                """
+                f"""
                 select chrom, pos, rsid, ref, alt, filter, genotype, depth, genotype_quality
                 from records
                 where rsid is not null
                   and rsid glob 'rs*'
                   and is_variant = 1
-                  and filter = 'PASS'
+                  and {passing_filter_sql()}
                 order by rsid, chrom_sort, pos
                 """
             ):
