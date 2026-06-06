@@ -233,8 +233,7 @@ def _build_clinvar_gene_index_unlocked(
                 "gene_links": existing_gene_links,
             }
 
-        connection.execute("delete from main.clinvar_variant_genes")
-        batch: list[tuple[str, int, str]] = []
+        gene_index_rows: list[tuple[str, int, str]] = []
         scanned = 0
         gene_links = 0
         for row in connection.execute(
@@ -246,14 +245,12 @@ def _build_clinvar_gene_index_unlocked(
         ):
             scanned += 1
             for gene in _gene_symbols(row["gene_info"]):
-                batch.append((gene, int(row["variant_rowid"]), row["genome_build"]))
+                gene_index_rows.append((gene, int(row["variant_rowid"]), row["genome_build"]))
                 gene_links += 1
-            if len(batch) >= 50_000:
-                _insert_gene_index_batch(connection, batch)
-                connection.commit()
-                batch.clear()
-        if batch:
-            _insert_gene_index_batch(connection, batch)
+
+        connection.execute("delete from main.clinvar_variant_genes")
+        for start in range(0, len(gene_index_rows), 50_000):
+            _insert_gene_index_batch(connection, gene_index_rows[start : start + 50_000])
         _upsert_metadata(connection, "clinvar_gene_index", expected_cache)
         connection.commit()
         _checkpoint_truncate_wal(connection)
