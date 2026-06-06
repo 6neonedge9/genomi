@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from _candidate_helper import compare_candidate_payload
-from _gwas_helpers import _association, _v2_association
+from tests.support.capabilities.candidates import compare_candidate_payload
+from tests.support.capabilities.gwas import _association, _v2_association
 
 from genomi.capabilities.gwas.gwas import (
     compare_gwas_gene_evidence,

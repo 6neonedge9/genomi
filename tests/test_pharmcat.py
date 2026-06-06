@@ -15,15 +15,23 @@ from genomi.capabilities.pharmacogenomics.pharmcat import (
     run_pharmcat,
 )
 from genomi.operations import call_operation, list_operations
+from genomi.runtime import context as runtime_context
 
 
 class PharmCATIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._home_tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._home_tmp.cleanup)
+        self.genomi_home = Path(self._home_tmp.name) / "genomi-home"
         self._env = patch.dict(
             os.environ,
-            {"GENOMI_HOME": str(Path(self._home_tmp.name) / "genomi-home"), "GENOMI_CONTEXT": "", "GENOMI_SESSION_ID": ""},
+            {
+                "GENOMI_HOME": str(self.genomi_home),
+                "GENOMI_CONTEXT": "",
+                "GENOMI_SESSION_ID": "",
+                "GENOMI_MCP_BACKGROUND": "0",
+                **{name: "" for name in runtime_context.AGENT_SESSION_ENVS},
+            },
         )
         self._env.start()
         self.addCleanup(self._env.stop)

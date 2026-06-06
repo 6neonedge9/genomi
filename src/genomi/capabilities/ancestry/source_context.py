@@ -13,10 +13,9 @@ PANEL_TITLE_GRCH38 = _GRCH38_PANEL.title
 PANEL_ID_GRCH37 = _GRCH37_PANEL.panel_id
 PANEL_LIBRARY_GRCH37 = _GRCH37_PANEL.library
 PANEL_TITLE_GRCH37 = _GRCH37_PANEL.title
-# Default panel for legacy single-panel callers. The GRCh38 panel is the
-# canonical build (PCA loadings + reference scores were computed against the
-# 30x GRCh38 cohort); the GRCh37 panel is the same loadings with marker
-# coordinates lifted across.
+# Module-level default panel. The GRCh38 panel is the canonical build (PCA
+# loadings + reference scores were computed against the 30x GRCh38 cohort);
+# the GRCh37 panel is the same loadings with marker coordinates lifted across.
 PANEL_ID = PANEL_ID_GRCH38
 PANEL_LIBRARY = PANEL_LIBRARY_GRCH38
 PANEL_TITLE = PANEL_TITLE_GRCH38

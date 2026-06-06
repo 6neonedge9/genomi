@@ -11,7 +11,7 @@ from genomi.capabilities.pharmacogenomics.review import review_medication_intera
 from genomi.capabilities.research.intent_research import record_reviewed_research
 from genomi.operations import call_operation, list_operations
 
-from tests._pgx_review_helpers import PGxMedicationReviewTestBase
+from tests.support.capabilities.pgx_review import PGxMedicationReviewTestBase
 
 
 class PGxMedicationReviewStoredSourcesTests(PGxMedicationReviewTestBase):

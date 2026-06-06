@@ -1,35 +1,9 @@
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any
 
-from ....evidence import envelope as _env
-from ....evidence import (
-    extract_clinvar_candidates,
-    fetch_gene_evidence,
-    query_research_findings,
-    search_research_findings,
-)
-from ....evidence.candidate_evidence import (
-    AGENT_REASONING_ONLY,
-    DIRECT_SOURCE_MATCH,
-    LITERATURE_PLAUSIBILITY,
-    NEARBY_TRAIT_MATCH,
-    NEGATIVE_OR_CONFLICTING_EVIDENCE,
-    SAME_GENE_OR_LOCUS,
-    answerability_for_lane,
-    apply_evidence_view,
-    evidence_support_level_for_score,
-    empty_lanes,
-    evidence_view,
-    lane,
-)
-from ....evidence.sources import evidence_source_catalog
-from ....evidence.task_profiles import RARE_DISEASE_CANCER_RISK_INVESTIGATION
 from ....runtime.external import utc_now
-from ....runtime.handoff import evidence_context
 
 RISK_INVESTIGATION_TYPES = ("auto", "rare_disease", "cancer_risk")
 

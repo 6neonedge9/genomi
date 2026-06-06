@@ -6,7 +6,7 @@ from pathlib import Path
 
 from genomi.active_genome_index.source_intake.arrays import SUPPORTED_CONSUMER_ARRAY_FORMATS
 
-from _active_genome_index_contract_fixtures import (
+from tests.support.active_genome_index.contract_fixtures import (
     EXPECTED_CLINVAR_MATCHED_ALLELES,
     LOCUS_MODEL,
 )

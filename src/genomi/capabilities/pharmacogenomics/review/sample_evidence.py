@@ -7,7 +7,6 @@ from ....active_genome_index.source_capabilities import agi_record_has_sequence_
 from .. import pgx_requirements, pgx_star
 from ._common import (
     JsonObject,
-    _compact_selected_fields,
     _compact_text,
     _dedupe,
     _dedupe_params,

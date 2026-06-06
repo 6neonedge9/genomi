@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import gzip
 import json
 import os
 import sqlite3
@@ -9,73 +8,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from genomi.active_genome_index.alignment import (
-    build_bam_variant_call_commands,
-    infer_genome_build_from_bam_header,
-)
-from genomi.active_genome_index.active_genome_index import create_active_genome_index
-from genomi.active_genome_index.normalize import (
-    build_bcftools_norm_command,
-    normalize_vcf,
-)
-from genomi.capabilities.clinvar.static_annotation import (
-    _reusable_static_db_with_clinvar,
-    build_static_annotation,
-    default_static_outputs,
-    fetch_static_population,
-    match_static_clinvar,
-    run_static_callability,
-    run_static_genotype_support,
-    run_static_sample_qc,
-)
-from genomi.capabilities.clinvar.static_annotation import (
-    workflow_contract as static_contract,
-)
-from genomi.capabilities.research.intent_research import (
-    query_reviewed_research,
-    record_reviewed_research,
-)
-from genomi.capabilities.research.intent_research import (
-    workflow_contract as research_contract,
-)
-from genomi.capabilities.variant.annotation import (
-    annotate_vcf,
-    build_vep_command,
-    build_vep_docker_command,
-)
 from genomi.evidence import (
-    SQLITE_BUSY_TIMEOUT_SECONDS,
-    _gnomad_population_batch,
-    build_clinvar_annotation_index,
-    build_clinvar_gene_index,
-    build_clinvar_rsid_annotation_index,
-    build_clinvar_rsid_index,
-    connect_evidence,
-    evidence_summary,
-    extract_clinvar_candidates,
-    fetch_gene_evidence,
-    gather_variant_evidence,
-    import_clinvar_vcf,
-    import_population_vcf,
     init_evidence_db,
-    match_clinvar_variants,
-    match_clinvar_variants_from_active_genome_index,
-    query_clinvar,
-    query_population_frequency,
-    query_research_findings,
-    record_research_findings,
-    search_research_findings,
-    summarize_clinvar_matches,
-)
-from genomi.evidence.investigation import prepare_investigation_packet
-from genomi.evidence.sources import evidence_source_catalog
-from genomi.runtime.external import dependency_report
-from genomi.runtime.static_dependencies import (
-    infer_genome_build_from_vcf,
-    resolve_genome_build,
 )
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).parents[2] / "data"
 TINY_VCF = DATA_DIR / "tiny.gvcf.vcf"
 TINY_FASTA = DATA_DIR / "tiny.fa"
 TINY_CLINVAR = DATA_DIR / "tiny.clinvar.vcf"

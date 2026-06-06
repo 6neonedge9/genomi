@@ -3,8 +3,8 @@ from __future__ import annotations
 from genomi.operations import call_operation
 from genomi.runtime import background_jobs
 
-from _active_genome_index_contract_cases import LocusContract, SourceContractCase
-from _source_matrix_support_operations import SupportsAssertions
+from tests.support.active_genome_index.contract_cases import LocusContract, SourceContractCase
+from tests.support.matrix.source_support_operations import SupportsAssertions
 
 
 def assert_stateful_runtime_operations(

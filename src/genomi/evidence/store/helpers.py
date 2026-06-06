@@ -8,7 +8,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 

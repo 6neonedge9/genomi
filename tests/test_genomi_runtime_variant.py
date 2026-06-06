@@ -12,7 +12,7 @@ from genomi.operations import call_operation
 from genomi.operations.registry.errors import OperationError
 from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 class GenomiRuntimeVariantTests(GenomiRuntimeTestCase):

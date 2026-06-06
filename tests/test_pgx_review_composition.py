@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from genomi.capabilities.pharmacogenomics.review import review_medication_interaction
 
-from tests._pgx_review_helpers import PGxMedicationReviewTestBase
+from tests.support.capabilities.pgx_review import PGxMedicationReviewTestBase
 
 
 class PGxMedicationReviewCompositionTests(PGxMedicationReviewTestBase):

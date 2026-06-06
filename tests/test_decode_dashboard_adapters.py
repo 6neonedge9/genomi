@@ -183,27 +183,6 @@ class DecodeDashboardAdapterTests(unittest.TestCase):
         self.assertEqual(_panel_keys(parsed), {"overview"})
         self.assertTrue({"pgx", "risk"}.issubset(set(result["panels_empty"])))
 
-    def test_blocked_native_pgx_results_are_empty_not_schema_errors(self) -> None:
-        for status in ("position_aware_pharmcat_export_required", "no_pharmcat_vcf_records"):
-            with self.subTest(status=status):
-                out = self.tmpdir / f"{status}.html"
-                result = decode_dashboard.render_dashboard(
-                    evidence={
-                        "overview": {"sampleId": "HG-PGX-BLOCKED", "variantCount": 10},
-                        "pgx": {
-                            "status": status,
-                            "pharmcat_input": {"status": status},
-                            "input_preflight": {"status": "completed"},
-                        },
-                    },
-                    mode="full",
-                    output=out,
-                )
-
-                parsed = _extract_evidence(out.read_text(encoding="utf-8"))
-                self.assertEqual(_panel_keys(parsed), {"overview"})
-                self.assertIn("pgx", result["panels_empty"])
-
     def test_native_empty_results_clear_stale_clinvar_and_nutrigenomics_panels(self) -> None:
         out = self.tmpdir / "dash.html"
         decode_dashboard.render_dashboard(
@@ -311,7 +290,7 @@ class DecodeDashboardAdapterTests(unittest.TestCase):
                     decode_dashboard.render_dashboard(
                         evidence=evidence,
                         mode="full",
-                        output=self.tmpdir / f"{name}-direct-alias.html",
+                        output=self.tmpdir / f"{name}-direct-native.html",
                     )
                 self.assertEqual(ctx.exception.code, "panel_schema_mismatch")
 

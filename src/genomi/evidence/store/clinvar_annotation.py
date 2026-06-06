@@ -10,10 +10,6 @@ from ...active_genome_index.active_genome_index import (
 )
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
-from ...runtime.sqlite_support import (
-    LONG_WRITE_BUSY_TIMEOUT_SECONDS,
-    connect_sqlite,
-)
 
 from .constants import (
     CLINVAR_ANNOTATION_INDEX_RULE_SET_VERSION,

@@ -13,7 +13,7 @@ from genomi.active_genome_index.source_intake import (
     SUPPORTED_SOURCE_FORMATS,
 )
 
-from _active_genome_index_contract_fixtures import ActiveGenomeIndexContractFixtureMixin
+from tests.support.active_genome_index.contract_fixtures import ActiveGenomeIndexContractFixtureMixin
 
 
 MANIFEST_PATH = Path(__file__).parent / "data" / "pgp_hms_public_genetic_data_manifest.json"

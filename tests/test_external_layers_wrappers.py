@@ -4,19 +4,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests._external_layers_helpers import (
+from genomi.active_genome_index.alignment import (
+    build_bam_variant_call_commands,
+    infer_genome_build_from_bam_header,
+)
+from genomi.active_genome_index.normalize import build_bcftools_norm_command, normalize_vcf
+from genomi.capabilities.variant.annotation import annotate_vcf, build_vep_command, build_vep_docker_command
+from genomi.runtime.external import dependency_report
+from tests.support.capabilities.external_layers import (
     TINY_FASTA,
     TINY_NORMALIZE_FASTA,
     TINY_NORMALIZE_VCF,
     TINY_VCF,
-    annotate_vcf,
-    build_bam_variant_call_commands,
-    build_bcftools_norm_command,
-    build_vep_command,
-    build_vep_docker_command,
-    dependency_report,
-    infer_genome_build_from_bam_header,
-    normalize_vcf,
 )
 
 

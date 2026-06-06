@@ -62,3 +62,6 @@ where = ["src"]
 "genomi.capabilities.research" = ["tool_catalog.json"]
 "genomi.capabilities.sequence" = ["tool_catalog.json"]
 "genomi.capabilities.variant" = ["tool_catalog.json"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]

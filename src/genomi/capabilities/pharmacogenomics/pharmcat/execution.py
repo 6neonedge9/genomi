@@ -740,7 +740,6 @@ def _base_result(
     base_filename: str | None,
     message: str | None = None,
 ) -> JsonObject:
-    out_dir = Path(output_dir).expanduser() if output_dir else _default_output_dir(agi_path)
     payload: JsonObject = {
         "status": status,
         "input": {

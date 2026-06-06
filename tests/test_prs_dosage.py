@@ -4,7 +4,7 @@ import unittest
 
 from genomi.active_genome_index import dosage as agi_dosage
 
-from _prs_contract_helpers import (
+from tests.support.capabilities.prs_contract import (
     insert_array_prs_record,
     insert_prs_record,
     memory_prs_index,

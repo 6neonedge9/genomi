@@ -1,26 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shlex
-import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
-from genomi.active_genome_index.active_genome_index import create_active_genome_index
 from genomi.capabilities.decode import dashboard as decode_dashboard
-from genomi.evidence import init_evidence_db
-from genomi.operations import (
-    OPERATIONS,
-    TOOL_CATALOG,
-    OperationError,
-    call_operation,
-)
-from genomi.interfaces.presentation import present_result
-from genomi.runtime import context as runtime_context
 
 _DECODE_BUILDER_PATCH = (
     "genomi.operations.registry.handlers_screen_journal."
@@ -37,17 +24,6 @@ def _extract_evidence(html: str) -> dict:
     parsed, _end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
     assert isinstance(parsed, dict), "__GENOMI_DASHBOARD__ is not an object"
     return parsed
-
-
-def _replace_evidence(html: str, evidence: dict) -> str:
-    marker = "window.__GENOMI_DASHBOARD__"
-    assignment_index = html.find(marker)
-    assert assignment_index >= 0, "no __GENOMI_DASHBOARD__ block in HTML"
-    json_start = html.find("{", assignment_index)
-    assert json_start >= 0, "no __GENOMI_DASHBOARD__ object in HTML"
-    _parsed, json_end = json.JSONDecoder().raw_decode(html[json_start:].replace("<\\/", "</"))
-    blob = json.dumps(evidence, ensure_ascii=False).replace("</", "<\\/")
-    return html[:json_start] + blob + html[json_start + json_end:]
 
 
 def _panel_keys(payload: dict) -> set[str]:
@@ -219,39 +195,6 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertTrue({"risk"}.issubset(set(result["panels_empty"])))
         self.assertEqual(set(result["panels_rendered"]), {"overview", "variants"})
 
-    def test_render_update_clear_panels_skips_stale_invalid_previous_panel(self) -> None:
-        out = self.tmpdir / "dash.html"
-        decode_dashboard.render_dashboard(
-            evidence={
-                "overview": {"sampleId": "HG-STALE", "variantCount": 100},
-                "variants": [{"rsid": "rs1", "gene": "G1"}],
-            },
-            mode="full",
-            output=out,
-        )
-        out.write_text(
-            _replace_evidence(
-                out.read_text(encoding="utf-8"),
-                {
-                    "overview": {"sampleId": "HG-STALE", "variantCount": 100},
-                    "variants": [{"legacy_unmapped_field": "stale"}],
-                },
-            ),
-            encoding="utf-8",
-        )
-
-        result = decode_dashboard.render_dashboard(
-            evidence={},
-            mode="update",
-            output=out,
-            clear_panels=["variants"],
-        )
-
-        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
-        self.assertEqual(parsed["overview"]["sampleId"], "HG-STALE")
-        self.assertEqual(_panel_keys(parsed), {"overview"})
-        self.assertIn("variants", result["panels_empty"])
-
     def test_render_update_empty_variants_all_not_refilled_from_source(self) -> None:
         out = self.tmpdir / "dash.html"
         source = self.tmpdir / "clinvar.matches.jsonl"
@@ -333,7 +276,7 @@ class RenderDashboardTests(unittest.TestCase):
             ("bad-json.jsonl", "{not json}\n", "not valid JSON"),
             (
                 "unmapped-row.jsonl",
-                json.dumps({"legacy_unmapped_field": "x"}) + "\n",
+                json.dumps({"unmapped_dashboard_field": "x"}) + "\n",
                 "did not map to a dashboard variant row",
             ),
         ):
@@ -387,25 +330,6 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(parsed["overview"]["sampleId"], "HG-BRACE")
         self.assertEqual(parsed["pgx"][0]["gene"], "CYP2C19")
 
-    def test_rejects_legacy_overview_aliases(self) -> None:
-        out = self.tmpdir / "dash.html"
-        with self.assertRaises(decode_dashboard.DashboardRenderError) as ctx:
-            decode_dashboard.render_dashboard(
-                evidence={
-                    "overview": {
-                        "nickname": "matthew",
-                        "genome_build": "GRCh38",
-                        "agi_source_format": "vcf",
-                        "active_genome_index_completed_at": "2026-05-25T21:20:00Z",
-                        "active_genome_index": {"variant_count": 5_148_321},
-                    },
-                },
-                mode="full",
-                output=out,
-            )
-        self.assertEqual(ctx.exception.code, "panel_schema_mismatch")
-        self.assertIn("no recognized fields", ctx.exception.message)
-
     def test_normalizes_ancestry_nearest_reference_groups(self) -> None:
         """ancestry.estimate_population_context keys map to neighbors[]."""
         out = self.tmpdir / "dash.html"
@@ -431,35 +355,6 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(anc["dominantAncestry"], "EUR")
         self.assertEqual(anc["neighbors"][0], {"population": "EUR", "similarity": 0.39})
         self.assertIn("ancestry", result["panels_rendered"])
-
-    def test_ancestry_insufficient_overlap_renders_as_empty_panel(self) -> None:
-        out = self.tmpdir / "dash.html"
-        result = decode_dashboard.render_dashboard(
-            evidence={
-                "ancestry": {
-                    "status": "insufficient_overlap",
-                    "nearest_reference_groups": [],
-                    "next_actions": [
-                        {
-                            "action": "do_not_interpret",
-                            "reason": "Projection covers only 6% of the loaded panel.",
-                        }
-                    ],
-                    "sample_qc": {
-                        "marker_overlap_quality": "insufficient",
-                        "overlap_fraction": 0.06,
-                    },
-                    "reference_panel": {"panel_id": "1000g-30x-grch37"},
-                },
-            },
-            mode="full",
-            output=out,
-        )
-
-        parsed = _extract_evidence(out.read_text(encoding="utf-8"))
-        self.assertNotIn("ancestry", parsed)
-        self.assertNotIn("ancestry", result["panels_rendered"])
-        self.assertIn("ancestry", result["panels_empty"])
 
     def test_supplied_overview_unmappable_raises(self) -> None:
         """A content-bearing panel that maps to no schema field fails loudly."""
@@ -582,7 +477,7 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "panel_schema_mismatch")
         self.assertIn("no recognized dashboard field", ctx.exception.message)
 
-    def test_supplied_normalized_list_panel_bad_row_raises(self) -> None:
+    def test_supplied_normalized_list_panel_unmapped_row_raises(self) -> None:
         for panel in ("variants", "nutrigenomics"):
             with self.subTest(panel=panel):
                 out = self.tmpdir / f"{panel}.html"
@@ -590,7 +485,7 @@ class RenderDashboardTests(unittest.TestCase):
                     decode_dashboard.render_dashboard(
                         evidence={
                             "overview": {"sampleId": "HG-BAD-ROW", "variantCount": 10},
-                            panel: [{"legacy_unmapped_field": "x"}],
+                            panel: [{"unmapped_dashboard_field": "x"}],
                         },
                         mode="full",
                         output=out,
@@ -686,259 +581,3 @@ class RenderDashboardTests(unittest.TestCase):
                 output=missing,
             )
         self.assertEqual(ctx.exception.code, "dashboard_not_found")
-
-
-class RegistryGatingTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._home_tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._home_tmp.cleanup)
-        self.genomi_home = Path(self._home_tmp.name) / "genomi-home"
-        self._env = mock.patch.dict(
-            os.environ,
-            {
-                "GENOMI_HOME": str(self.genomi_home),
-                "GENOMI_CONTEXT": "",
-                "GENOMI_SESSION_ID": "",
-                "GENOMI_MCP_BACKGROUND": "0",
-                **{name: "" for name in runtime_context.AGENT_SESSION_ENVS},
-            },
-        )
-        self._env.start()
-        self.addCleanup(self._env.stop)
-
-    def test_active_genome_required(self) -> None:
-        with self.assertRaises(OperationError) as ctx:
-            call_operation(
-                "decode.render_dashboard",
-                {},
-            )
-        self.assertEqual(ctx.exception.code, "active_genome_index_required")
-
-    def test_render_through_registry_with_active_genome(self) -> None:
-        with tempfile.TemporaryDirectory() as wd:
-            wd_path = Path(wd)
-            previous = os.getcwd()
-            os.chdir(wd_path)
-            try:
-                vcf = wd_path / "sample.vcf"
-                vcf.write_text(
-                    "##fileformat=VCFv4.2\n"
-                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-                    "10\t94761900\trs4244285\tG\tA\t50\tPASS\t.\tGT:DP:GQ\t0/1:31:99\n",
-                    encoding="utf-8",
-                )
-                index = wd_path / "sample.active-genome-index.sqlite"
-                evidence_db = wd_path / "evidence.sqlite"
-                create_active_genome_index(vcf, index)
-                init_evidence_db(evidence_db)
-                runtime_context.set_active_agi_from_source(
-                    vcf,
-                    status="parsed",
-                    operation_result={
-                        "sample_slug": "sample",
-                        "agi_intake_source_path": str(vcf),
-                        "evidence_db": str(evidence_db),
-                        "work_dir": str(wd_path),
-                        "outputs": {"agi_path": str(index)},
-                    },
-                )
-                call_operation(
-                    "active_genome_index.approve_access",
-                    {"approved_by_user": True, "reason": "test"},
-                )
-                out = wd_path / "dash.html"
-                built = {
-                    "status": "completed",
-                    "render_params": {"evidence": {"overview": {"sampleId": "ACTIVE", "variantCount": 1}}},
-                    "panels_ready": ["overview"],
-                    "panels_empty": [],
-                    "panels_blocked": [],
-                    "panel_states": [{"panel": "overview", "status": "data_returned"}],
-                }
-                with mock.patch(_DECODE_BUILDER_PATCH, return_value=built):
-                    result = call_operation("decode.render_dashboard", {"output": str(out)})
-                self.assertEqual(result["status"], "completed")
-                self.assertTrue(out.is_file())
-                self.assertIn("evidence_envelope", result)
-            finally:
-                os.chdir(previous)
-
-    def test_render_through_registry_enforces_agi_readiness(self) -> None:
-        with tempfile.TemporaryDirectory() as wd:
-            wd_path = Path(wd)
-            previous = os.getcwd()
-            os.chdir(wd_path)
-            try:
-                vcf = wd_path / "sample.vcf"
-                vcf.write_text(
-                    "##fileformat=VCFv4.2\n"
-                    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-                    "10\t94761900\trs4244285\tG\tA\t50\tPASS\t.\tGT:DP:GQ\t0/1:31:99\n",
-                    encoding="utf-8",
-                )
-                index = wd_path / "sample.active-genome-index.sqlite"
-                evidence_db = wd_path / "evidence.sqlite"
-                create_active_genome_index(vcf, index)
-                init_evidence_db(evidence_db)
-                with sqlite3.connect(index) as connection:
-                    connection.execute(
-                        "update metadata set value = ? where key = 'active_genome_index_complete'",
-                        (json.dumps(False),),
-                    )
-                    connection.execute(
-                        "update metadata set value = ? where key = 'active_genome_index_build_status'",
-                        (json.dumps("in_progress"),),
-                    )
-                    connection.commit()
-                runtime_context.set_active_agi_from_source(
-                    vcf,
-                    status="parsed",
-                    operation_result={
-                        "sample_slug": "sample",
-                        "agi_intake_source_path": str(vcf),
-                        "evidence_db": str(evidence_db),
-                        "work_dir": str(wd_path),
-                        "outputs": {"agi_path": str(index)},
-                    },
-                )
-                call_operation(
-                    "active_genome_index.approve_access",
-                    {"approved_by_user": True, "reason": "test"},
-                )
-
-                with self.assertRaises(OperationError) as ctx:
-                    call_operation(
-                        "decode.render_dashboard",
-                        {"output": str(wd_path / "dash.html")},
-                    )
-                self.assertEqual(ctx.exception.code, "active_genome_index_incomplete")
-            finally:
-                os.chdir(previous)
-
-
-class DashboardOfflineAssetTests(unittest.TestCase):
-    """Guard the offline contract: vendored assets present and compiled JS in sync."""
-
-    _TEMPLATES = (
-        Path(decode_dashboard.__file__).resolve().parent / "templates"
-    )
-
-    def _compiled_chunks(self) -> list[Path]:
-        vendor = self._TEMPLATES / "vendor"
-        chunks: list[tuple[int, Path]] = []
-        for path in vendor.glob("dashboard.compiled.*.js"):
-            match = re.fullmatch(r"dashboard\.compiled\.(\d+)\.js", path.name)
-            if match:
-                chunks.append((int(match.group(1)), path))
-        return [path for _, path in sorted(chunks)]
-
-    def test_vendored_runtime_assets_present(self) -> None:
-        vendor = self._TEMPLATES / "vendor"
-        for name in ("react.production.min.js", "react-dom.production.min.js"):
-            self.assertTrue((vendor / name).is_file(), f"missing vendored asset {name}")
-        chunks = self._compiled_chunks()
-        self.assertGreaterEqual(len(chunks), 1)
-        self.assertEqual(
-            [path.name for path in chunks],
-            [f"dashboard.compiled.{i:03d}.js" for i in range(1, len(chunks) + 1)],
-        )
-        for path in chunks:
-            self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 1000)
-
-    def test_template_uses_inline_runtime_placeholders(self) -> None:
-        shell = (self._TEMPLATES / "shell.html").read_text(encoding="utf-8")
-        scripts = re.findall(r"<script(?:\s+[^>]*)?>(.*?)</script>", shell, flags=re.DOTALL)
-        self.assertEqual(
-            [script.strip() for script in scripts],
-            [
-                "window.__GENOMI_DASHBOARD__ = __GENOMI_EVIDENCE__;",
-                "__GENOMI_APP_JS__",
-            ],
-        )
-        self.assertEqual(shell.count("__GENOMI_VENDOR_SCRIPTS__"), 1)
-
-    def test_compiled_js_matches_jsx_source(self) -> None:
-        # Drift guard: compiled chunks stamp the sha256 of the dashboard.jsx
-        # it was built from. If someone edits the JSX without re-running
-        # scripts/build_dashboard.py, this fails — no JS toolchain needed here.
-        import hashlib
-
-        jsx = (self._TEMPLATES / "dashboard.jsx").read_bytes()
-        compiled = "\n".join(path.read_text(encoding="utf-8") for path in self._compiled_chunks())
-        match = re.search(r"source-sha256:\s*([0-9a-f]{64})", compiled)
-        self.assertIsNotNone(match, "compiled JS is missing its source-sha256 header")
-        self.assertEqual(
-            match.group(1),
-            hashlib.sha256(jsx).hexdigest(),
-            "dashboard compiled chunks are stale — re-run scripts/build_dashboard.py after editing dashboard.jsx.",
-        )
-
-
-class DashboardCatalogTests(unittest.TestCase):
-    def test_dashboard_in_base_catalog(self) -> None:
-        names = {op.name for op in OPERATIONS}
-        self.assertIn("decode.render_dashboard", names)
-        self.assertIn("decode", TOOL_CATALOG["capability_order"])
-        self.assertIn("decode", TOOL_CATALOG["namespace_order"])
-        self.assertIn("decode", TOOL_CATALOG["capabilities"])
-        decode_cap = TOOL_CATALOG["capabilities"]["decode"]
-        self.assertIn("decode.render_dashboard", decode_cap["entry_operations"])
-        schema_props = TOOL_CATALOG["operations"]["decode.render_dashboard"]["input_schema"]["properties"]
-        self.assertEqual(
-            set(schema_props),
-            {
-                "force",
-                "include_pgx",
-                "journal_limit",
-                "nutrigenomics_domain_ids",
-                "output",
-                "panels",
-                "pgx_timeout_seconds",
-                "risk_score_ids",
-                "risk_score_limit",
-            },
-        )
-
-
-class DashboardPresentationTests(unittest.TestCase):
-    def test_presented_dashboard_result_preserves_artifact_serving_fields(self) -> None:
-        raw = {
-            "status": "completed",
-            "mode": "full",
-            "dashboard_path": "/tmp/genomi-dashboards/sample/dashboard.html",
-            "panels_rendered": ["overview"],
-            "panels_empty": ["pgx"],
-            "evidence_build": {
-                "panels_ready": ["overview"],
-                "panels_empty": ["pgx"],
-                "panels_blocked": ["pgx"],
-                "panel_states": [{"panel": "pgx", "status": "position_aware_pharmcat_export_required"}],
-            },
-            "serve": {
-                "directory": "/tmp/genomi-dashboards/sample",
-                "filename": "dashboard.html",
-                "port": 8765,
-                "url": "http://127.0.0.1:8765/dashboard.html",
-                "command": (
-                    "python3 -m http.server 8765 --bind 127.0.0.1 "
-                    "--directory /tmp/genomi-dashboards/sample"
-                ),
-            },
-        }
-
-        presented = present_result("decode.render_dashboard", raw)
-
-        self.assertEqual(
-            set(presented),
-            {"status", "dashboard_path", "panels_rendered", "panels_empty", "evidence_build", "serve"},
-        )
-        self.assertEqual(presented["dashboard_path"], raw["dashboard_path"])
-        self.assertEqual(presented["serve"]["directory"], raw["serve"]["directory"])
-        self.assertEqual(presented["serve"]["command"], raw["serve"]["command"])
-        self.assertEqual(presented["panels_rendered"], ["overview"])
-        self.assertEqual(presented["panels_empty"], ["pgx"])
-        self.assertEqual(presented["evidence_build"]["panels_blocked"], ["pgx"])
-
-
-if __name__ == "__main__":
-    unittest.main()

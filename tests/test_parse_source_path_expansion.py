@@ -8,7 +8,7 @@ from unittest import mock
 from genomi.operations import call_operation
 from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 def _write_vcf(path: Path) -> None:

@@ -360,7 +360,7 @@ def _normalize_native_variants_row(raw: Any) -> dict[str, Any] | None:
     raw_gt = _pick(raw, "genotype") or _pick(var, "genotype")
     zygosity = _pick(raw, "zygosity") or _derive_zygosity(raw_gt)
 
-    # clinvarSignificance: canonical name, common aliases, matches-JSONL field, or
+    # clinvarSignificance comes from dashboard rows, matches JSONL rows, or
     # scan_candidates nested clinvar.clinical_significance_counts.
     clinvar_sig = (
         _pick(raw, "clinvarSignificance", "significance", "clinical_significance")
@@ -372,7 +372,7 @@ def _normalize_native_variants_row(raw: Any) -> dict[str, Any] | None:
             first = sig_counts[0]
             clinvar_sig = first[0] if isinstance(first, (list, tuple)) else str(first)
 
-    # conditionShort: canonical name, common alias, or from clinvar sub-dict.
+    # conditionShort comes from dashboard rows or the nested ClinVar record.
     condition_short = _pick(raw, "conditionShort", "condition")
     if condition_short:
         condition_short = str(condition_short).replace("_", " ")

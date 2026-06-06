@@ -3,11 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...runtime.libraries import manager as library_manager
-from ...runtime.paths import run_evidence_db_path, run_output_path
+from ...runtime.paths import run_evidence_db_path
 from ...runtime.sqlite_support import (
     LONG_WRITE_BUSY_TIMEOUT_SECONDS,
-    connect_readonly_sqlite,
-    connect_sqlite,
 )
 
 CANDIDATE_RULE_SET_VERSION = "clinvar-candidate-inventory-v11"

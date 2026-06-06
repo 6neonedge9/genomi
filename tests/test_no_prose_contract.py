@@ -14,7 +14,7 @@ from typing import Any
 from genomi import operations as ops
 from genomi.evidence import envelope as env
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 FORBIDDEN_TOP_LEVEL_KEYS = {
     "agent_guidance",

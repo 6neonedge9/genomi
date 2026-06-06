@@ -7,7 +7,11 @@ from pathlib import Path
 from genomi.active_genome_index.source_intake import SUPPORTED_SOURCE_FORMATS
 from genomi.operations import TOOL_CATALOG, call_operation
 
-from _capability_matrix_contract import (
+from tests.support.active_genome_index.source_fixture_inventory import (
+    SEQUENCING_SOURCE_FIXTURE_FORMATS,
+    SOURCE_FIXTURE_INVENTORY,
+)
+from tests.support.matrix.capability_contract import (
     COVERAGE_OPERATION_CLASSES,
     EXTERNAL_SOURCE_CAPABILITIES,
     EXTERNAL_SOURCE_EXECUTABLE_CELLS,
@@ -19,6 +23,7 @@ from _capability_matrix_contract import (
     PUBLIC_DETERMINISTIC_OPERATIONS,
     PUBLIC_DETERMINISTIC_SOURCE_INVARIANT_CELLS,
     SOURCE_FORMAT_MATRIX_CAPABILITIES,
+    SOURCE_FORMAT_MATRIX_CAPABILITY_CELLS,
     SOURCE_FORMAT_MATRIX_CELLS,
     SOURCE_FORMAT_MATRIX_OPERATIONS,
     SOURCE_FORMAT_MATRIX_SOURCE_FORMATS,
@@ -29,6 +34,15 @@ from _capability_matrix_contract import (
     STATEFUL_RUNTIME_EXECUTABLE_CELLS,
     STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS,
     STATEFUL_RUNTIME_OPERATION_RATIONALES,
+)
+from tests.support.matrix.result_states import (
+    DECODE_COVERAGE_STATE_CELLS,
+    DECODE_NATIVE_STATUS_CELLS,
+    DECODE_PGX_STATUS_CELLS,
+    DECODE_PRS_STATUS_CELLS,
+    DECODE_RESULT_STATE_CASES,
+    DECODE_RESULT_STATE_CELLS,
+    DECODE_RESULT_STATE_OPERATION,
 )
 
 
@@ -53,7 +67,33 @@ class CapabilityMatrixContractTests(unittest.TestCase):
     def test_source_format_matrix_declares_every_supported_runtime_format(self) -> None:
         self.assertEqual(SOURCE_FORMAT_MATRIX_SOURCE_FORMATS, set(SUPPORTED_SOURCE_FORMATS))
 
+    def test_source_fixture_inventory_covers_every_supported_runtime_format(self) -> None:
+        fixture_formats = {spec.expected_format for spec in SOURCE_FIXTURE_INVENTORY}
+        fixture_formats |= set(SEQUENCING_SOURCE_FIXTURE_FORMATS.values())
+        self.assertEqual(fixture_formats, SOURCE_FORMAT_MATRIX_SOURCE_FORMATS)
+
+    def test_source_fixture_inventory_has_direct_genome_extension_case(self) -> None:
+        direct_genome_cases = [
+            spec for spec in SOURCE_FIXTURE_INVENTORY
+            if spec.expected_format == "genome" and spec.case_id == "genome"
+        ]
+        self.assertEqual(len(direct_genome_cases), 1)
+        self.assertEqual(direct_genome_cases[0].writer_method, "_write_genome_text_source")
+
+    def test_source_fixture_inventory_case_ids_are_unique(self) -> None:
+        case_ids = [spec.case_id for spec in SOURCE_FIXTURE_INVENTORY]
+        case_ids.extend(SEQUENCING_SOURCE_FIXTURE_FORMATS)
+        self.assertEqual(len(case_ids), len(set(case_ids)))
+
     def test_source_format_matrix_cells_are_complete_products(self) -> None:
+        self.assertEqual(
+            SOURCE_FORMAT_MATRIX_CAPABILITY_CELLS,
+            {
+                (source_format, capability)
+                for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+                for capability in SOURCE_FORMAT_MATRIX_CAPABILITIES
+            },
+        )
         self.assertEqual(
             SOURCE_FORMAT_MATRIX_CELLS,
             {
@@ -94,6 +134,17 @@ class CapabilityMatrixContractTests(unittest.TestCase):
                 for operation in STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS
             },
         )
+
+    def test_decode_result_state_matrix_cells_are_complete_products(self) -> None:
+        self.assertEqual(
+            DECODE_RESULT_STATE_CELLS,
+            DECODE_NATIVE_STATUS_CELLS
+            | DECODE_COVERAGE_STATE_CELLS
+            | DECODE_PGX_STATUS_CELLS
+            | DECODE_PRS_STATUS_CELLS,
+        )
+        self.assertEqual(DECODE_RESULT_STATE_OPERATION, "decode.render_dashboard")
+        self.assertIn(DECODE_RESULT_STATE_OPERATION, TOOL_CATALOG["operations"])
 
     def test_executable_source_support_operations_are_source_support_operations(self) -> None:
         self.assertLessEqual(SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS, set(SOURCE_FORMAT_SUPPORT_OPERATION_RATIONALES))
@@ -138,6 +189,17 @@ class CapabilityMatrixContractTests(unittest.TestCase):
                     seen_operations.add(case.operation)
 
         self.assertEqual(seen_operations, PUBLIC_DETERMINISTIC_OPERATIONS)
+
+    def test_decode_result_state_cases_execute_their_declared_cells(self) -> None:
+        seen_cells: set[tuple[str, str, str, str, str]] = set()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for case in DECODE_RESULT_STATE_CASES:
+                with self.subTest(cell=case.cell):
+                    case.run(root)
+                    seen_cells.add(case.cell)
+
+        self.assertEqual(seen_cells, DECODE_RESULT_STATE_CELLS)
 
     def test_public_deterministic_cases_are_current_catalog_operations(self) -> None:
         operations = set(TOOL_CATALOG["operations"])

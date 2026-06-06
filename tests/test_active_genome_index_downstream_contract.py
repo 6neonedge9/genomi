@@ -12,19 +12,19 @@ from genomi.evidence import build_clinvar_rsid_index, import_clinvar_vcf
 from genomi.operations import call_operation
 from genomi.operations.registry import handlers_screen_journal
 
-from _active_genome_index_contract_cases import (
+from tests.support.active_genome_index.contract_cases import (
     LOCUS_CONTRACTS,
     UNREPRESENTED_LOCUS,
     SourceContractCase,
 )
-from _active_genome_index_contract_fixtures import (
+from tests.support.active_genome_index.contract_fixtures import (
     EXPECTED_CLINVAR_MATCHED_ALLELES,
     EXPECTED_RAW_SCORE,
     LOCUS_MODEL,
     ActiveGenomeIndexContractFixtureMixin,
 )
-from _capability_matrix_contract import SOURCE_FORMAT_MATRIX_OPERATIONS
-from _capability_matrix_contract import (
+from tests.support.matrix.capability_contract import SOURCE_FORMAT_MATRIX_OPERATIONS
+from tests.support.matrix.capability_contract import (
     EXTERNAL_SOURCE_EXECUTABLE_OPERATIONS,
     MatrixCaseContext,
     PUBLIC_DETERMINISTIC_OPERATION_CASES,
@@ -32,10 +32,10 @@ from _capability_matrix_contract import (
     SOURCE_FORMAT_SUPPORT_EXECUTABLE_OPERATIONS,
     STATEFUL_RUNTIME_EXECUTABLE_OPERATIONS,
 )
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
-from _source_matrix_external_operations import assert_external_source_operations
-from _source_matrix_runtime_operations import assert_stateful_runtime_operations
-from _source_matrix_support_operations import assert_source_support_operations
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
+from tests.support.matrix.source_external_operations import assert_external_source_operations
+from tests.support.matrix.source_runtime_operations import assert_stateful_runtime_operations
+from tests.support.matrix.source_support_operations import assert_source_support_operations
 
 
 def _extract_dashboard_evidence(html: str) -> dict[str, object]:
@@ -407,7 +407,7 @@ class ActiveGenomeIndexDownstreamContractTests(
 
         with (
             mock.patch(f"{__name__}.call_operation", side_effect=tracked_call_operation),
-            mock.patch("_active_genome_index_contract_fixtures.call_operation", side_effect=tracked_call_operation),
+            mock.patch("tests.support.active_genome_index.contract_fixtures.call_operation", side_effect=tracked_call_operation),
         ):
             yield seen_operations
 

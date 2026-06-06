@@ -13,7 +13,7 @@ from genomi.interfaces.cli import build_parser
 from genomi.operations import call_operation
 from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 def _register_stale_genome(home, *, stored_schema: int = 1):

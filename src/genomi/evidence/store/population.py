@@ -5,8 +5,8 @@ import sqlite3
 from collections import Counter
 from pathlib import Path
 from typing import Any
-from ...active_genome_index.vcf import parse_info, parse_sample
-from ...runtime.external import file_metadata, matching_manifest, utc_now
+from ...active_genome_index.vcf import parse_info
+from ...runtime.external import file_metadata, utc_now
 
 from .constants import (
     DEFAULT_POPULATION_LABEL,
@@ -23,7 +23,6 @@ from .helpers import (
     _optional_int_info,
     _optional_int_value,
     _population_metadata_key,
-    _post_graphql,
     read_vcf_header_metadata,
 )
 from .connection import (

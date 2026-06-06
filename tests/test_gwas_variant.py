@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from _gwas_helpers import _association
+from tests.support.capabilities.gwas import _association
 
 from genomi.capabilities.gwas.gwas import (
     compare_gwas_variant_evidence,

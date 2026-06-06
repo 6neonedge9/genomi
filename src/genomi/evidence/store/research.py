@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
-from ...runtime.external import file_metadata, matching_manifest, utc_now
+from ...runtime.external import utc_now
 from ...runtime.handoff import evidence_context
 from ...retrieval import hybrid as retrieval_hybrid
 from ...retrieval import semantic as retrieval_semantic
@@ -172,19 +172,6 @@ def search_research_findings(
                 "research target type must be one of "
                 + ", ".join(repr(target_type) for target_type in research_target_type_choices())
             )
-    search_columns = [
-        "target_id",
-        "gene",
-        "drug",
-        "condition",
-        "topic",
-        "source_title",
-        "source_url",
-        "searched_query",
-        "finding_text",
-        "finding_summary",
-        "finding_type",
-    ]
     where_parts: list[str] = []
     params: list[Any] = []
     if target_type is not None:
@@ -490,6 +477,10 @@ def _research_finding_id(record: dict[str, Any]) -> str:
     }
     digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode("utf-8")).hexdigest()
     return f"research:{digest[:24]}"
+
+
+def _record_digest(record: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(record, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def _research_record_to_row(record: dict[str, Any]) -> tuple[Any, ...]:

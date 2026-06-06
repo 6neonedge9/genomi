@@ -186,6 +186,16 @@ class ArchiveContentTests(unittest.TestCase):
             self.assertEqual(detection.source_format, "genome")
             self.assertEqual(detection.member_name, "sample.genome")
 
+    def test_direct_genome_suffix_is_detected_for_any_basename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "arbitrary-export-name.genome"
+            path.write_text(_GENOME_TXT, encoding="utf-8")
+
+            detection = detect_source(path)
+
+            self.assertEqual(detection.source_format, "genome")
+            self.assertIsNone(detection.member_name)
+
     def test_fastq_archive_requires_paired_member(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "reads.zip"

@@ -19,8 +19,8 @@ from genomi.evidence import build_clinvar_rsid_index, import_clinvar_vcf
 from genomi.operations import call_operation
 from genomi.operations.registry import handlers_screen_journal
 
-from _capability_matrix_contract import SOURCE_FORMAT_MATRIX_OPERATIONS
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.matrix.capability_contract import SOURCE_FORMAT_MATRIX_OPERATIONS
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 SYNTHETIC_ALT_READ_COUNT = 12
 NATIVE_VARIANT_RSID = "rs910000001"

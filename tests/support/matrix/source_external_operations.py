@@ -5,9 +5,9 @@ from unittest import mock
 from genomi.evidence import init_evidence_db
 from genomi.operations import call_operation
 
-from _active_genome_index_contract_cases import LocusContract, SourceContractCase
-from _capability_matrix_contract import MatrixCaseContext
-from _source_matrix_support_operations import SupportsAssertions
+from tests.support.active_genome_index.contract_cases import LocusContract, SourceContractCase
+from tests.support.matrix.capability_contract import MatrixCaseContext
+from tests.support.matrix.source_support_operations import SupportsAssertions
 
 
 def assert_external_source_operations(

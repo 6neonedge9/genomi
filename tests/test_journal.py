@@ -27,6 +27,7 @@ class JournalTests(unittest.TestCase):
                 "GENOMI_HOME": str(self.genomi_home),
                 "GENOMI_CONTEXT": "",
                 "GENOMI_SESSION_ID": "",
+                "GENOMI_MCP_BACKGROUND": "0",
                 **{name: "" for name in runtime_context.AGENT_SESSION_ENVS},
             },
         )

@@ -17,6 +17,11 @@ from genomi.capabilities.ancestry import source_context as ancestry_source_conte
 from genomi.capabilities.prs import scorer as prs_scorer
 from genomi.operations import call_operation
 
+from tests.support.active_genome_index.source_fixture_inventory import (
+    SEQUENCING_SOURCE_FIXTURE_FORMATS,
+    SOURCE_FIXTURE_INVENTORY,
+)
+
 
 LOCUS_MODEL = [
     {
@@ -96,61 +101,12 @@ class ActiveGenomeIndexContractFixtureMixin:
 
     def _source_cases(self) -> list[tuple[str, str, Callable[[Path], Path]]]:
         return [
-            ("vcf", "vcf", self._write_vcf_source),
-            ("vcf_gz", "vcf", self._write_vcf_gzip_source),
-            ("vcf_bz2", "vcf", self._write_vcf_bzip2_source),
-            ("vcf_xz", "vcf", self._write_vcf_xz_source),
-            ("vcf_zip", "vcf", self._write_vcf_zip_source),
-            ("vcf_tar", "vcf", self._write_vcf_tar_source),
-            ("gvcf", "gvcf", self._write_gvcf_source),
-            ("gvcf_gz", "gvcf", self._write_gvcf_gzip_source),
-            ("gvcf_bz2", "gvcf", self._write_gvcf_bzip2_source),
-            ("gvcf_xz", "gvcf", self._write_gvcf_xz_source),
-            ("gvcf_zip", "gvcf", self._write_gvcf_zip_source),
-            ("gvcf_tar", "gvcf", self._write_gvcf_tar_source),
-            ("23andme_txt", "23andme", self._write_23andme_text_source),
-            ("23andme_gz", "23andme", self._write_23andme_gzip_source),
-            ("23andme_bz2", "23andme", self._write_23andme_bzip2_source),
-            ("23andme_xz", "23andme", self._write_23andme_xz_source),
-            ("23andme_zip", "23andme", self._write_23andme_zip_source),
-            ("23andme_tar", "23andme", self._write_23andme_tar_source),
-            ("genome_tar_gz", "genome", self._write_genome_tar_source),
-            ("ancestrydna_txt", "ancestrydna", self._write_ancestry_text_source),
-            ("ancestrydna_gz", "ancestrydna", self._write_ancestry_gzip_source),
-            ("ancestrydna_bz2", "ancestrydna", self._write_ancestry_bzip2_source),
-            ("ancestrydna_xz", "ancestrydna", self._write_ancestry_xz_source),
-            ("ancestrydna_zip", "ancestrydna", self._write_ancestry_zip_source),
-            ("ancestrydna_tar", "ancestrydna", self._write_ancestry_tar_source),
-            ("myheritage_csv", "myheritage", self._write_myheritage_csv_source),
-            ("myheritage_gz", "myheritage", self._write_myheritage_gzip_source),
-            ("myheritage_bz2", "myheritage", self._write_myheritage_bzip2_source),
-            ("myheritage_xz", "myheritage", self._write_myheritage_xz_source),
-            ("myheritage_zip", "myheritage", self._write_myheritage_zip_source),
-            ("myheritage_tar", "myheritage", self._write_myheritage_tar_source),
-            ("ftdna_csv", "ftdna", self._write_ftdna_csv_source),
-            ("ftdna_csv_gz", "ftdna", self._write_ftdna_gzip_source),
-            ("ftdna_bz2", "ftdna", self._write_ftdna_bzip2_source),
-            ("ftdna_xz", "ftdna", self._write_ftdna_xz_source),
-            ("ftdna_zip", "ftdna", self._write_ftdna_zip_source),
-            ("ftdna_tar", "ftdna", self._write_ftdna_tar_source),
-            ("livingdna_txt", "livingdna", self._write_livingdna_text_source),
-            ("livingdna_gz", "livingdna", self._write_livingdna_gzip_source),
-            ("livingdna_bz2", "livingdna", self._write_livingdna_bzip2_source),
-            ("livingdna_xz", "livingdna", self._write_livingdna_xz_source),
-            ("livingdna_zip", "livingdna", self._write_livingdna_zip_source),
-            ("livingdna_tar", "livingdna", self._write_livingdna_tar_source),
+            (spec.case_id, spec.expected_format, getattr(self, spec.writer_method))
+            for spec in SOURCE_FIXTURE_INVENTORY
         ]
 
     def _sequencing_source_case_formats(self) -> dict[str, str]:
-        return {
-            "bam": "bam",
-            "bam_zip": "bam",
-            "bam_tar": "bam",
-            "fastq_pair": "fastq",
-            "fastq": "fastq",
-            "fastq_zip": "fastq",
-            "fastq_tar": "fastq",
-        }
+        return dict(SEQUENCING_SOURCE_FIXTURE_FORMATS)
 
     def _write_zip_members(self, path: Path, members: list[tuple[str, bytes]]) -> Path:
         with zipfile.ZipFile(path, "w") as archive:
@@ -599,6 +555,11 @@ class ActiveGenomeIndexContractFixtureMixin:
                 ("sample.genome", self._genome_text().encode("utf-8")),
             ],
         )
+
+    def _write_genome_text_source(self, stem: Path) -> Path:
+        path = stem.with_name("contract.genome")
+        path.write_text(self._genome_text(), encoding="utf-8")
+        return path
 
     def _genome_text(self) -> str:
         rows = [

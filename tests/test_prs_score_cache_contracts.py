@@ -14,7 +14,7 @@ from genomi.operations import call_operation, list_operations
 from genomi.runtime import context as runtime_context
 from genomi.runtime.libraries import manager as library_manager
 
-from _prs_contract_helpers import insert_prs_record, memory_prs_index, score_variant
+from tests.support.capabilities.prs_contract import insert_prs_record, memory_prs_index, score_variant
 
 
 class _FakeAgiReader:

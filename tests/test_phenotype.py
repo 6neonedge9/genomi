@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from _candidate_helper import compare_candidate_payload
+from tests.support.capabilities.candidates import compare_candidate_payload
 
 from genomi.capabilities.phenotype.phenotype import (
     compare_disease_phenotype_evidence,

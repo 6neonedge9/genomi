@@ -13,9 +13,8 @@ from genomi.operations import (
     call_operation,
     list_operations,
 )
-from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import (
+from tests.support.runtime.genomi import (
     DEFAULT_TASK_ENTRY_TOOLS,
     GenomiRuntimeTestCase,
 )

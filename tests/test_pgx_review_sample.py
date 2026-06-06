@@ -11,7 +11,7 @@ from genomi.active_genome_index.source_capabilities import agi_record_has_sequen
 from genomi.capabilities.pharmacogenomics.review import review_medication_interaction
 from genomi.operations import call_operation
 
-from tests._pgx_review_helpers import PGxMedicationReviewTestBase
+from tests.support.capabilities.pgx_review import PGxMedicationReviewTestBase
 
 
 class PGxMedicationReviewSampleTests(PGxMedicationReviewTestBase):

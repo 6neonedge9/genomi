@@ -4,26 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from .panel_states import (
+    EMPTY_COVERAGE_STATES,
+    EMPTY_NATIVE_STATUSES,
+    EMPTY_PGX_STATUSES,
+    EMPTY_PRS_STATUSES,
+)
+
 JsonObject = dict[str, Any]
-_EMPTY_NATIVE_STATUSES = {
-    "requires_library_install",
-    "source_unavailable",
-    "out_of_scope_for_input",
-    "skipped_missing_library",
-    "skipped_tool_unavailable",
-    "insufficient_overlap",
-    "domain_id_required",
-    "unknown_domain",
-    "domain_out_of_scope_by_construction",
-    "invalid_evidence_tier",
-}
-_EMPTY_PGX_STATUSES = _EMPTY_NATIVE_STATUSES | {
-    "position_aware_pharmcat_export_required",
-    "no_pharmcat_vcf_records",
-    "active_genome_index_input_unavailable",
-    "explicit_pharmcat_executable_unavailable",
-    "no_pharmcat_artifacts",
-}
 _EMPTY_ENVELOPE_FINDING_STATES = {
     "not_assessed",
     "blocked_missing_library",
@@ -101,7 +89,7 @@ def _native_nutrigenomics_rows(raw: JsonObject) -> list[JsonObject] | None:
 def _has_empty_native_status(raw: JsonObject) -> bool:
     status = str(raw.get("status") or "")
     coverage_state = str(raw.get("coverage_state") or "")
-    return status in _EMPTY_NATIVE_STATUSES or coverage_state in {"in_scope_empty", "out_of_scope_for_input"}
+    return status in EMPTY_NATIVE_STATUSES or coverage_state in EMPTY_COVERAGE_STATES
 
 
 def _normalize_dashboard_pgx_list(raw: list[Any]) -> list[JsonObject] | None:
@@ -363,7 +351,7 @@ def _pgx_has_native_content(raw: JsonObject) -> bool:
 
 
 def _is_empty_pgx_result(raw: JsonObject) -> bool:
-    if str(raw.get("status") or "") in _EMPTY_PGX_STATUSES:
+    if str(raw.get("status") or "") in EMPTY_PGX_STATUSES:
         return True
     envelope = _as_dict(raw.get("evidence_envelope"))
     return str(envelope.get("finding_state") or "") in _EMPTY_ENVELOPE_FINDING_STATES
@@ -392,13 +380,7 @@ def _pgx_review_has_mappable_content(raw: JsonObject) -> bool:
 def _is_empty_prs_result(raw: Any) -> bool:
     if not isinstance(raw, dict):
         return False
-    empty_statuses = {
-        "requires_score_import",
-        "requires_library_install",
-        "out_of_scope_for_input",
-        "source_unavailable",
-    }
-    if str(raw.get("status") or "") not in empty_statuses:
+    if str(raw.get("status") or "") not in EMPTY_PRS_STATUSES:
         return False
     return not any(isinstance(raw.get(key), dict) for key in ("polygenic_score", "sample_qc", "score_result"))
 

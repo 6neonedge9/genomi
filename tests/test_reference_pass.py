@@ -4,7 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 from genomi.active_genome_index.active_genome_index import (
     active_genome_index_readiness,

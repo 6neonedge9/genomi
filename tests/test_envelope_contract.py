@@ -23,7 +23,7 @@ from typing import Any
 from genomi import operations as ops
 from genomi.evidence import envelope as env
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 class DispatchEnvelopeContractTests(GenomiRuntimeTestCase):

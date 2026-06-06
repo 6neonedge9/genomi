@@ -20,7 +20,7 @@ from .coerce import (
     _str,
     _with_context,
 )
-from .errors import JsonObject, OperationError
+from .errors import JsonObject
 from .handlers_evidence_phenotype import (
     _first_semantic_entity_text,
     _with_simple_semantic_lookup_usage,

@@ -40,9 +40,10 @@
     "genome": {
       "public_pgp_hms_examples_observed": false,
       "pgp_public_evidence": [
-        "Synthetic matrix fixture for .genome source archive; no public PGP-HMS example is asserted by this manifest."
+        "Synthetic matrix fixtures for .genome direct source and source archive; no public PGP-HMS example is asserted by this manifest."
       ],
       "contract_fixture_cases": [
+        "genome",
         "genome_tar_gz"
       ]
     },
@@ -233,9 +234,11 @@
     "genome": {
       "sample_access_kind": "no_public_example_observed",
       "observed_wrappers": [
+        "direct .genome file",
         "gzip-compressed tar archive with .genome member"
       ],
       "observed_filename_patterns": [
+        "*.genome",
         "sample.genome.tar.gz"
       ],
       "observed_headers_or_columns": [
@@ -243,6 +246,7 @@
         "rsid chromosome position genotype"
       ],
       "anonymized_fixture_names": [
+        "contract.genome",
         "sample.genome.tar.gz",
         "sample.genome"
       ],

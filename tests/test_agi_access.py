@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 from genomi.active_genome_index.active_genome_index import (
     ActiveGenomeIndexIncomplete,
@@ -16,7 +16,6 @@ from genomi.active_genome_index.active_genome_index import (
     append_reference_pass,
     active_genome_index_readiness,
     create_active_genome_index,
-    default_agi_path,
     ensure_active_genome_index_complete,
     open_reader,
     query_region,

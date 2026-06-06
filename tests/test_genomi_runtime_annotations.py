@@ -3,7 +3,7 @@ from __future__ import annotations
 from genomi.capabilities.ancestry import policy as ancestry_policy
 from genomi.operations import all_operations, call_operation
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 class GenomiRuntimeAnnotationsTests(GenomiRuntimeTestCase):

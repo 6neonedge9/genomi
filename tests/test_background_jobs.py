@@ -3,7 +3,7 @@ from __future__ import annotations
 from genomi.runtime import background_jobs
 from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 class BackgroundJobTests(GenomiRuntimeTestCase):

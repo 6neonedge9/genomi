@@ -13,17 +13,12 @@ from ....evidence import (
     build_clinvar_gene_index,
     build_clinvar_rsid_index,
     connect_evidence,
-    evidence_summary,
     import_clinvar_vcf,
     init_evidence_db,
 )
 from ....runtime.handoff import attach_evidence_context, evidence_context
 from ....runtime.libraries import manager as library_manager
 from ....runtime.libraries.manager import status as library_status
-
-
-def library_name_for_clinvar(genome_build: str) -> str:
-    return f"clinvar-{genome_build.strip().lower()}"
 from ....runtime.paths import (
     default_export_variants_path,
     enclosing_work_dir,
@@ -36,6 +31,11 @@ from ....runtime.paths import (
     sample_slug_from_vcf,
     shared_evidence_db_path,
 )
+
+
+def library_name_for_clinvar(genome_build: str) -> str:
+    return f"clinvar-{genome_build.strip().lower()}"
+
 
 WORKFLOW_AREA_ID = "static"
 WORKFLOW_AREA_NAME = "Active Genome Indexing and library-scoped evidence materialization"

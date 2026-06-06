@@ -11,7 +11,7 @@ from genomi.operations import OperationError, all_operations, call_operation
 from genomi.operations.registry.table import _stamp_reference_pending_if_due
 from genomi.runtime import context as runtime_context
 
-from _genomi_runtime_helpers import GenomiRuntimeTestCase
+from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
 class GenomiRuntimeOperationsTests(GenomiRuntimeTestCase):

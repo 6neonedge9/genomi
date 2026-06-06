@@ -46,11 +46,17 @@ SOURCE_FORMAT_MATRIX_SOURCE_FORMATS = frozenset(
         "bam",
         "fastq",
         "ftdna",
+        "genome",
         "gvcf",
         "livingdna",
         "myheritage",
         "vcf",
     }
+)
+SOURCE_FORMAT_MATRIX_CAPABILITY_CELLS = frozenset(
+    (source_format, capability)
+    for source_format in SOURCE_FORMAT_MATRIX_SOURCE_FORMATS
+    for capability in SOURCE_FORMAT_MATRIX_CAPABILITIES
 )
 
 PUBLIC_DETERMINISTIC_CAPABILITIES = frozenset(

@@ -12,7 +12,7 @@ from ...active_genome_index.observations import observed_alleles_from_vcf_genoty
 from ...active_genome_index.vcf import parse_sample
 from ...runtime.external import file_metadata, matching_manifest, utc_now
 from ...runtime.handoff import evidence_context
-from ...runtime.paths import run_evidence_db_path, run_output_path
+from ...runtime.paths import run_output_path
 
 from .constants import (
     SHARED_EVIDENCE_ALIAS,

@@ -16,7 +16,6 @@ from .helpers import (
     _is_reactome_id,
     _normalise_label,
     _normalize_kegg_pathway_id,
-    _normalize_source,
     _pathway_source_label,
 )
 
