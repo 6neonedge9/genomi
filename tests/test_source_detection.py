@@ -23,11 +23,6 @@ _23ANDME_TXT = (
     "# rsid\tchromosome\tposition\tgenotype\n"
     "rs3131972\t1\t752721\tGG\n"
 )
-_GENOME_TXT = (
-    "# raw genotype export\n"
-    "# rsid\tchromosome\tposition\tgenotype\n"
-    "rs3131972\t1\t752721\tGG\n"
-)
 _GVCF_TXT = (
     "##fileformat=VCFv4.2\n"
     '##ALT=<ID=NON_REF,Description="Represents any possible alternative allele">\n'
@@ -40,6 +35,12 @@ _PLAIN_VCF_TXT = (
     "1\t100\trs1\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
 )
 _FASTQ_TXT = "@READ1\nACGTACGT\n+\nFFFFFFFF\n"
+
+
+def _add_genome_bundle_member(archive: tarfile.TarFile, name: str, data: bytes) -> None:
+    info = tarfile.TarInfo(name)
+    info.size = len(data)
+    archive.addfile(info, io.BytesIO(data))
 
 
 class CompressionContentTests(unittest.TestCase):
@@ -177,24 +178,28 @@ class ArchiveContentTests(unittest.TestCase):
                 sidecar_info.size = len(sidecar)
                 archive.addfile(sidecar_info, io.BytesIO(sidecar))
 
-                data = _GENOME_TXT.encode()
-                genome_info = tarfile.TarInfo("sample.genome")
-                genome_info.size = len(data)
-                archive.addfile(genome_info, io.BytesIO(data))
+                _add_genome_bundle_member(archive, "sample.genome/manifest.json", b'{"schema_version":"1.0.0","genome_build":"GRCh38"}')
+                _add_genome_bundle_member(archive, "sample.genome/schema.json", b'{"version":"1.0.0"}')
+                _add_genome_bundle_member(archive, "sample.genome/variants.parquet/chrom=1/data_0.parquet", b"parquet")
 
             detection = detect_source(path)
             self.assertEqual(detection.source_format, "genome")
             self.assertEqual(detection.member_name, "sample.genome")
+            self.assertEqual(detection.reference_build, "GRCh38")
 
-    def test_direct_genome_suffix_is_detected_for_any_basename(self) -> None:
+    def test_direct_genome_bundle_directory_is_detected_for_any_basename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "arbitrary-export-name.genome"
-            path.write_text(_GENOME_TXT, encoding="utf-8")
+            (path / "variants.parquet" / "chrom=1").mkdir(parents=True)
+            (path / "manifest.json").write_text('{"schema_version":"1.0.0","genome_build":"GRCh37"}', encoding="utf-8")
+            (path / "schema.json").write_text('{"version":"1.0.0"}', encoding="utf-8")
+            (path / "variants.parquet" / "chrom=1" / "data_0.parquet").write_bytes(b"parquet")
 
             detection = detect_source(path)
 
             self.assertEqual(detection.source_format, "genome")
             self.assertIsNone(detection.member_name)
+            self.assertEqual(detection.reference_build, "GRCh37")
 
     def test_fastq_archive_requires_paired_member(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

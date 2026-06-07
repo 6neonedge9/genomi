@@ -18,6 +18,7 @@ as a hint at best and is never required.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -81,6 +82,9 @@ def detect_source(source: str | Path) -> SourceDetection:
     do not need this function.
     """
     source_path = Path(source)
+    genome_bundle = _detect_genome_bundle(source_path)
+    if genome_bundle is not None:
+        return genome_bundle
     member_name = select_archive_member(source_path)
     probe = _probe(source_path, member_name)
 
@@ -107,10 +111,62 @@ def detect_source(source: str | Path) -> SourceDetection:
 
     raise ValueError(
         "Could not detect the genome source type from its content. Supported sources: "
-        "VCF/gVCF, BAM, paired-end FASTQ, and raw genotype exports from 23andMe, "
+        ".genome/1.0 bundles, VCF/gVCF, BAM, paired-end FASTQ, and raw genotype exports from 23andMe, "
         "AncestryDNA, MyHeritage, FamilyTreeDNA (Family Finder), and Living DNA — "
         "compressed (gzip/bzip2/xz) or inside a zip/tar archive."
     )
+
+
+def _detect_genome_bundle(source_path: Path) -> SourceDetection | None:
+    if source_path.is_dir():
+        manifest_path = source_path / "manifest.json"
+        schema_path = source_path / "schema.json"
+        variants_path = source_path / "variants.parquet"
+        if manifest_path.is_file() and schema_path.is_file() and variants_path.exists():
+            return SourceDetection(
+                source_format="genome",
+                source_kind="genome_bundle",
+                reference_build=_genome_bundle_build_from_text(manifest_path.read_text(encoding="utf-8", errors="replace")),
+                provider="genome.computer",
+            )
+        return None
+
+    members = archive_member_names(source_path)
+    if not members:
+        return None
+    prefixes = {
+        name[: -len("/manifest.json")]
+        for name in members
+        if name.endswith("/manifest.json") and name.rsplit("/", 1)[-2].endswith(".genome")
+    }
+    for prefix in sorted(prefixes):
+        if f"{prefix}/schema.json" not in members:
+            continue
+        if not any(name.startswith(f"{prefix}/variants.parquet/") and name.endswith(".parquet") for name in members):
+            continue
+        manifest_text = ""
+        try:
+            with open_genomic_binary(source_path, member_name=f"{prefix}/manifest.json") as handle:
+                manifest_text = handle.read(_PROBE_BYTES).decode("utf-8", "replace")
+        except OSError:
+            manifest_text = ""
+        return SourceDetection(
+            source_format="genome",
+            source_kind="genome_bundle",
+            reference_build=_genome_bundle_build_from_text(manifest_text),
+            member_name=prefix,
+            provider="genome.computer",
+        )
+    return None
+
+
+def _genome_bundle_build_from_text(text: str) -> str | None:
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    build = parsed.get("genome_build") if isinstance(parsed, dict) else None
+    return str(build) if build else None
 
 
 # ---------------------------------------------------------------------------

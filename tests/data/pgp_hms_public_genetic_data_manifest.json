@@ -40,7 +40,7 @@
     "genome": {
       "public_pgp_hms_examples_observed": false,
       "pgp_public_evidence": [
-        "Synthetic matrix fixtures for .genome direct source and source archive; no public PGP-HMS example is asserted by this manifest."
+        "Synthetic matrix fixtures for direct .genome/1.0 bundle and archived bundle cases; no public PGP-HMS example is asserted by this manifest."
       ],
       "contract_fixture_cases": [
         "genome",

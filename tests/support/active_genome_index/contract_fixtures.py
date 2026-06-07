@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 import lzma
+import shutil
 import tarfile
 import zipfile
 from collections.abc import Callable
@@ -80,7 +81,7 @@ EXPECTED_CLINVAR_MATCHED_ALLELES = 2
 
 class ActiveGenomeIndexContractFixtureMixin:
     def _expected_genotype_for_source(self, source_format: str, locus_index: int) -> str:
-        if source_format in {"vcf", "gvcf", "bam", "fastq"}:
+        if source_format in {"vcf", "gvcf", "bam", "fastq", "genome"}:
             return str(LOCUS_MODEL[locus_index]["vcf_gt"])
         return str(LOCUS_MODEL[locus_index]["bases"])
 
@@ -548,27 +549,77 @@ class ActiveGenomeIndexContractFixtureMixin:
 
     def _write_genome_tar_source(self, stem: Path) -> Path:
         path = stem.with_name("sample.genome.tar.gz")
-        return self._write_tar_members(
-            path,
-            [
-                ("README.txt", b"sample export metadata\n" * 200),
-                ("sample.genome", self._genome_text().encode("utf-8")),
-            ],
-        )
-
-    def _write_genome_text_source(self, stem: Path) -> Path:
-        path = stem.with_name("contract.genome")
-        path.write_text(self._genome_text(), encoding="utf-8")
+        bundle_dir = self._write_genome_bundle_dir(stem.with_name("sample.genome"))
+        with tarfile.open(path, "w:gz") as archive:
+            archive.add(bundle_dir, arcname="sample.genome")
+        shutil.rmtree(bundle_dir)
         return path
 
-    def _genome_text(self) -> str:
-        rows = [
-            "# file_id: synthetic-genome-contract-fixture",
-            "# raw genotype export",
-            "# rsid\tchromosome\tposition\tgenotype",
-        ]
-        rows.extend(f"{locus['rsid']}\t{locus['chrom']}\t{locus['pos']}\t{locus['bases']}" for locus in LOCUS_MODEL)
-        return "\n".join(rows) + "\n"
+    def _write_genome_bundle_source(self, stem: Path) -> Path:
+        return self._write_genome_bundle_dir(stem.with_name("contract.genome"))
+
+    def _write_genome_bundle_dir(self, path: Path) -> Path:
+        if path.exists():
+            shutil.rmtree(path)
+        variants_dir = path / "variants.parquet" / "chrom=1"
+        variants_dir.mkdir(parents=True)
+        manifest = {
+            "schema_version": "1.0.0",
+            "pipeline_version": "genomi-contract-fixture",
+            "genome_build": "GRCh37",
+            "files": {"variants.parquet": {"rows": len(LOCUS_MODEL)}},
+        }
+        (path / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (path / "schema.json").write_text(json.dumps({"version": "1.0.0"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (path / "README.md").write_text("Synthetic .genome fixture.\n", encoding="utf-8")
+        self._write_genome_variants_parquet(variants_dir / "data_0.parquet")
+        return path
+
+    def _write_genome_variants_parquet(self, path: Path) -> None:
+        import duckdb
+
+        connection = duckdb.connect()
+        try:
+            connection.execute(
+                """
+                create table variants(
+                    variant_id varchar,
+                    pos bigint,
+                    ref varchar,
+                    alt varchar,
+                    variant_type varchar,
+                    rsid varchar,
+                    quality struct(call_confidence varchar, origin varchar, imputation_r2 double, imputation_panel varchar, dp bigint, gq bigint),
+                    genotype struct(gt bigint[], phased boolean, zygosity varchar, allele_balance double),
+                    gene struct(symbol varchar, ensembl_id varchar, hgnc_id varchar, biotype varchar, is_canonical boolean)
+                )
+                """
+            )
+            for locus in LOCUS_MODEL:
+                gt = [int(piece) for piece in str(locus["vcf_gt"]).replace("|", "/").split("/")]
+                zygosity = "hom_alt" if gt == [1, 1] else "het" if 1 in gt else "hom_ref"
+                connection.execute(
+                    """
+                    insert into variants values (
+                        ?, ?, ?, ?, 'SNV', ?,
+                        struct_pack(call_confidence := 'high', origin := 'observed', imputation_r2 := null, imputation_panel := null, dp := null, gq := null),
+                        struct_pack(gt := ?, phased := false, zygosity := ?, allele_balance := null),
+                        struct_pack(symbol := null, ensembl_id := null, hgnc_id := null, biotype := null, is_canonical := null)
+                    )
+                    """,
+                    [
+                        f"{locus['chrom']}:{locus['pos']}:{locus['ref']}:{locus['alt']}",
+                        int(locus["pos"]),
+                        str(locus["ref"]),
+                        str(locus["alt"]),
+                        str(locus["rsid"]),
+                        gt,
+                        zygosity,
+                    ],
+                )
+            connection.execute("copy variants to ? (format parquet)", [str(path)])
+        finally:
+            connection.close()
 
     def _23andme_text(self) -> str:
         rows = [
@@ -767,7 +818,7 @@ class ActiveGenomeIndexContractFixtureMixin:
             self.assertEqual(provenance_agi_record["info"], sample["agi_record_info"])
             if "/" not in genotype and "|" not in genotype:
                 self.assertIn(clinvar["alt"], genotype)
-            if expected_format in {"vcf", "gvcf", "bam", "fastq"}:
+            if expected_format in {"vcf", "gvcf", "bam", "fastq", "genome"}:
                 self.assertEqual(sample["ref"], clinvar["ref"])
                 self.assertEqual(sample["alt"], clinvar["alt"])
                 self.assertEqual(match_basis, "exact_allele")

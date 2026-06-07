@@ -9,16 +9,19 @@ from .arrays import (
     SUPPORTED_CONSUMER_ARRAY_FORMATS,
 )
 from .detection import detect_source
+from .genome_bundle import parse_genome_bundle_source
 from .sequencing import parse_bam_source, parse_fastq_source
 from .vcf import _parse_vcf_active_genome_index
 
 
 SUPPORTED_VARIANT_CALLSET_FORMATS = frozenset({"vcf", "gvcf"})
 SUPPORTED_SEQUENCING_SOURCE_FORMATS = frozenset({"bam", "fastq"})
+SUPPORTED_GENOME_BUNDLE_FORMATS = frozenset({"genome"})
 SUPPORTED_SOURCE_FORMATS = (
     SUPPORTED_VARIANT_CALLSET_FORMATS
     | SUPPORTED_SEQUENCING_SOURCE_FORMATS
     | SUPPORTED_CONSUMER_ARRAY_FORMATS
+    | SUPPORTED_GENOME_BUNDLE_FORMATS
 )
 
 
@@ -69,6 +72,17 @@ def parse_source(
         )
     if detection.source_format in SUPPORTED_CONSUMER_ARRAY_FORMATS:
         return parse_consumer_array_source(
+            source_path,
+            detection=detection,
+            evidence_db=evidence_db,
+            source_evidence_db=source_evidence_db,
+            shared_evidence_db=shared_evidence_db,
+            genome_build=genome_build,
+            force=force,
+            max_records=max_records,
+        )
+    if detection.source_format in SUPPORTED_GENOME_BUNDLE_FORMATS:
+        return parse_genome_bundle_source(
             source_path,
             detection=detection,
             evidence_db=evidence_db,

@@ -78,6 +78,7 @@ class SourceContractCase:
         return {
             "bam": "alignment_reads",
             "fastq": "paired_reads_input",
+            "genome": "genome_bundle",
         }.get(
             self.expected_format,
             "consumer_genotype_array" if self.is_consumer_array else "variant_callset",

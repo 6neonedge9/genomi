@@ -6,6 +6,7 @@ from .agi_store import JsonObject
 from .arrays import SUPPORTED_CONSUMER_ARRAY_FORMATS, parse_consumer_array_source
 from .detection import SourceDetection, detect_source
 from .dispatch import (
+    SUPPORTED_GENOME_BUNDLE_FORMATS,
     SUPPORTED_SEQUENCING_SOURCE_FORMATS,
     SUPPORTED_SOURCE_FORMATS,
     SUPPORTED_VARIANT_CALLSET_FORMATS,
@@ -16,6 +17,7 @@ from .sequencing import parse_bam_source, parse_fastq_source
 __all__ = [
     "JsonObject",
     "SUPPORTED_CONSUMER_ARRAY_FORMATS",
+    "SUPPORTED_GENOME_BUNDLE_FORMATS",
     "SUPPORTED_SEQUENCING_SOURCE_FORMATS",
     "SUPPORTED_SOURCE_FORMATS",
     "SUPPORTED_VARIANT_CALLSET_FORMATS",

@@ -29,6 +29,7 @@ dependencies = [
   # population VCF imports vs stdlib gzip. Falls back to subprocess gzip or
   # stdlib gzip when unavailable.
   "isal>=1.1",
+  "duckdb>=1.0",
 ]
 
 [project.urls]

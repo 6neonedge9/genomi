@@ -589,7 +589,7 @@ class ActiveGenomeIndexDownstreamContractTests(
         candidates_by_pos = {int(candidate["variant"]["pos"]): candidate for candidate in scanned["candidate_inventory"]}
         self.assertIn(200, candidates_by_pos)
         self.assertIn("heterozygous_p_lp_context_needed", candidates_by_pos[200]["buckets"])
-        if contract.expected_format in {"vcf", "gvcf", "bam", "fastq"}:
+        if contract.expected_format in {"vcf", "gvcf", "bam", "fastq", "genome"}:
             self.assertEqual(scanned["summary"]["total_exact_match_variants"], EXPECTED_CLINVAR_MATCHED_ALLELES)
             self.assertEqual(scanned["summary"]["total_consumer_array_inferred_match_variants"], 0)
             self.assertEqual(candidates_by_pos[200]["match_provenance"]["primary_match_basis"], "exact_allele")

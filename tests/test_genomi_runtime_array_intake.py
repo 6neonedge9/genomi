@@ -12,6 +12,7 @@ from genomi.operations.registry.errors import OperationError
 from genomi.active_genome_index.active_genome_index import SCHEMA_VERSION, active_genome_index_readiness
 from genomi.runtime.sqlite_support import connect_sqlite
 
+from tests.support.active_genome_index.contract_fixtures import ActiveGenomeIndexContractFixtureMixin
 from tests.support.runtime.genomi import GenomiRuntimeTestCase
 
 
@@ -39,19 +40,13 @@ def _hidden_path_leaks(payload: object, *paths: Path) -> list[str]:
     return leaks
 
 
-class GenomiRuntimeArrayIntakeTests(GenomiRuntimeTestCase):
-    def test_active_genome_index_parse_accepts_direct_genome_source(self) -> None:
+class GenomiRuntimeArrayIntakeTests(ActiveGenomeIndexContractFixtureMixin, GenomiRuntimeTestCase):
+    def test_active_genome_index_parse_accepts_direct_genome_bundle_source(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             previous = os.getcwd()
             os.chdir(tmp)
             try:
-                raw = Path("contract.genome")
-                raw.write_text(
-                    "# raw genotype export\n"
-                    "# rsid\tchromosome\tposition\tgenotype\n"
-                    "rs123\t1\t100\tAG\n",
-                    encoding="utf-8",
-                )
+                raw = self._write_genome_bundle_dir(Path("contract.genome"))
 
                 self.approve_access()
                 parsed = call_operation("genomi.parse_source", {"source": str(raw)})
@@ -59,14 +54,18 @@ class GenomiRuntimeArrayIntakeTests(GenomiRuntimeTestCase):
                 self.assertEqual(parsed["status"], "completed")
                 self.assertEqual(parsed["source_format"], "genome")
                 self.assertEqual(parsed["active_genome_index"]["agi_source_format"], "genome")
+                self.assertEqual(parsed["active_genome_index"]["agi_source_kind"], "genome_bundle")
                 readiness = active_genome_index_readiness(parsed["outputs"]["agi_path"])
                 self.assertEqual(readiness["status"], "completed")
                 self.assertTrue(readiness["complete"])
 
-                lookup = call_operation("variant.resolve", {"rsid": "rs123"})
+                lookup = call_operation("variant.resolve", {"rsid": "rs900000001"})
                 self.assertEqual(lookup["sample_context"]["count"], 1)
-                self.assertEqual(lookup["sample_context"]["matches"][0]["agi_source_format"], "genome")
-                self.assertEqual(lookup["sample_context"]["matches"][0]["observed_alleles"], ["A", "G"])
+                match = lookup["sample_context"]["matches"][0]
+                self.assertEqual(match["agi_source_format"], "genome")
+                self.assertEqual(match["record_kind"], "variant_call")
+                self.assertEqual(match["genotype"], "1/1")
+                self.assertEqual(match["observed_alleles"], ["C", "C"])
             finally:
                 os.chdir(previous)
 

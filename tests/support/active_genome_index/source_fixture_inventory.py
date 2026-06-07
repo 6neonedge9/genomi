@@ -29,7 +29,7 @@ SOURCE_FIXTURE_INVENTORY = (
     SourceFixtureSpec("23andme_xz", "23andme", "_write_23andme_xz_source"),
     SourceFixtureSpec("23andme_zip", "23andme", "_write_23andme_zip_source"),
     SourceFixtureSpec("23andme_tar", "23andme", "_write_23andme_tar_source"),
-    SourceFixtureSpec("genome", "genome", "_write_genome_text_source"),
+    SourceFixtureSpec("genome", "genome", "_write_genome_bundle_source"),
     SourceFixtureSpec("genome_tar_gz", "genome", "_write_genome_tar_source"),
     SourceFixtureSpec("ancestrydna_txt", "ancestrydna", "_write_ancestry_text_source"),
     SourceFixtureSpec("ancestrydna_gz", "ancestrydna", "_write_ancestry_gzip_source"),
@@ -66,4 +66,3 @@ SEQUENCING_SOURCE_FIXTURE_FORMATS = {
     "fastq_zip": "fastq",
     "fastq_tar": "fastq",
 }
-
