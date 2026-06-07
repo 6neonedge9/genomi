@@ -527,6 +527,12 @@
     function PharmacogenomicsView() {
       if (!PGX_DATA) return <EmptyPanel title="Pharmacogenomics" panel="pgx" />;
       const impactColors = PGX_IMPACT_COLORS;
+      // Order by finding severity so actionable results sort to the top:
+      // high-impact (poor/elevated) first, then reduced/increased/moderate,
+      // then normal, then ungraded/no-call markers last.
+      const PGX_SORT_RANK = { poor: 0, elevated: 0, reduced: 1, increased: 1, moderate: 1, normal: 2 };
+      const pgxRank = d => PGX_SORT_RANK[d.impact] ?? 3;
+      const sortedPgx = PGX_DATA.slice().sort((a, b) => pgxRank(a) - pgxRank(b));
       return (
         <div className="view-content">
           <div className="view-header">
@@ -536,7 +542,7 @@
             </div>
           </div>
           <div className="pgx-grid">
-            {PGX_DATA.map((d, i) => {
+            {sortedPgx.map((d, i) => {
               const ic = impactColors[d.impact] || '#666';
               return (
                 <div key={d.gene || i} className="pgx-card">
@@ -787,15 +793,12 @@
             {AVAILABLE_NAV.map(item => {
               const showSection = item.section !== lastSection;
               lastSection = item.section;
-              const actionable = item.id === 'pharmacogenomics' && PGX_DATA
-                ? PGX_DATA.filter(d => d.impact && d.impact !== 'normal').length : 0;
               return (
                 <React.Fragment key={item.id}>
                   {showSection && <div className="sidebar-section-label">{item.section}</div>}
                   <div className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => onNav(item.id)}>
                     <span className="nav-icon">{item.icon}</span>
                     <span>{item.label}</span>
-                    {actionable > 0 && <span className="nav-badge">{actionable}</span>}
                   </div>
                 </React.Fragment>
               );

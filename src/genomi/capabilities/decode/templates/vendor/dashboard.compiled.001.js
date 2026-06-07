@@ -1,5 +1,5 @@
 // AUTO-GENERATED chunk 1/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: c75e08e91af8f2288daaa19f73a885e1db6e16b9928da5c0ad98d4107ca20d7e
+// source-sha256: 48d7dfa838d59266c82163e5d2187b8c70ba01aff4822bf2be357d3e77db044c
 // All evidence comes from the decode pipeline via window.__GENOMI_DASHBOARD__.
 // Anything below this line is presentation/layout only — no genome data is
 // prefilled in the template.

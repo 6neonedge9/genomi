@@ -1,5 +1,5 @@
 // AUTO-GENERATED chunk 2/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: c75e08e91af8f2288daaa19f73a885e1db6e16b9928da5c0ad98d4107ca20d7e
+// source-sha256: 48d7dfa838d59266c82163e5d2187b8c70ba01aff4822bf2be357d3e77db044c
     }, v.conditionShort), /*#__PURE__*/React.createElement("td", {
       style: {
         color: '#555',
@@ -67,6 +67,19 @@ function PharmacogenomicsView() {
     panel: "pgx"
   });
   const impactColors = PGX_IMPACT_COLORS;
+  // Order by finding severity so actionable results sort to the top:
+  // high-impact (poor/elevated) first, then reduced/increased/moderate,
+  // then normal, then ungraded/no-call markers last.
+  const PGX_SORT_RANK = {
+    poor: 0,
+    elevated: 0,
+    reduced: 1,
+    increased: 1,
+    moderate: 1,
+    normal: 2
+  };
+  const pgxRank = d => PGX_SORT_RANK[d.impact] ?? 3;
+  const sortedPgx = PGX_DATA.slice().sort((a, b) => pgxRank(a) - pgxRank(b));
   return /*#__PURE__*/React.createElement("div", {
     className: "view-content"
   }, /*#__PURE__*/React.createElement("div", {
@@ -77,7 +90,7 @@ function PharmacogenomicsView() {
     className: "view-subtitle"
   }, "Drug\u2013gene interactions from ClinPGx, FDA labels, and PGxDB"))), /*#__PURE__*/React.createElement("div", {
     className: "pgx-grid"
-  }, PGX_DATA.map((d, i) => {
+  }, sortedPgx.map((d, i) => {
     const ic = impactColors[d.impact] || '#666';
     return /*#__PURE__*/React.createElement("div", {
       key: d.gene || i,
@@ -629,7 +642,6 @@ function Sidebar({
   }, AVAILABLE_NAV.map(item => {
     const showSection = item.section !== lastSection;
     lastSection = item.section;
-    const actionable = item.id === 'pharmacogenomics' && PGX_DATA ? PGX_DATA.filter(d => d.impact && d.impact !== 'normal').length : 0;
     return /*#__PURE__*/React.createElement(React.Fragment, {
       key: item.id
     }, showSection && /*#__PURE__*/React.createElement("div", {
@@ -639,9 +651,7 @@ function Sidebar({
       onClick: () => onNav(item.id)
     }, /*#__PURE__*/React.createElement("span", {
       className: "nav-icon"
-    }, item.icon), /*#__PURE__*/React.createElement("span", null, item.label), actionable > 0 && /*#__PURE__*/React.createElement("span", {
-      className: "nav-badge"
-    }, actionable)));
+    }, item.icon), /*#__PURE__*/React.createElement("span", null, item.label)));
   })), /*#__PURE__*/React.createElement("div", {
     className: "sidebar-footer"
   }, "Experimental \xB7 Research use only", /*#__PURE__*/React.createElement("br", null), "Not for clinical diagnosis", RENDERED_AT && /*#__PURE__*/React.createElement("span", {
