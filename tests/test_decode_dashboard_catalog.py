@@ -64,11 +64,9 @@ class DashboardCatalogTests(unittest.TestCase):
         self.assertEqual(
             set(schema_props),
             {
-                "include_pgx",
                 "nutrigenomics_domain_ids",
                 "output",
                 "panels",
-                "pgx_timeout_seconds",
                 "risk_score_ids",
                 "risk_score_limit",
             },

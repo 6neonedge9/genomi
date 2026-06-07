@@ -1,5 +1,5 @@
 // AUTO-GENERATED chunk 1/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: 0728d7215c8110f4c65f555e2808da7e7d9fb1a07bb8b9181b6e7c767e0d7a9d
+// source-sha256: 5416a8084928bbd197613d52f9f9ba867cc28cb6933cd72f4fc6972d5cf49f6b
 // All evidence comes from the decode pipeline via window.__GENOMI_DASHBOARD__.
 // Anything below this line is presentation/layout only — no genome data is
 // prefilled in the template.
@@ -16,6 +16,8 @@ const PRS_DATA = Array.isArray(EV.risk) ? EV.risk : null;
 const ANCESTRY_DATA = EV.ancestry || null;
 const NUTRI_DATA = Array.isArray(EV.nutrigenomics) ? EV.nutrigenomics : null;
 const VARIANTS_ALL_DATA = Array.isArray(EV.variants_all) ? EV.variants_all : null;
+const DASHBOARD_META = EV.__dashboard || {};
+const UNAVAILABLE_PANELS = Array.isArray(DASHBOARD_META.unavailablePanels) ? DASHBOARD_META.unavailablePanels : [];
 const PGX_IMPACT_COLORS = {
   normal: '#10b981',
   moderate: '#f59e0b',
@@ -46,15 +48,7 @@ function prsLevel(p) {
     color: '#10b981'
   };
 }
-const RENDERED_AT = EV.__renderedAt || '';
-const PANEL_OPS = {
-  overview: 'active_genome_index.summarize',
-  variants: 'clinvar.scan_candidates',
-  pgx: 'pharmacogenomics.run_pharmcat',
-  risk: 'prs.calculate_score',
-  ancestry: 'ancestry.estimate_population_context',
-  nutrigenomics: 'nutrigenomics.retrieve_domain_markers'
-};
+const RENDERED_AT = DASHBOARD_META.renderedAt || '';
 const NAV_ITEMS = [{
   id: 'overview',
   label: 'Overview',
@@ -93,8 +87,8 @@ const NAV_ITEMS = [{
   panel: 'nutrigenomics'
 }];
 
-// Keep ungathered panels navigable so their EmptyPanel placeholders make
-// the dashboard state explicit after partial renders or cleared updates.
+// Keep unavailable panels navigable so partial renders and cleared updates
+// stay visible inside the dashboard.
 const AVAILABLE_NAV = NAV_ITEMS;
 const ACCENT_MAP = {
   green: {
@@ -114,10 +108,45 @@ const ACCENT_MAP = {
     glow: '#f59e0b20'
   }
 };
+function unavailablePanel(panel) {
+  return UNAVAILABLE_PANELS.find(item => item && item.panel === panel) || null;
+}
+function unavailableLabel(state) {
+  const labels = {
+    not_selected: 'Not selected',
+    blocked_position_aware_export: 'Export required',
+    missing_scores: 'Scores unavailable',
+    insufficient_overlap: 'Insufficient overlap',
+    blocked_setup: 'Setup required',
+    source_unavailable: 'Source unavailable',
+    out_of_scope: 'Out of scope',
+    checked_empty: 'No records rendered',
+    no_pharmcat_results: 'No PharmCAT results',
+    no_renderable_evidence: 'No renderable evidence'
+  };
+  return labels[state] || labels.no_renderable_evidence;
+}
+function unavailableMessage(item) {
+  const state = item && item.state;
+  const messages = {
+    not_selected: 'This category was not included in this dashboard render.',
+    blocked_position_aware_export: 'Pharmacogenomics was checked, but broad PharmCAT rendering requires a position-aware Active Genome Index export that preserves reference and no-call loci.',
+    missing_scores: 'Risk scores were checked, but no imported PGS Catalog scores were available for this dashboard.',
+    insufficient_overlap: 'Ancestry context was checked, but marker overlap was too low to render reference-neighbor context.',
+    blocked_setup: 'This category needs required setup before it can render evidence.',
+    source_unavailable: 'The source needed for this category was unavailable during the dashboard build.',
+    out_of_scope: 'This genome input is outside the supported scope for this category.',
+    checked_empty: 'Genomi checked this category and found no renderable records in the consulted scope.',
+    no_pharmcat_results: 'Pharmacogenomics was checked, but no renderable PharmCAT results were available for this dashboard.',
+    no_renderable_evidence: 'This category has no renderable evidence in this dashboard.'
+  };
+  return messages[state] || messages.no_renderable_evidence;
+}
 function EmptyPanel({
   title,
-  op
+  panel
 }) {
+  const unavailable = unavailablePanel(panel);
   return /*#__PURE__*/React.createElement("div", {
     className: "view-content"
   }, /*#__PURE__*/React.createElement("div", {
@@ -126,13 +155,13 @@ function EmptyPanel({
     className: "view-title"
   }, title), /*#__PURE__*/React.createElement("p", {
     className: "view-subtitle"
-  }, "No evidence rendered for this panel yet."))), /*#__PURE__*/React.createElement("div", {
+  }, unavailableLabel(unavailable && unavailable.state)))), /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "card-header"
   }, /*#__PURE__*/React.createElement("span", null, title)), /*#__PURE__*/React.createElement("div", {
     className: "empty-body"
-  }, "Not gathered yet. Ask the agent to run the matching ", /*#__PURE__*/React.createElement("code", null, "genomi.invoke"), " op", op ? /*#__PURE__*/React.createElement(React.Fragment, null, " \u2014 ", /*#__PURE__*/React.createElement("code", null, op)) : null, ".")));
+  }, unavailableMessage(unavailable))));
 }
 function HighlightCard({
   title,
@@ -155,7 +184,7 @@ function OverviewView({
 }) {
   if (!GENOME_SUMMARY) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Overview",
-    op: PANEL_OPS.overview
+    panel: "overview"
   });
   const gs = GENOME_SUMMARY;
   const variantCount = gs.variantCount != null ? Number(gs.variantCount).toLocaleString() : '-';
@@ -731,7 +760,7 @@ function VariantsView() {
   const hasAll = VARIANTS_ALL_DATA && VARIANTS_ALL_DATA.length > 0;
   if (!hasPlp && !hasAll) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Variants",
-    op: PANEL_OPS.variants
+    panel: "variants"
   });
   const [search, setSearch] = React.useState('');
   const [sigFilter, setSigFilter] = React.useState('all');
@@ -869,32 +898,3 @@ function VariantsView() {
       style: {
         color: '#555',
         fontSize: 11
-      }
-    }, v.evidenceQuality || ''));
-  }))), plpFiltered.length === 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: 24,
-      textAlign: 'center',
-      color: '#444'
-    }
-  }, "No P/LP variants match your search."))), hasAll && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      fontWeight: 700,
-      color: 'var(--text4)',
-      textTransform: 'uppercase',
-      letterSpacing: '0.08em'
-    }
-  }, "All ClinVar Variants"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 4
-    }
-  }, SIG_TABS.map(([key, label]) => /*#__PURE__*/React.createElement("button", {

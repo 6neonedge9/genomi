@@ -26,11 +26,9 @@ _DECODE_AGI_PANEL_OPERATIONS = {
     "prs.calculate_score",
 }
 _DECODE_BUILD_PARAM_KEYS = {
-    "include_pgx",
     "nutrigenomics_domain_ids",
     "output",
     "panels",
-    "pgx_timeout_seconds",
     "risk_score_ids",
     "risk_score_limit",
 }
@@ -262,6 +260,8 @@ def _decode_render_dashboard(params: JsonObject) -> JsonObject:
             mode="full",
             output=output,
             variants_all_source=variants_all_source,
+            panel_states=build_result.get("panel_states", []),
+            panels_requested=build_result.get("panels_requested", []),
         )
     except decode_dashboard.DashboardRenderError as exc:
         raise OperationError(exc.code, exc.message) from exc

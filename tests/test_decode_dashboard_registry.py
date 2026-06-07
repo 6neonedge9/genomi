@@ -122,15 +122,22 @@ class RegistryGatingTests(unittest.TestCase):
                     "status": "completed",
                     "render_params": {"evidence": {"overview": {"sampleId": "ACTIVE", "variantCount": 1}}},
                     "panels_ready": ["overview"],
-                    "panels_empty": [],
-                    "panels_blocked": [],
-                    "panel_states": [{"panel": "overview", "status": "data_returned"}],
+                    "panels_empty": ["pgx"],
+                    "panels_blocked": ["pgx"],
+                    "panels_requested": ["overview", "pgx"],
+                    "panel_states": [
+                        {"panel": "overview", "status": "data_returned"},
+                        {"panel": "pgx", "status": "position_aware_pharmcat_export_required"},
+                    ],
                 }
                 with mock.patch(_DECODE_BUILDER_PATCH, return_value=built):
                     result = call_operation("decode.render_dashboard", {"output": str(out)})
                 self.assertEqual(result["status"], "completed")
                 self.assertTrue(out.is_file())
                 self.assertIn("evidence_envelope", result)
+                parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+                self.assertEqual(parsed["__dashboard"]["panelStates"][1]["panel"], "pgx")
+                self.assertEqual(parsed["__dashboard"]["panelsRequested"], ["overview", "pgx"])
             finally:
                 os.chdir(previous)
 

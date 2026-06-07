@@ -85,8 +85,8 @@ typed empty risk state so stale risk evidence is cleared rather than preserved.
 The renderer's response is the source of truth:
 
 - `panels_rendered`: panels that landed with real data.
-- `panels_empty`: panels with no usable evidence — they render as the
-  "Not gathered yet" placeholder in the UI.
+- `panels_empty`: panels with no usable evidence — they render as
+  category-specific unavailable states in the UI.
 
 Read `panels_empty` and any `evidence_build.panel_states` before telling the
 user the dashboard is ready. Surface incomplete categories honestly with their
@@ -96,7 +96,7 @@ typed state.
 
 Call `decode.render_dashboard` again to refresh the dashboard after installing
 libraries or changing category selections. Panels without usable evidence render
-as empty cards with a "Not gathered yet" placeholder.
+as category-specific unavailable states.
 
 ## Output location
 

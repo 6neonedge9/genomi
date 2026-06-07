@@ -11,6 +11,8 @@
     const ANCESTRY_DATA = EV.ancestry || null;
     const NUTRI_DATA = Array.isArray(EV.nutrigenomics) ? EV.nutrigenomics : null;
     const VARIANTS_ALL_DATA = Array.isArray(EV.variants_all) ? EV.variants_all : null;
+    const DASHBOARD_META = EV.__dashboard || {};
+    const UNAVAILABLE_PANELS = Array.isArray(DASHBOARD_META.unavailablePanels) ? DASHBOARD_META.unavailablePanels : [];
 
     const PGX_IMPACT_COLORS = { normal: '#10b981', moderate: '#f59e0b', reduced: '#f59e0b', increased: '#f59e0b', elevated: '#ef4444', poor: '#ef4444' };
     function prsLevel(p) {
@@ -20,16 +22,7 @@
       if (p >= 40) return { label: 'Average', color: '#aaaaaa' };
       return { label: 'Below Avg', color: '#10b981' };
     }
-    const RENDERED_AT = EV.__renderedAt || '';
-
-    const PANEL_OPS = {
-      overview: 'active_genome_index.summarize',
-      variants: 'clinvar.scan_candidates',
-      pgx: 'pharmacogenomics.run_pharmcat',
-      risk: 'prs.calculate_score',
-      ancestry: 'ancestry.estimate_population_context',
-      nutrigenomics: 'nutrigenomics.retrieve_domain_markers',
-    };
+    const RENDERED_AT = DASHBOARD_META.renderedAt || '';
 
     const NAV_ITEMS = [
       { id: 'overview', label: 'Overview', icon: '◫', section: 'Dashboard', panel: 'overview' },
@@ -40,8 +33,8 @@
       { id: 'nutrigenomics', label: 'Nutrigenomics', icon: '◆', section: 'Genomics', panel: 'nutrigenomics' },
     ];
 
-    // Keep ungathered panels navigable so their EmptyPanel placeholders make
-    // the dashboard state explicit after partial renders or cleared updates.
+    // Keep unavailable panels navigable so partial renders and cleared updates
+    // stay visible inside the dashboard.
     const AVAILABLE_NAV = NAV_ITEMS;
 
     const ACCENT_MAP = {
@@ -51,20 +44,57 @@
       amber: { primary: '#f59e0b', glow: '#f59e0b20' },
     };
 
-    function EmptyPanel({ title, op }) {
+    function unavailablePanel(panel) {
+      return UNAVAILABLE_PANELS.find(item => item && item.panel === panel) || null;
+    }
+
+    function unavailableLabel(state) {
+      const labels = {
+        not_selected: 'Not selected',
+        blocked_position_aware_export: 'Export required',
+        missing_scores: 'Scores unavailable',
+        insufficient_overlap: 'Insufficient overlap',
+        blocked_setup: 'Setup required',
+        source_unavailable: 'Source unavailable',
+        out_of_scope: 'Out of scope',
+        checked_empty: 'No records rendered',
+        no_pharmcat_results: 'No PharmCAT results',
+        no_renderable_evidence: 'No renderable evidence',
+      };
+      return labels[state] || labels.no_renderable_evidence;
+    }
+
+    function unavailableMessage(item) {
+      const state = item && item.state;
+      const messages = {
+        not_selected: 'This category was not included in this dashboard render.',
+        blocked_position_aware_export: 'Pharmacogenomics was checked, but broad PharmCAT rendering requires a position-aware Active Genome Index export that preserves reference and no-call loci.',
+        missing_scores: 'Risk scores were checked, but no imported PGS Catalog scores were available for this dashboard.',
+        insufficient_overlap: 'Ancestry context was checked, but marker overlap was too low to render reference-neighbor context.',
+        blocked_setup: 'This category needs required setup before it can render evidence.',
+        source_unavailable: 'The source needed for this category was unavailable during the dashboard build.',
+        out_of_scope: 'This genome input is outside the supported scope for this category.',
+        checked_empty: 'Genomi checked this category and found no renderable records in the consulted scope.',
+        no_pharmcat_results: 'Pharmacogenomics was checked, but no renderable PharmCAT results were available for this dashboard.',
+        no_renderable_evidence: 'This category has no renderable evidence in this dashboard.',
+      };
+      return messages[state] || messages.no_renderable_evidence;
+    }
+
+    function EmptyPanel({ title, panel }) {
+      const unavailable = unavailablePanel(panel);
       return (
         <div className="view-content">
           <div className="view-header">
             <div>
               <h2 className="view-title">{title}</h2>
-              <p className="view-subtitle">No evidence rendered for this panel yet.</p>
+              <p className="view-subtitle">{unavailableLabel(unavailable && unavailable.state)}</p>
             </div>
           </div>
           <div className="card">
             <div className="card-header"><span>{title}</span></div>
             <div className="empty-body">
-              Not gathered yet. Ask the agent to run the matching <code>genomi.invoke</code> op
-              {op ? <> &mdash; <code>{op}</code></> : null}.
+              {unavailableMessage(unavailable)}
             </div>
           </div>
         </div>
@@ -86,7 +116,7 @@
     }
 
     function OverviewView({ onNav }) {
-      if (!GENOME_SUMMARY) return <EmptyPanel title="Overview" op={PANEL_OPS.overview} />;
+      if (!GENOME_SUMMARY) return <EmptyPanel title="Overview" panel="overview" />;
       const gs = GENOME_SUMMARY;
       const variantCount = gs.variantCount != null ? Number(gs.variantCount).toLocaleString() : '-';
       const variantCountLabel = gs.variantCountLabel || 'Variants Indexed';
@@ -349,7 +379,7 @@
     function VariantsView() {
       const hasPlp = VARIANTS_DATA && VARIANTS_DATA.length > 0;
       const hasAll = VARIANTS_ALL_DATA && VARIANTS_ALL_DATA.length > 0;
-      if (!hasPlp && !hasAll) return <EmptyPanel title="Variants" op={PANEL_OPS.variants} />;
+      if (!hasPlp && !hasAll) return <EmptyPanel title="Variants" panel="variants" />;
 
       const [search, setSearch] = React.useState('');
       const [sigFilter, setSigFilter] = React.useState('all');
@@ -491,7 +521,7 @@
     }
 
     function PharmacogenomicsView() {
-      if (!PGX_DATA) return <EmptyPanel title="Pharmacogenomics" op={PANEL_OPS.pgx} />;
+      if (!PGX_DATA) return <EmptyPanel title="Pharmacogenomics" panel="pgx" />;
       const impactColors = PGX_IMPACT_COLORS;
       return (
         <div className="view-content">
@@ -536,7 +566,7 @@
     }
 
     function RiskScoresView() {
-      if (!PRS_DATA) return <EmptyPanel title="Risk Scores" op={PANEL_OPS.risk} />;
+      if (!PRS_DATA) return <EmptyPanel title="Risk Scores" panel="risk" />;
       return (
         <div className="view-content">
           <div className="view-header">
@@ -602,7 +632,7 @@
     const SUPERPOP_COLORS = { EUR:'#3b82f6', AFR:'#10b981', AMR:'#f97316', EAS:'#f59e0b', SAS:'#8b5cf6' };
 
     function AncestryView() {
-      if (!ANCESTRY_DATA) return <EmptyPanel title="Ancestry" op={PANEL_OPS.ancestry} />;
+      if (!ANCESTRY_DATA) return <EmptyPanel title="Ancestry" panel="ancestry" />;
       const d = ANCESTRY_DATA;
       const neighbors = Array.isArray(d.neighbors) ? d.neighbors : [];
       const pts = Array.isArray(d.pcaPoints) ? d.pcaPoints : [];
@@ -705,7 +735,7 @@
     }
 
     function NutrigenomicsView() {
-      if (!NUTRI_DATA) return <EmptyPanel title="Nutrigenomics" op={PANEL_OPS.nutrigenomics} />;
+      if (!NUTRI_DATA) return <EmptyPanel title="Nutrigenomics" panel="nutrigenomics" />;
       const tierColors = { established: '#10b981', probable: '#f59e0b', emerging: '#8b5cf6' };
       return (
         <div className="view-content">

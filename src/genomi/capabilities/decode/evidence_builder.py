@@ -81,14 +81,8 @@ def build_dashboard_evidence(
                 _store_panel(evidence, panel_states, "variants_all", "clinvar.scan_candidates", clinvar_result)
 
     if "pgx" in panels:
-        if _bool_param(safe_params, "include_pgx", True):
-            pgx_params: JsonObject = {}
-            if safe_params.get("pgx_timeout_seconds") is not None:
-                pgx_params["timeout_seconds"] = int(safe_params["pgx_timeout_seconds"])
-            result = run("pharmacogenomics.run_pharmcat", pgx_params)
-            _store_panel(evidence, panel_states, "pgx", "pharmacogenomics.run_pharmcat", result)
-        else:
-            panel_states.append(_panel_state("pgx", None, "skipped_by_parameter"))
+        result = run("pharmacogenomics.run_pharmcat", {})
+        _store_panel(evidence, panel_states, "pgx", "pharmacogenomics.run_pharmcat", result)
 
     if "risk" in panels:
         risk_results = _build_risk_panel(
@@ -356,10 +350,6 @@ def _string_list(value: Any) -> list[str]:
         return []
     raw = value if isinstance(value, list) else [value]
     return [str(item) for item in raw if item not in (None, "")]
-
-
-def _bool_param(params: JsonObject, key: str, default: bool) -> bool:
-    return bool(params[key]) if key in params else default
 
 
 def _unique(values: list[str]) -> list[str]:

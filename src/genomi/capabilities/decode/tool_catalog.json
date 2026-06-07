@@ -32,17 +32,6 @@
             },
             "uniqueItems": true
           },
-          "include_pgx": {
-            "type": "boolean",
-            "default": true,
-            "description": "Whether to run pharmacogenomics.run_pharmcat for the PGx panel."
-          },
-          "pgx_timeout_seconds": {
-            "type": "integer",
-            "default": 7200,
-            "minimum": 1,
-            "description": "Timeout forwarded to pharmacogenomics.run_pharmcat when PGx gathering is enabled."
-          },
           "risk_score_ids": {
             "type": "array",
             "description": "Optional PGS IDs to score for the risk panel. Omitted means use imported local scores up to risk_score_limit.",
@@ -109,17 +98,6 @@
               "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics"]
             },
             "uniqueItems": true
-          },
-          "include_pgx": {
-            "type": "boolean",
-            "default": true,
-            "description": "Whether to run pharmacogenomics.run_pharmcat for the PGx panel."
-          },
-          "pgx_timeout_seconds": {
-            "type": "integer",
-            "default": 7200,
-            "minimum": 1,
-            "description": "Timeout forwarded to pharmacogenomics.run_pharmcat when PGx gathering is enabled."
           },
           "risk_score_ids": {
             "type": "array",

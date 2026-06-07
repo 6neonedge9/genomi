@@ -8,8 +8,8 @@ fully offline — no CDN and no in-browser Babel; the dashboard UI is authored i
 dashboard.compiled.*.js`` by ``scripts/build_dashboard.py``. (The only external
 reference left is an optional Google Fonts stylesheet, which falls back to
 system fonts offline and carries no genome data.) Components read evidence from
-``window.__GENOMI_DASHBOARD__`` and fall back to the "Not gathered yet"
-placeholder when a panel is missing.
+``window.__GENOMI_DASHBOARD__`` and fall back to category-specific unavailable
+states when a panel is missing.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from .panel_adapters import (
     normalize_pgx_panel,
     normalize_risk_panel,
 )
+from .panel_states import build_dashboard_metadata
 
 JsonObject = dict[str, Any]
 
@@ -524,11 +525,11 @@ _PANEL_NORMALIZERS: dict[str, Any] = {
 }
 
 # Canonical post-normalization schema each panel must satisfy. A panel the
-# agent never supplies (absent, or empty `{}`/`[]`/None) renders as the
-# "Not gathered yet" placeholder — that is a valid partial dashboard. But a
-# panel supplied with real content that fails this schema raises
-# `panel_schema_mismatch` instead of silently rendering blank, so a field that
-# didn't map surfaces as a loud error rather than a misleading empty stat.
+# agent never supplies (absent, or empty `{}`/`[]`/None) renders as an
+# unavailable category state — that is a valid partial dashboard. But a panel
+# supplied with real content that fails this schema raises `panel_schema_mismatch`
+# instead of silently rendering blank, so a field that didn't map surfaces as a
+# loud error rather than a misleading empty stat.
 #
 # Object panels require every listed field to be present after normalization.
 # List panels require a list whose every row is a non-empty object with at
@@ -868,6 +869,8 @@ def render_dashboard(
     output: str | Path,
     variants_all_source: str | Path | None = None,
     clear_panels: list[str] | None = None,
+    panel_states: list[JsonObject] | None = None,
+    panels_requested: list[str] | None = None,
 ) -> JsonObject:
     """Render or update the Genomi Dashboard artifact.
 
@@ -892,6 +895,11 @@ def render_dashboard(
         Optional explicit list of panel keys to remove from the rendered
         evidence. This is mainly for update mode, where omitted panels are
         otherwise preserved.
+    panel_states:
+        Optional builder-owned state records for panels that were attempted but
+        did not yield renderable rows.
+    panels_requested:
+        Optional list of categories selected for this render.
     """
 
     if mode not in {"full", "update"}:
@@ -925,13 +933,20 @@ def render_dashboard(
         cleared=cleared,
     )
 
-    merged["__renderedAt"] = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+    panels_rendered = [key for key in PANEL_KEYS if key in merged]
+    rendered_at = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+    merged["__dashboard"] = build_dashboard_metadata(
+        panel_states=panel_states,
+        panels_requested=panels_requested,
+        panels_rendered=panels_rendered,
+        panel_keys=PANEL_KEYS,
+        rendered_at=rendered_at,
+    )
 
     html = _render_html(merged)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
 
-    panels_rendered = [key for key in PANEL_KEYS if key in merged]
     panels_empty = [key for key in PANEL_KEYS if key not in merged]
     resolved_path = out_path.resolve()
     serve_dir = resolved_path.parent

@@ -1,5 +1,34 @@
 // AUTO-GENERATED chunk 2/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: 0728d7215c8110f4c65f555e2808da7e7d9fb1a07bb8b9181b6e7c767e0d7a9d
+// source-sha256: 5416a8084928bbd197613d52f9f9ba867cc28cb6933cd72f4fc6972d5cf49f6b
+      }
+    }, v.evidenceQuality || ''));
+  }))), plpFiltered.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 24,
+      textAlign: 'center',
+      color: '#444'
+    }
+  }, "No P/LP variants match your search."))), hasAll && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: 'var(--text4)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em'
+    }
+  }, "All ClinVar Variants"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4
+    }
+  }, SIG_TABS.map(([key, label]) => /*#__PURE__*/React.createElement("button", {
     key: key,
     onClick: () => setSigFilter(key),
     style: {
@@ -31,7 +60,7 @@
 function PharmacogenomicsView() {
   if (!PGX_DATA) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Pharmacogenomics",
-    op: PANEL_OPS.pgx
+    panel: "pgx"
   });
   const impactColors = PGX_IMPACT_COLORS;
   return /*#__PURE__*/React.createElement("div", {
@@ -109,7 +138,7 @@ function PharmacogenomicsView() {
 function RiskScoresView() {
   if (!PRS_DATA) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Risk Scores",
-    op: PANEL_OPS.risk
+    panel: "risk"
   });
   return /*#__PURE__*/React.createElement("div", {
     className: "view-content"
@@ -282,7 +311,7 @@ const SUPERPOP_COLORS = {
 function AncestryView() {
   if (!ANCESTRY_DATA) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Ancestry",
-    op: PANEL_OPS.ancestry
+    panel: "ancestry"
   });
   const d = ANCESTRY_DATA;
   const neighbors = Array.isArray(d.neighbors) ? d.neighbors : [];
@@ -507,7 +536,7 @@ function AncestryView() {
 function NutrigenomicsView() {
   if (!NUTRI_DATA) return /*#__PURE__*/React.createElement(EmptyPanel, {
     title: "Nutrigenomics",
-    op: PANEL_OPS.nutrigenomics
+    panel: "nutrigenomics"
   });
   const tierColors = {
     established: '#10b981',

@@ -96,23 +96,32 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertIn("--bind 127.0.0.1", serve["command"])
         self.assertIn(f"--directory {shlex.quote(str(out.parent.resolve()))}", serve["command"])
 
-    def test_render_full_empty_panel_placeholders(self) -> None:
+    def test_render_full_unavailable_panel_states(self) -> None:
         out = self.tmpdir / "dash.html"
         overview = {"sampleId": "HG-TEST-02", "variantCount": 4500000}
-        decode_dashboard.render_dashboard(
-            evidence={"overview": overview},
-            mode="full",
-            output=out,
-        )
-        html = out.read_text(encoding="utf-8")
-        # The placeholder string ("Not gathered yet") is in the inlined script
-        # exactly once, used by the EmptyPanel component for the missing panels.
-        self.assertIn("Not gathered yet", html)
         result = decode_dashboard.render_dashboard(
             evidence={"overview": overview},
             mode="full",
             output=out,
+            panel_states=[
+                {"panel": "overview", "status": "data_returned"},
+                {"panel": "pgx", "status": "position_aware_pharmcat_export_required"},
+            ],
+            panels_requested=["overview", "pgx"],
         )
+        html = out.read_text(encoding="utf-8")
+        parsed = _extract_evidence(html)
+        dashboard_meta = parsed["__dashboard"]
+        self.assertEqual(dashboard_meta["panelStates"][1]["panel"], "pgx")
+        self.assertEqual(dashboard_meta["panelStates"][1]["status"], "position_aware_pharmcat_export_required")
+        self.assertEqual(dashboard_meta["panelsRequested"], ["overview", "pgx"])
+        pgx_unavailable = next(item for item in dashboard_meta["unavailablePanels"] if item["panel"] == "pgx")
+        self.assertEqual(pgx_unavailable["state"], "blocked_position_aware_export")
+        self.assertEqual(pgx_unavailable["source_status"], "position_aware_pharmcat_export_required")
+        self.assertIn("position-aware Active Genome Index export", html)
+        self.assertNotIn("Ask the agent to run", html)
+        self.assertNotIn("genomi.invoke", html)
+        self.assertNotIn("Not gathered yet", html)
         self.assertEqual(set(result["panels_empty"]), {
             "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics",
         })

@@ -86,7 +86,7 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
             raise AssertionError(f"unexpected operation {operation}")
 
         result = evidence_builder.build_dashboard_evidence(
-            params={"pgx_timeout_seconds": 30, "risk_score_limit": 1},
+            params={"risk_score_limit": 1},
             run_operation=run,
         )
 
@@ -97,7 +97,7 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
         self.assertIn("pgx", result["panels_empty"])
         self.assertIn("pgx", result["panels_blocked"])
         self.assertEqual(result["render_params"]["evidence"]["risk"][0]["polygenic_score"]["pgs_id"], "PGS000001")
-        self.assertIn(("pharmacogenomics.run_pharmcat", {"timeout_seconds": 30}), calls)
+        self.assertIn(("pharmacogenomics.run_pharmcat", {}), calls)
         self.assertIn(("prs.calculate_score", {"pgs_id": "PGS000001"}), calls)
 
     def test_overview_prefers_active_intake_format_over_derived_vcf_metadata(self) -> None:
@@ -279,7 +279,11 @@ class DecodeRenderAutoBuildTests(unittest.TestCase):
                     "panels_ready": ["overview"],
                     "panels_empty": ["variants"],
                     "panels_blocked": [],
-                    "panel_states": [{"panel": "overview", "status": "data_returned"}],
+                    "panels_requested": ["overview", "pgx"],
+                    "panel_states": [
+                        {"panel": "overview", "status": "data_returned"},
+                        {"panel": "pgx", "status": "position_aware_pharmcat_export_required"},
+                    ],
                 }
                 with mock.patch(_DECODE_BUILDER_PATCH, return_value=built) as build:
                     result = call_operation(
@@ -289,7 +293,10 @@ class DecodeRenderAutoBuildTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "completed")
                 self.assertEqual(result["evidence_build"]["panels_ready"], ["overview"])
-                self.assertEqual(_extract_evidence(out.read_text(encoding="utf-8"))["overview"]["sampleId"], "BUILT")
+                parsed = _extract_evidence(out.read_text(encoding="utf-8"))
+                self.assertEqual(parsed["overview"]["sampleId"], "BUILT")
+                self.assertEqual(parsed["__dashboard"]["panelStates"][1]["panel"], "pgx")
+                self.assertEqual(parsed["__dashboard"]["panelsRequested"], ["overview", "pgx"])
                 build.assert_called_once()
                 self.assertEqual(build.call_args.kwargs["params"], {"output": str(out), "panels": ["overview"]})
             finally:
