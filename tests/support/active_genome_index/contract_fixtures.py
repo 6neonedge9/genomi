@@ -422,6 +422,11 @@ class ActiveGenomeIndexContractFixtureMixin:
         rows = [
             "##fileformat=VCFv4.2",
             '##FILTER=<ID=PASS,Description="All filters passed">',
+            # bcftools writes VCF-spec-valid backslash-escaped quotes into FILTER
+            # descriptions; real consumer/WGS headers carry them. Keep one here so
+            # the supported-source matrix exercises header escaping end to end and
+            # strict downstream parsers (PharmCAT) are fed realistic metadata.
+            '##FILTER=<ID=LowDP,Description="Set if true: (CHROM=\\"X\\" && FORMAT/DP<6) || (CHROM=\\"Y\\" && FORMAT/DP<6)">',
             "##source=loimpute",
             "##reference=b37_g1k",
             "##generatedby=Gencove",

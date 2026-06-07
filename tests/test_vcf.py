@@ -923,6 +923,48 @@ class IndexTests(unittest.TestCase):
             records = [line for line in text.splitlines() if not line.startswith("#")]
             self.assertEqual(records, ["1\t10250\trs199706086\tA\tC\t123.38\tPASS\t.\tGT\t0/1"])
 
+    def test_backslash_escaped_header_is_supported_end_to_end(self) -> None:
+        # Backslash-escaped quotes in FILTER/INFO descriptions are valid VCF spec.
+        # Genomi must support them throughout its own pipeline: parse, store in the
+        # AGI header, query, default-export spec-faithfully, and re-parse — all
+        # without mangling the escape. (Only the PharmCAT-bound export strips them,
+        # because PharmCAT's parser is non-compliant.)
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf_path = Path(tmp) / "escaped.vcf"
+            agi_path = Path(tmp) / "escaped.sqlite"
+            exported = Path(tmp) / "exported.vcf"
+            reparsed = Path(tmp) / "reparsed.sqlite"
+            filter_line = '##FILTER=<ID=LowDP,Description="Set if true: (CHROM=\\"X\\" && DP<6)">'
+            vcf_path.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        "##contig=<ID=1,length=248956422>",
+                        filter_line,
+                        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE1",
+                        "1\t10250\trs199706086\tA\tC\t123.38\tPASS\t.\tGT\t0/1",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            create_active_genome_index(vcf_path, agi_path)
+
+            # The AGI preserves the escaped header line verbatim.
+            with connect_existing(agi_path) as connection:
+                stored_header = read_header_from_active_genome_index(connection)
+            self.assertIn(filter_line, stored_header.meta)
+
+            # Default export reproduces the escape, and re-parsing it succeeds.
+            export_variants(agi_path, exported, pass_only=True)
+            self.assertIn(filter_line, exported.read_text(encoding="utf-8").splitlines())
+            create_active_genome_index(exported, reparsed)
+            with connect_existing(reparsed) as connection:
+                roundtrip_header = read_header_from_active_genome_index(connection)
+            self.assertIn(filter_line, roundtrip_header.meta)
+
     def test_export_variants_deduplicates_multi_sample_index_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "multi.vcf"

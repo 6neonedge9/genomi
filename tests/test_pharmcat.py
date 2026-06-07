@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,39 @@ from genomi.capabilities.pharmacogenomics.pharmcat import (
 )
 from genomi.operations import call_operation, list_operations
 from genomi.runtime import context as runtime_context
+
+
+def _escaped_header_vcf_text() -> str:
+    """A GRCh38 VCF carrying a bcftools-style FILTER description with
+    backslash-escaped quotes (CHROM=\\"X\\") — the exact metadata shape that
+    crashes PharmCAT's parser. Includes a real CYP2C19 PGx position so the
+    matcher has something to call.
+    """
+    return (
+        "##fileformat=VCFv4.2\n"
+        "##reference=GRCh38\n"
+        '##FILTER=<ID=PASS,Description="All filters passed">\n'
+        '##FILTER=<ID=LowDP,Description="Set if true: (CHROM=\\"X\\" && FORMAT/DP<6) || (CHROM=\\"Y\\" && FORMAT/DP<6)">\n'
+        "##contig=<ID=chr10,length=133797422>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE\n"
+        "chr10\t94761900\trs4244285\tG\tA\t.\tPASS\t.\tGT\t0/1\n"
+    )
+
+
+def _resolve_real_pharmcat_jar() -> str | None:
+    candidates: list[Path] = []
+    env_jar = os.environ.get("PHARMCAT_JAR")
+    if env_jar:
+        candidates.append(Path(env_jar).expanduser())
+    candidates.append(Path.home() / ".genomi" / "tools" / "pharmcat" / "pharmcat.jar")
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+_REAL_PHARMCAT_JAR = _resolve_real_pharmcat_jar()
 
 
 class PharmCATIntegrationTests(unittest.TestCase):
@@ -240,6 +274,46 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertIn("missing PGx positions", result["interpretation_readiness"]["requires_before_personal_actionability"][1])
         self.assertEqual(result["interpretation_readiness"]["personal_statement_support"], "pharmcat_report_available")
         self.assertEqual(runner.call_count, 2)
+
+    def test_run_hands_pharmcat_a_backslash_free_header(self) -> None:
+        # PharmCAT's parser rejects any backslash in ## metadata, so run_pharmcat
+        # must export a sanitized input. Build an AGI from a bcftools-style header
+        # with escaped quotes and assert the VCF actually passed to the matcher
+        # carries no backslash (and keeps the bare-quote form). Runs without the
+        # real jar by inspecting the file inside the mocked subprocess.
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "escaped.vcf"
+            vcf.write_text(_escaped_header_vcf_text(), encoding="utf-8")
+            agi_path = self._build_agi(vcf)
+            output = Path(tmp) / "pharmcat"
+            seen: dict[str, str] = {}
+
+            def fake_run(command, **_kwargs):
+                if "--version" in command:
+                    return subprocess.CompletedProcess(command, 0, "PharmCAT 3.2.0", "")
+                # Input is positional (pipeline mode) or after -vcf (jar mode).
+                vcf_in = Path(next(arg for arg in command if str(arg).endswith(".pharmcat-input.vcf")))
+                header = [line for line in vcf_in.read_text(encoding="utf-8").splitlines() if line.startswith("##")]
+                seen["header"] = "\n".join(header)
+                out_dir = Path(command[command.index("-o") + 1])
+                base = command[command.index("-bf") + 1]
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / f"{base}.report.tsv").write_text(
+                    "Gene\tSource Diplotype\tPhenotype\tActivity Score\n", encoding="utf-8"
+                )
+                return subprocess.CompletedProcess(command, 0, "saved report", "")
+
+            with (
+                patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"),
+                patch("genomi.capabilities.pharmacogenomics.pharmcat.subprocess.run", side_effect=fake_run),
+            ):
+                result = run_pharmcat(agi_path=agi_path, output_dir=output, base_filename="escaped", timeout_seconds=30)
+
+        self.assertEqual(result["status"], "completed", result)
+        # The source header carried backslash escapes; the matcher input must not.
+        self.assertIn("LowDP", seen["header"])
+        self.assertNotIn("\\", seen["header"])
+        self.assertIn('CHROM="X"', seen["header"])
 
     def test_preflight_is_read_only_and_hides_source_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -816,6 +890,68 @@ class PharmCATIntegrationTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "active_genome_index_input_unavailable")
         self.assertEqual(Path(preflight.call_args.args[0]), index)
+
+
+@unittest.skipUnless(
+    _REAL_PHARMCAT_JAR and shutil.which("java"),
+    "real PharmCAT jar integration requires a managed pharmcat.jar (or PHARMCAT_JAR) and java",
+)
+class RealPharmCATJarTests(unittest.TestCase):
+    """Run the genuine PharmCAT jar against a realistic escaped-quote header.
+
+    This is the only coverage that exercises the actual failure mode: a real
+    consumer/WGS header with bcftools backslash escapes parsed by PharmCAT's own
+    Java parser. A regression in header sanitization fails here with PharmCAT's
+    "character to be escaped is missing" parse error.
+    """
+
+    def setUp(self) -> None:
+        self._home_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home_tmp.cleanup)
+        self._env = patch.dict(
+            os.environ,
+            {
+                "GENOMI_HOME": str(Path(self._home_tmp.name) / "genomi-home"),
+                "GENOMI_CONTEXT": "",
+                "GENOMI_SESSION_ID": "",
+                "GENOMI_MCP_BACKGROUND": "0",
+                **{name: "" for name in runtime_context.AGENT_SESSION_ENVS},
+            },
+        )
+        self._env.start()
+        self.addCleanup(self._env.stop)
+
+    def test_real_jar_parses_escaped_quote_header(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "escaped.vcf"
+            vcf.write_text(_escaped_header_vcf_text(), encoding="utf-8")
+            parsed = call_operation("genomi.parse_source", {"source": str(vcf)})
+            agi_path = Path(parsed["outputs"]["agi_path"])
+            output = Path(tmp) / "pharmcat"
+
+            result = run_pharmcat(
+                agi_path=agi_path,
+                output_dir=output,
+                base_filename="escaped",
+                mode="jar",
+                pharmcat_jar=_REAL_PHARMCAT_JAR,
+                timeout_seconds=600,
+            )
+
+            # The matcher input must be backslash-free, and PharmCAT must get past
+            # metadata parsing — i.e. NOT the "character to be escaped" crash.
+            input_header = [
+                line
+                for line in (output / "escaped.pharmcat-input.vcf").read_text(encoding="utf-8").splitlines()
+                if line.startswith("##")
+            ]
+            self.assertNotIn("\\", "\n".join(input_header))
+
+        stderr_tail = (result.get("execution") or {}).get("stderr_tail") or ""
+        self.assertNotIn("character to be escaped", stderr_tail)
+        self.assertEqual(result["status"], "completed", result)
+        self.assertEqual(result["execution"]["returncode"], 0, result)
+        self.assertTrue(result["interpretation_readiness"]["has_report_artifact"], result)
 
 
 if __name__ == "__main__":
