@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 
 from ....active_genome_index.export import export_variants
-from ....active_genome_index.active_genome_index import ActiveGenomeIndexNeed, open_reader
 from ....runtime.libraries import manager as library_manager
 from .. import pgx_outside_calls
 from ._common import (
@@ -613,10 +612,6 @@ def _prepare_pharmcat_input(
                 }
             ],
         }
-    readiness = _pharmcat_agi_export_readiness(resolved_agi_path)
-    if readiness.get("status") != "available":
-        return readiness
-
     if dry_run:
         return {
             "status": "planned",
@@ -628,6 +623,7 @@ def _prepare_pharmcat_input(
             "would_apply": {
                 "chrom_style": "chr",
                 "pass_only": True,
+                "variants_only": False,
                 "primary_contigs_only": True,
             },
         }
@@ -639,6 +635,7 @@ def _prepare_pharmcat_input(
             resolved_agi_path,
             normalized_path,
             pass_only=True,
+            variants_only=False,
             primary_contigs_only=True,
             chrom_style="chr",
         )
@@ -681,13 +678,15 @@ def _prepare_pharmcat_input(
         "filters_applied": {
             "chrom_style": "chr",
             "pass_only": True,
+            "variants_only": False,
             "primary_contigs_only": True,
         },
         "candidate_records": export.get("candidate_records"),
         "exported_records": export.get("exported_records"),
         "reason": (
             "Wrote the PharmCAT matcher input from the Active Genome Index with "
-            "chr-prefixed chromosomes, PASS-only records, and canonical primary contigs."
+            "chr-prefixed chromosomes, PASS-only records, canonical primary contigs, "
+            "and variant, reference, and no-call AGI rows preserved."
         ),
     }
 
@@ -697,39 +696,6 @@ def _surface_pharmcat_input(pharmcat_input: JsonObject) -> JsonObject:
     if surfaced.get("path_hidden"):
         surfaced["input_path"] = "[derived_pharmcat_input]"
     return surfaced
-
-
-def _pharmcat_agi_export_readiness(agi_path: Path) -> JsonObject:
-    try:
-        summary = open_reader(agi_path, need=ActiveGenomeIndexNeed.NONE).summary()
-    except (OSError, ValueError, sqlite_error_cls()) as exc:
-        return {
-            "status": "active_genome_index_input_unavailable",
-            "remediated": False,
-            "method": "active_genome_index_export",
-            "path_hidden": True,
-            "reason": f"Active Genome Index readiness could not be read for PharmCAT export: {exc}",
-        }
-    stats = summary.get("stats") if isinstance(summary.get("stats"), dict) else {}
-    reference_records = int(stats.get("reference_records") or 0)
-    no_call_records = int(stats.get("no_call_records") or stats.get("array_no_call_records") or 0)
-    if reference_records or no_call_records:
-        return {
-            "status": "position_aware_pharmcat_export_required",
-            "remediated": False,
-            "method": "active_genome_index_export",
-            "path_hidden": True,
-            "reference_records": reference_records,
-            "no_call_records": no_call_records,
-            "reason": (
-                "Broad PharmCAT calling is blocked because the current PharmCAT export writes variant calls only. "
-                "This Active Genome Index contains callable reference or no-call rows that broad PGx calling must not discard."
-            ),
-            "warnings": [
-                "Use targeted PGx evidence until Genomi has a PharmCAT position-aware AGI export that preserves reference and no-call loci."
-            ],
-        }
-    return {"status": "available"}
 
 
 def _base_result(

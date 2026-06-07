@@ -746,7 +746,7 @@ class PharmCATIntegrationTests(unittest.TestCase):
         self.assertEqual(result["pharmcat_input"]["method"], "active_genome_index_export")
         self.assertTrue(result["input"]["hidden_agi_path"])
 
-    def test_run_pharmcat_blocks_variant_only_export_when_agi_has_reference_or_no_call_rows(self) -> None:
+    def test_run_pharmcat_plans_position_aware_export_when_agi_has_reference_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf = Path(tmp) / "sample.g.vcf"
             vcf.write_text(
@@ -761,11 +761,11 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, dry_run=True)
 
-        self.assertEqual(result["status"], "position_aware_pharmcat_export_required")
-        self.assertEqual(result["pharmcat_input"]["status"], "position_aware_pharmcat_export_required")
-        self.assertGreater(result["pharmcat_input"]["reference_records"], 0)
+        self.assertEqual(result["status"], "planned")
+        self.assertEqual(result["pharmcat_input"]["status"], "planned")
+        self.assertFalse(result["pharmcat_input"]["would_apply"]["variants_only"])
 
-    def test_run_pharmcat_blocks_variant_only_export_when_agi_has_no_call_rows(self) -> None:
+    def test_run_pharmcat_plans_position_aware_export_when_agi_has_no_call_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf = Path(tmp) / "sample.vcf"
             vcf.write_text(
@@ -781,9 +781,9 @@ class PharmCATIntegrationTests(unittest.TestCase):
             with patch("genomi.capabilities.pharmacogenomics.pharmcat.shutil.which", return_value="/usr/local/bin/pharmcat_pipeline"):
                 result = run_pharmcat(agi_path=agi_path, dry_run=True)
 
-        self.assertEqual(result["status"], "position_aware_pharmcat_export_required")
-        self.assertEqual(result["pharmcat_input"]["reference_records"], 0)
-        self.assertEqual(result["pharmcat_input"]["no_call_records"], 1)
+        self.assertEqual(result["status"], "planned")
+        self.assertEqual(result["pharmcat_input"]["status"], "planned")
+        self.assertFalse(result["pharmcat_input"]["would_apply"]["variants_only"])
 
     def test_run_pharmcat_preflights_explicit_agi_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,6 +28,7 @@ def export_variants(
     output_path: str | Path,
     *,
     pass_only: bool = True,
+    variants_only: bool = True,
     primary_contigs_only: bool = False,
     contigs: list[str] | None = None,
     chrom_style: str = "input",
@@ -45,7 +46,7 @@ def export_variants(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     selected_contigs = _selected_contigs(primary_contigs_only=primary_contigs_only, contigs=contigs)
-    where, params = _where_clause(pass_only=pass_only, contigs=selected_contigs)
+    where, params = _where_clause(pass_only=pass_only, variants_only=variants_only, contigs=selected_contigs)
     # Synthesize VCF records from the structured index columns — no reopening
     # of the canonical bgzip. Multi-sample lines are reconstructed by grouping
     # the per-(offset, sample_index) rows back together in column order.
@@ -76,7 +77,7 @@ def export_variants(
     if max_records is not None:
         select_params.append(max_records)
     filters = {
-        "variants_only": True,
+        "variants_only": variants_only,
         "pass_only": pass_only,
         "primary_contigs_only": primary_contigs_only,
         "contigs": selected_contigs,
@@ -163,8 +164,8 @@ def _selected_contigs(*, primary_contigs_only: bool, contigs: list[str] | None) 
     return selected
 
 
-def _where_clause(*, pass_only: bool, contigs: list[str] | None) -> tuple[str, tuple[Any, ...]]:
-    clauses = ["is_variant = 1"]
+def _where_clause(*, pass_only: bool, variants_only: bool, contigs: list[str] | None) -> tuple[str, tuple[Any, ...]]:
+    clauses = ["is_variant = 1"] if variants_only else ["1 = 1"]
     params: list[Any] = []
     if pass_only:
         clauses.append(passing_filter_sql())

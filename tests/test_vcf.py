@@ -782,6 +782,33 @@ class IndexTests(unittest.TestCase):
             self.assertEqual(cached["status"], "cached")
             self.assertEqual(cached["exported_records"], 2)
 
+    def test_export_variants_can_preserve_reference_and_no_call_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf_path = Path(tmp) / "pharmcat-source.vcf"
+            agi_path = Path(tmp) / "pharmcat-source.sqlite"
+            output_path = Path(tmp) / "pharmcat-input.vcf"
+            vcf_path.write_text(
+                "\n".join(
+                    [
+                        "##fileformat=VCFv4.2",
+                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE",
+                        "1\t1\trs1\tA\tG\t.\tPASS\t.\tGT\t0/1",
+                        "1\t2\t.\tC\t.\t.\tPASS\tEND=2\tGT\t0/0",
+                        "1\t3\trs3\tT\tC\t.\tPASS\t.\tGT\t./.",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            create_active_genome_index(vcf_path, agi_path)
+
+            result = export_variants(agi_path, output_path, variants_only=False, pass_only=True)
+
+            records = [line.split("\t") for line in output_path.read_text(encoding="utf-8").splitlines() if not line.startswith("#")]
+            self.assertEqual(result["exported_records"], 3)
+            self.assertEqual([row[1] for row in records], ["1", "2", "3"])
+            self.assertEqual([row[9] for row in records], ["0/1", "0/0", "./."])
+
     def test_unfiltered_dot_variant_is_passing_for_reader_and_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vcf_path = Path(tmp) / "dot-filter.vcf"
