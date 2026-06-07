@@ -37,7 +37,6 @@ NAV_LABELS = (
     "Risk Scores",
     "Ancestry",
     "Nutrigenomics",
-    "Journal",
 )
 
 
@@ -115,7 +114,7 @@ class RenderDashboardTests(unittest.TestCase):
             output=out,
         )
         self.assertEqual(set(result["panels_empty"]), {
-            "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal",
+            "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics",
         })
         self.assertEqual(result["panels_rendered"], ["overview"])
 
@@ -516,9 +515,6 @@ class RenderDashboardTests(unittest.TestCase):
                     "neighbors": [{"population": "EUR", "similarity": 0.9}],
                     "pcaPoints": [{"x": 1, "y": 2, "cluster": "sample"}],
                 },
-                "journal": [
-                    {"kind": "observation", "title": "First note", "ts": "2026-05-24"},
-                ],
             },
             mode="full",
             output=out,
@@ -528,7 +524,6 @@ class RenderDashboardTests(unittest.TestCase):
         self.assertIn("Top Variants", html)
         self.assertIn("Pharmacogenomics", html)
         self.assertIn("Ancestry", html)
-        self.assertIn("Journal", html)
 
     def test_source_coverage_uses_canonical_name_and_state_keys(self) -> None:
         out = self.tmpdir / "dash.html"

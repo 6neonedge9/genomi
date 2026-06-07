@@ -45,7 +45,6 @@ NAV_LABELS = (
     "Risk Scores",
     "Ancestry",
     "Nutrigenomics",
-    "Journal",
 )
 
 

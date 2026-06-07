@@ -117,18 +117,6 @@ def build_dashboard_evidence(
         )
         _store_panel(evidence, panel_states, "nutrigenomics", "nutrigenomics.retrieve_domain_markers", result)
 
-    if "journal" in panels:
-        result = run("journal.search_entries", {"limit": int(safe_params.get("journal_limit") or 8)})
-        evidence["journal"] = result
-        panel_states.append(
-            _panel_state(
-                "journal",
-                "journal.search_entries",
-                "data_returned" if result.get("entries") else "in_scope_empty",
-                row_count=len(result.get("entries") or []),
-            )
-        )
-
     panels_with_evidence = [key for key in PANEL_KEYS if key in evidence and not _is_empty_panel_value(key, evidence[key])]
     if "variants_all" in panels and render_params.get("variants_all_source") and "variants_all" not in panels_with_evidence:
         panels_with_evidence.append("variants_all")
@@ -282,9 +270,6 @@ def _list_panel_status(panel: str, values: list[JsonObject]) -> str:
 def _is_empty_panel_value(panel: str, value: Any) -> bool:
     if value in (None, "", [], {}):
         return True
-    if panel == "journal" and isinstance(value, dict):
-        entries = value.get("entries")
-        return isinstance(entries, list) and not entries
     return is_native_empty_panel(panel, value)
 
 

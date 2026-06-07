@@ -11,7 +11,6 @@
     const ANCESTRY_DATA = EV.ancestry || null;
     const NUTRI_DATA = Array.isArray(EV.nutrigenomics) ? EV.nutrigenomics : null;
     const VARIANTS_ALL_DATA = Array.isArray(EV.variants_all) ? EV.variants_all : null;
-    const JOURNAL_ENTRIES = Array.isArray(EV.journal) ? EV.journal : null;
 
     const PGX_IMPACT_COLORS = { normal: '#10b981', moderate: '#f59e0b', reduced: '#f59e0b', increased: '#f59e0b', elevated: '#ef4444', poor: '#ef4444' };
     function prsLevel(p) {
@@ -30,7 +29,6 @@
       risk: 'prs.calculate_score',
       ancestry: 'ancestry.estimate_population_context',
       nutrigenomics: 'nutrigenomics.retrieve_domain_markers',
-      journal: 'journal.search_entries',
     };
 
     const NAV_ITEMS = [
@@ -40,7 +38,6 @@
       { id: 'risk', label: 'Risk Scores', icon: '◈', section: 'Genomics', panel: 'risk' },
       { id: 'ancestry', label: 'Ancestry', icon: '◎', section: 'Genomics', panel: 'ancestry' },
       { id: 'nutrigenomics', label: 'Nutrigenomics', icon: '◆', section: 'Genomics', panel: 'nutrigenomics' },
-      { id: 'journal', label: 'Journal', icon: '▤', section: 'Memory', panel: 'journal' },
     ];
 
     // Keep ungathered panels navigable so their EmptyPanel placeholders make
@@ -105,9 +102,8 @@
       const riskHi = PRS_DATA && PRS_DATA.length > 0 ? PRS_DATA.slice(0, 3) : null;
       const ancestryHi = ANCESTRY_DATA && (ANCESTRY_DATA.dominantAncestry || (Array.isArray(ANCESTRY_DATA.neighbors) && ANCESTRY_DATA.neighbors.length > 0)) ? ANCESTRY_DATA : null;
       const nutriHi = NUTRI_DATA && NUTRI_DATA.length > 0 ? NUTRI_DATA.slice(0, 3) : null;
-      const journalHi = JOURNAL_ENTRIES && JOURNAL_ENTRIES.length > 0 ? JOURNAL_ENTRIES.slice(0, 3) : null;
 
-      const anyHighlights = !!(variantsHi || pgxHi || riskHi || ancestryHi || nutriHi || journalHi);
+      const anyHighlights = !!(variantsHi || pgxHi || riskHi || ancestryHi || nutriHi);
 
       return (
         <div className="view-content">
@@ -257,19 +253,6 @@
                         </div>
                       );
                     })}
-                  </div>
-                </HighlightCard>
-              )}
-              {journalHi && (
-                <HighlightCard title="Journal" onNav={onNav ? () => onNav('journal') : null}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {journalHi.map((entry, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                        <span className="tag-chip">{entry.kind || '-'}</span>
-                        <span style={{ color: '#e5e5e5', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.title || ''}</span>
-                        <span className="mono-text" style={{ color: '#444' }}>{entry.ts || ''}</span>
-                      </div>
-                    ))}
                   </div>
                 </HighlightCard>
               )}
@@ -757,50 +740,6 @@
       );
     }
 
-    function JournalView() {
-      if (!JOURNAL_ENTRIES) return <EmptyPanel title="Journal" op={PANEL_OPS.journal} />;
-      const typeIcons = { observation: '◎', hypothesis: '◇', decision: '◆', question: '?' };
-      return (
-        <div className="view-content">
-          <div className="view-header">
-            <div>
-              <h2 className="view-title">Investigation Journal</h2>
-              <p className="view-subtitle">Agent reasoning, decisions, and evidence links</p>
-            </div>
-          </div>
-          <div className="journal-list">
-            {JOURNAL_ENTRIES.map((entry, i) => (
-              <div key={i} className="journal-entry">
-                <div className="journal-timeline">
-                  <div className="journal-icon"><span>{typeIcons[entry.kind] || '○'}</span></div>
-                  <div className="journal-line" />
-                </div>
-                <div className="journal-body">
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#e5e5e5', fontWeight: 600, fontSize: 13 }}>{entry.title || entry.kind}</span>
-                    <span style={{ color: '#444', fontSize: 11 }}>{entry.ts || ''}</span>
-                  </div>
-                  <div style={{ color: '#999', fontSize: 12.5, lineHeight: 1.6, marginTop: 6 }}>{entry.body}</div>
-                  {Array.isArray(entry.tags) && entry.tags.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                      {entry.tags.map((tag, j) => <span key={j} className="tag-chip">{tag}</span>)}
-                    </div>
-                  )}
-                  {Array.isArray(entry.evidenceLinks) && entry.evidenceLinks.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      {entry.evidenceLinks.map((link, j) => (
-                        <div key={j} className="mono-text" style={{ color: '#444', fontSize: 10 }}>↳ {link}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
     function Sidebar({ active, onNav }) {
       let lastSection = '';
       return (
@@ -853,7 +792,6 @@
           case 'risk': return <RiskScoresView />;
           case 'ancestry': return <AncestryView />;
           case 'nutrigenomics': return <NutrigenomicsView />;
-          case 'journal': return <JournalView />;
           default: return <OverviewView onNav={setView} />;
         }
       };

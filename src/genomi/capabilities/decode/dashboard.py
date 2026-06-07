@@ -42,7 +42,6 @@ PANEL_KEYS: tuple[str, ...] = (
     "risk",
     "ancestry",
     "nutrigenomics",
-    "journal",
 )
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
@@ -264,17 +263,6 @@ def _normalize_native_ancestry(raw: JsonObject) -> JsonObject | None:
         "method": "ancestry.estimate_population_context",
     }
     return {k: v for k, v in out.items() if v not in (None, [], "")}
-
-
-def _normalize_journal(raw: Any) -> JsonObject | list | None:
-    # Dashboard expects a list; tolerate {entries, count, note} wrapper.
-    if isinstance(raw, list):
-        return raw
-    if isinstance(raw, dict):
-        entries = raw.get("entries")
-        if isinstance(entries, list):
-            return entries
-    return None
 
 
 def _passthrough(raw: Any) -> Any:
@@ -528,7 +516,6 @@ def _normalize_required_rows(
 _PANEL_NORMALIZERS: dict[str, Any] = {
     "overview": _normalize_overview,
     "ancestry": _normalize_ancestry,
-    "journal": _normalize_journal,
     "variants": _normalize_variants,
     "variants_all": _normalize_variants_all,
     "pgx": normalize_pgx_panel,
@@ -592,10 +579,6 @@ _PANEL_SCHEMAS: dict[str, dict[str, Any]] = {
     "nutrigenomics": {
         "kind": "list",
         "row_fields": ("marker", "gene", "rsid", "status", "recommendation", "evidenceTier"),
-    },
-    "journal": {
-        "kind": "list",
-        "row_fields": ("title", "body", "kind", "ts", "evidenceLinks"),
     },
 }
 
@@ -719,9 +702,7 @@ def _safe_evidence(
     render; update-mode clearing is handled by ``render_dashboard``).
     A panel supplied with real content is normalized and then validated against
     `_PANEL_SCHEMAS`; a content-bearing panel that normalizes to nothing, or
-    that fails its schema, raises `panel_schema_mismatch`. Empty journal input
-    is the one tolerated "supplied but nothing" case, since "no entries" is a
-    normal state.
+    that fails its schema, raises `panel_schema_mismatch`.
     """
     payload: JsonObject = {}
     skipped = skip_panels or set()
@@ -738,8 +719,6 @@ def _safe_evidence(
         except PanelNormalizationError as exc:
             raise DashboardRenderError("panel_schema_mismatch", str(exc)) from exc
         if _is_empty(normalized):
-            if key == "journal":
-                continue
             raise DashboardRenderError(
                 "panel_schema_mismatch",
                 f"Panel '{key}' was supplied but no recognized fields mapped to the "

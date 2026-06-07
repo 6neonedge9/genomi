@@ -1,48 +1,5 @@
 // AUTO-GENERATED chunk 2/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: 93cb9d96aadb2e80a7693ae384b920855c4dce9dae08e937bfcdbfb2b42a29d7
-      style: {
-        background: sc.bg,
-        color: sc.fg,
-        borderColor: sc.border
-      }
-    }, (v.clinvarSignificance || '').replace(/_/g, ' '))), /*#__PURE__*/React.createElement("td", {
-      style: {
-        color: '#aaa',
-        fontSize: 12
-      }
-    }, v.conditionShort), /*#__PURE__*/React.createElement("td", {
-      style: {
-        color: '#555',
-        fontSize: 11
-      }
-    }, v.evidenceQuality || ''));
-  }))), plpFiltered.length === 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      padding: 24,
-      textAlign: 'center',
-      color: '#444'
-    }
-  }, "No P/LP variants match your search."))), hasAll && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: 11,
-      fontWeight: 700,
-      color: 'var(--text4)',
-      textTransform: 'uppercase',
-      letterSpacing: '0.08em'
-    }
-  }, "All ClinVar Variants"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 4
-    }
-  }, SIG_TABS.map(([key, label]) => /*#__PURE__*/React.createElement("button", {
+// source-sha256: 0728d7215c8110f4c65f555e2808da7e7d9fb1a07bb8b9181b6e7c767e0d7a9d
     key: key,
     onClick: () => setSigFilter(key),
     style: {
@@ -617,84 +574,6 @@ function NutrigenomicsView() {
     }, d.recommendation));
   })));
 }
-function JournalView() {
-  if (!JOURNAL_ENTRIES) return /*#__PURE__*/React.createElement(EmptyPanel, {
-    title: "Journal",
-    op: PANEL_OPS.journal
-  });
-  const typeIcons = {
-    observation: '◎',
-    hypothesis: '◇',
-    decision: '◆',
-    question: '?'
-  };
-  return /*#__PURE__*/React.createElement("div", {
-    className: "view-content"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "view-header"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "view-title"
-  }, "Investigation Journal"), /*#__PURE__*/React.createElement("p", {
-    className: "view-subtitle"
-  }, "Agent reasoning, decisions, and evidence links"))), /*#__PURE__*/React.createElement("div", {
-    className: "journal-list"
-  }, JOURNAL_ENTRIES.map((entry, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    className: "journal-entry"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "journal-timeline"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "journal-icon"
-  }, /*#__PURE__*/React.createElement("span", null, typeIcons[entry.kind] || '○')), /*#__PURE__*/React.createElement("div", {
-    className: "journal-line"
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "journal-body"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between'
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: '#e5e5e5',
-      fontWeight: 600,
-      fontSize: 13
-    }
-  }, entry.title || entry.kind), /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: '#444',
-      fontSize: 11
-    }
-  }, entry.ts || '')), /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: '#999',
-      fontSize: 12.5,
-      lineHeight: 1.6,
-      marginTop: 6
-    }
-  }, entry.body), Array.isArray(entry.tags) && entry.tags.length > 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      flexWrap: 'wrap',
-      gap: 4,
-      marginTop: 8
-    }
-  }, entry.tags.map((tag, j) => /*#__PURE__*/React.createElement("span", {
-    key: j,
-    className: "tag-chip"
-  }, tag))), Array.isArray(entry.evidenceLinks) && entry.evidenceLinks.length > 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 8
-    }
-  }, entry.evidenceLinks.map((link, j) => /*#__PURE__*/React.createElement("div", {
-    key: j,
-    className: "mono-text",
-    style: {
-      color: '#444',
-      fontSize: 10
-    }
-  }, "\u21B3 ", link))))))));
-}
 function Sidebar({
   active,
   onNav
@@ -760,8 +639,6 @@ function App() {
         return /*#__PURE__*/React.createElement(AncestryView, null);
       case 'nutrigenomics':
         return /*#__PURE__*/React.createElement(NutrigenomicsView, null);
-      case 'journal':
-        return /*#__PURE__*/React.createElement(JournalView, null);
       default:
         return /*#__PURE__*/React.createElement(OverviewView, {
           onNav: setView

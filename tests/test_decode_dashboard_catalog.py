@@ -48,7 +48,6 @@ NAV_LABELS = (
     "Risk Scores",
     "Ancestry",
     "Nutrigenomics",
-    "Journal",
 )
 
 
@@ -66,7 +65,6 @@ class DashboardCatalogTests(unittest.TestCase):
             set(schema_props),
             {
                 "include_pgx",
-                "journal_limit",
                 "nutrigenomics_domain_ids",
                 "output",
                 "panels",

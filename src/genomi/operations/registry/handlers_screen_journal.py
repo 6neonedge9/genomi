@@ -27,7 +27,6 @@ _DECODE_AGI_PANEL_OPERATIONS = {
 }
 _DECODE_BUILD_PARAM_KEYS = {
     "include_pgx",
-    "journal_limit",
     "nutrigenomics_domain_ids",
     "output",
     "panels",

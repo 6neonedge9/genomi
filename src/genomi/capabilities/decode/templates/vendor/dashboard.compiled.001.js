@@ -1,5 +1,5 @@
 // AUTO-GENERATED chunk 1/2 from dashboard.jsx by scripts/build_dashboard.py - do not edit by hand.
-// source-sha256: 93cb9d96aadb2e80a7693ae384b920855c4dce9dae08e937bfcdbfb2b42a29d7
+// source-sha256: 0728d7215c8110f4c65f555e2808da7e7d9fb1a07bb8b9181b6e7c767e0d7a9d
 // All evidence comes from the decode pipeline via window.__GENOMI_DASHBOARD__.
 // Anything below this line is presentation/layout only — no genome data is
 // prefilled in the template.
@@ -16,7 +16,6 @@ const PRS_DATA = Array.isArray(EV.risk) ? EV.risk : null;
 const ANCESTRY_DATA = EV.ancestry || null;
 const NUTRI_DATA = Array.isArray(EV.nutrigenomics) ? EV.nutrigenomics : null;
 const VARIANTS_ALL_DATA = Array.isArray(EV.variants_all) ? EV.variants_all : null;
-const JOURNAL_ENTRIES = Array.isArray(EV.journal) ? EV.journal : null;
 const PGX_IMPACT_COLORS = {
   normal: '#10b981',
   moderate: '#f59e0b',
@@ -54,8 +53,7 @@ const PANEL_OPS = {
   pgx: 'pharmacogenomics.run_pharmcat',
   risk: 'prs.calculate_score',
   ancestry: 'ancestry.estimate_population_context',
-  nutrigenomics: 'nutrigenomics.retrieve_domain_markers',
-  journal: 'journal.search_entries'
+  nutrigenomics: 'nutrigenomics.retrieve_domain_markers'
 };
 const NAV_ITEMS = [{
   id: 'overview',
@@ -93,12 +91,6 @@ const NAV_ITEMS = [{
   icon: '◆',
   section: 'Genomics',
   panel: 'nutrigenomics'
-}, {
-  id: 'journal',
-  label: 'Journal',
-  icon: '▤',
-  section: 'Memory',
-  panel: 'journal'
 }];
 
 // Keep ungathered panels navigable so their EmptyPanel placeholders make
@@ -177,8 +169,7 @@ function OverviewView({
   const riskHi = PRS_DATA && PRS_DATA.length > 0 ? PRS_DATA.slice(0, 3) : null;
   const ancestryHi = ANCESTRY_DATA && (ANCESTRY_DATA.dominantAncestry || Array.isArray(ANCESTRY_DATA.neighbors) && ANCESTRY_DATA.neighbors.length > 0) ? ANCESTRY_DATA : null;
   const nutriHi = NUTRI_DATA && NUTRI_DATA.length > 0 ? NUTRI_DATA.slice(0, 3) : null;
-  const journalHi = JOURNAL_ENTRIES && JOURNAL_ENTRIES.length > 0 ? JOURNAL_ENTRIES.slice(0, 3) : null;
-  const anyHighlights = !!(variantsHi || pgxHi || riskHi || ancestryHi || nutriHi || journalHi);
+  const anyHighlights = !!(variantsHi || pgxHi || riskHi || ancestryHi || nutriHi);
   return /*#__PURE__*/React.createElement("div", {
     className: "view-content"
   }, /*#__PURE__*/React.createElement("div", {
@@ -561,41 +552,7 @@ function OverviewView({
         flexShrink: 0
       }
     }, d.evidenceTier));
-  }))), journalHi && /*#__PURE__*/React.createElement(HighlightCard, {
-    title: "Journal",
-    onNav: onNav ? () => onNav('journal') : null
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: 8
-    }
-  }, journalHi.map((entry, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: 8,
-      fontSize: 12
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "tag-chip"
-  }, entry.kind || '-'), /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: '#e5e5e5',
-      fontWeight: 600,
-      flex: 1,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap'
-    }
-  }, entry.title || ''), /*#__PURE__*/React.createElement("span", {
-    className: "mono-text",
-    style: {
-      color: '#444'
-    }
-  }, entry.ts || '')))))));
+  })))));
 }
 function sigBadgeStyle(sig) {
   const s = (sig || '').toLowerCase();
@@ -898,3 +855,46 @@ function VariantsView() {
       }
     }, " ", v.zygosity) : null)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
       className: "badge",
+      style: {
+        background: sc.bg,
+        color: sc.fg,
+        borderColor: sc.border
+      }
+    }, (v.clinvarSignificance || '').replace(/_/g, ' '))), /*#__PURE__*/React.createElement("td", {
+      style: {
+        color: '#aaa',
+        fontSize: 12
+      }
+    }, v.conditionShort), /*#__PURE__*/React.createElement("td", {
+      style: {
+        color: '#555',
+        fontSize: 11
+      }
+    }, v.evidenceQuality || ''));
+  }))), plpFiltered.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 24,
+      textAlign: 'center',
+      color: '#444'
+    }
+  }, "No P/LP variants match your search."))), hasAll && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: 'var(--text4)',
+      textTransform: 'uppercase',
+      letterSpacing: '0.08em'
+    }
+  }, "All ClinVar Variants"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 4
+    }
+  }, SIG_TABS.map(([key, label]) => /*#__PURE__*/React.createElement("button", {

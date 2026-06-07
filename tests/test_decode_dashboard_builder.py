@@ -83,8 +83,6 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
                         }
                     ],
                 }
-            if operation == "journal.search_entries":
-                return {"status": "completed", "entries": [{"title": "Reviewed", "kind": "observation"}]}
             raise AssertionError(f"unexpected operation {operation}")
 
         result = evidence_builder.build_dashboard_evidence(
@@ -170,11 +168,11 @@ class DecodeDashboardEvidenceBuilderTests(unittest.TestCase):
             run = handlers_screen_journal._decode_panel_runner_for_target("agi-target")
             run("active_genome_index.summarize")
             run("clinvar.scan_candidates", {"force": True})
-            run("journal.search_entries", {"limit": 1})
+            run("prs.list_imported_scores", {"limit": 1})
 
         self.assertEqual(seen[0], ("active_genome_index.summarize", {"agi_id": "agi-target"}))
         self.assertEqual(seen[1], ("clinvar.scan_candidates", {"force": True, "agi_id": "agi-target"}))
-        self.assertEqual(seen[2], ("journal.search_entries", {"limit": 1}))
+        self.assertEqual(seen[2], ("prs.list_imported_scores", {"limit": 1}))
 
     def test_decode_builder_does_not_forward_panel_refresh_knobs(self) -> None:
         calls: list[tuple[str, dict]] = []

@@ -28,7 +28,7 @@
             "description": "Optional subset of dashboard panels to gather. Omitted means every dashboard panel.",
             "items": {
               "type": "string",
-              "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal"]
+              "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics"]
             },
             "uniqueItems": true
           },
@@ -60,12 +60,6 @@
             "description": "Optional nutrigenomics domains to retrieve. Omitted means every declared in-scope domain.",
             "items": {"type": "string"},
             "uniqueItems": true
-          },
-          "journal_limit": {
-            "type": "integer",
-            "default": 8,
-            "minimum": 1,
-            "description": "Maximum journal entries to gather for the journal panel."
           }
         },
         "required": [],
@@ -112,7 +106,7 @@
             "description": "Optional subset of dashboard categories to gather and render. Omitted means every dashboard category.",
             "items": {
               "type": "string",
-              "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics", "journal"]
+              "enum": ["overview", "variants", "variants_all", "pgx", "risk", "ancestry", "nutrigenomics"]
             },
             "uniqueItems": true
           },
@@ -144,12 +138,6 @@
             "description": "Optional nutrigenomics domains to retrieve. Omitted means every declared in-scope domain.",
             "items": {"type": "string"},
             "uniqueItems": true
-          },
-          "journal_limit": {
-            "type": "integer",
-            "default": 8,
-            "minimum": 1,
-            "description": "Maximum journal entries to gather for the journal panel."
           },
           "output": {
             "$ref": "#/schema_fragments/properties/local_path",

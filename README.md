@@ -209,10 +209,10 @@ Or just hand it the whole thing:
 
 > `/genomi decode`
 
-One command. The agent sweeps every capability across your genome —
-variants, ClinVar, pharmacogenomics, ancestry, polygenic scores,
-nutrigenomics, and your investigation journal — and serves the result
-as a self-contained dashboard on localhost. Open the URL in a browser.
+One command. The agent sweeps every dashboard capability across your genome —
+variants, ClinVar, pharmacogenomics, ancestry, polygenic scores, and
+nutrigenomics — and serves the result as a self-contained dashboard on
+localhost. Open the URL in a browser.
 
 Behind those, Genomi gives the agent grounded tools across 20,000+ human
 genes, millions of genotype observations from your file, and the public
